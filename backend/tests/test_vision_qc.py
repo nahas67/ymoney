@@ -85,7 +85,7 @@ def test_autopilot_verify_reads_video_path_and_caps_components():
             )
             assert r.status_code == 200, r.text
 
-            deadline = time.time() + 120
+            deadline = time.time() + 30
             state = None
             while time.time() < deadline:
                 st = client.get(

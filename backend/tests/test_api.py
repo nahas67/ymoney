@@ -79,7 +79,7 @@ def test_full_api_cycle_with_mocks(client):
     rd = client.get("/api/v1/system/readiness").json()
     assert rd["status"] in ("ready", "blocked")
 
-    deadline = time.time() + 120
+    deadline = time.time() + 30
     state = None
     while time.time() < deadline:
         st = client.get(f"/api/v1/workspaces/{ws_id}/autopilot/status", headers=headers).json()

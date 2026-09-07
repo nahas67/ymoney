@@ -33,6 +33,8 @@ target-version = "py312"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Skip live network tests by default; run with -m live to include them.
+addopts = "-m 'not live'"
 # A hung test must fail visibly instead of stalling the whole suite (CI gate).
 # Generous ceiling: a healthy run of the full suite stays far below this.
 timeout = 240

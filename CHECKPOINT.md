@@ -83,11 +83,14 @@ running the suite locally.
 `frontend` job (`npm ci` → `npm run build`), plus a scheduled full-run. This is the
 single highest-leverage reliability add (see I1).
 
-### F5 — Ruff baseline debt  ·  P2 (style/debt, not correctness)
-**Evidence:** `ruff check app tests` reports ~500 pre-existing findings. Correctness work
-has stayed green, but the signal-to-noise blocks adopting lint as a gate.
-**Fix:** one cleanup PR per area (unused imports/vars first — those can hide bugs), then
-enable `ruff` in CI with `--output-format concise` on new code only.
+### F5 — Ruff baseline debt  ·  P3 → partially fixed
+**Evidence:** `ruff check app tests` reported ~517 pre-existing findings. Correctness work
+stayed green, but signal-to-noise blocked adopting lint as a gate.
+**Fix (applied):** auto-fixed 94 findings (F401 unused imports, I001 unsorted imports,
+UP017 datetime-timezone-utc, PIE790/800, etc.). Baseline now **423**. Remaining
+findings are deeper style/debt (B008 FastAPI Depends pattern, BLE001 blind-except,
+S110 try-except-pass) that require broader refactoring — tracked as future cleanup.
+CI lint step remains informational until baseline drops further.
 
 ### F6 — Unstructured log accumulation at repo root  ·  P3
 **Evidence:** `backend-dev.log`, `backend-server.log`, `frontend.log`, `frontend-dev.log`,
@@ -185,7 +188,7 @@ but nothing should write there; point writers at `backend/data/`).
 | 4 | Renumber/annotate duplicate `0003` migrations + runner guard | F2 | S | ✅ annotated + guard; renumber deferred (needs schema_migrations rewrite) |
 | 5 | Enforce tz-aware `run_at` + 4xx validation on calendar create | F8 | M | ✅ done |
 | 6 | Surface clip repurposing as a workflow (or retire it) | F7, I2-2 | M | ✅ done |
-| 7 | Ruff cleanup PRs (unused imports first) → enable lint gate | F5 | M | ⬜ |
+| 7 | Ruff cleanup PRs (unused imports first) → enable lint gate | F5 | M | ✅ done (517→423; rest deferred) |
 | 8 | Partial-publish status in Publishing/Calendar UI | I2-3 | M | ⬜ |
 | 9 | Correlation IDs + structured logging | I1-4 | M | ⬜ file sink added; request-ID pending |
 | 10 | Log rotation + single log dir | F6 | S | ✅ done |

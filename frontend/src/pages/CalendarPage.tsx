@@ -152,7 +152,10 @@ export default function CalendarPage() {
         {selected && (
           <div className="space-y-4">
             <h3 className="font-semibold">Scheduled post</h3>
-            <p className="text-sm capitalize">{selected.platform}{selected.status && selected.status !== "PENDING" ? ` · ${selected.status.toLowerCase()}` : ""}</p>
+            <p className="text-sm capitalize">
+              {selected.platform}
+              {selected.status && selected.status !== "PENDING" ? ` · ${selected.status.toLowerCase()}` : ""}
+            </p>
             <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>{new Date(selected.run_at).toLocaleString()}</p>
             {selected.status === "FAILED" && <p className="text-[12px] text-red-500">Publishing failed after all retries. Drag this entry to a new day to retry.</p>}
             <div className="flex gap-2 pt-2">
@@ -184,7 +187,7 @@ function CreateModal({ open, onClose }: any) {
       await wsApi.post("/calendar", {
         platform,
         run_at: new Date(runAt).toISOString(),
-        content_item_id: contentId || null,
+        content_item_id: contentId,
       });
       push("success", "Post scheduled");
       onClose();
@@ -203,9 +206,9 @@ function CreateModal({ open, onClose }: any) {
         <Field label="Date & time">
           <input className="input" type="datetime-local" value={runAt} onChange={(e) => setRunAt(e.target.value)} />
         </Field>
-        <Field label="Attach content (optional)">
-          <select className="select" value={contentId} onChange={(e) => setContentId(e.target.value)}>
-            <option value="">— none —</option>
+        <Field label="Content">
+          <select className="select" value={contentId} onChange={(e) => setContentId(e.target.value)} required>
+            <option value="" disabled>— select content —</option>
             {contentItems.map((c) => (
               <option key={c.id} value={c.id}>{c.topic.slice(0, 70)} ({c.status.toLowerCase()})</option>
             ))}
@@ -213,7 +216,7 @@ function CreateModal({ open, onClose }: any) {
         </Field>
         <div className="flex justify-end gap-2 pt-1">
           <button className="btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" onClick={create}>Schedule</button>
+          <button className="btn-primary" onClick={create} disabled={!runAt || !contentId}>Schedule</button>
         </div>
       </div>
     </Modal>

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 
 from app.db import get_db
@@ -635,11 +635,28 @@ def create_campaign(body: CampaignBody, ws: Workspace = Depends(require_workspac
 calendar_router = APIRouter(prefix="/workspaces/{workspace_id}/calendar", tags=["calendar"])
 
 
+def _validate_run_at(v: datetime) -> datetime:
+    """Reject naive or past datetimes for schedule entries."""
+    if v.tzinfo is None:
+        raise ValueError(
+            "run_at must be an explicit timezone-aware ISO datetime (e.g. '2026-09-08T12:00:00Z'), "
+            "not a naive local-time value."
+        )
+    if v < datetime.now(timezone.utc):
+        raise ValueError("run_at cannot be in the past")
+    return v
+
+
 class ScheduleBody(BaseModel):
-    content_item_id: str | None = None
+    content_item_id: str
     campaign_id: str | None = None
     platform: str
     run_at: datetime
+
+    @field_validator("run_at")
+    @classmethod
+    def _tz_check(cls, v: datetime) -> datetime:
+        return _validate_run_at(v)
 
 
 @calendar_router.get("")
@@ -673,6 +690,9 @@ def list_schedule(ws: Workspace = Depends(require_workspace_role("viewer")), db=
 
 @calendar_router.post("", status_code=201)
 def add_schedule(body: ScheduleBody, ws: Workspace = Depends(require_workspace_role("admin")), db=Depends(get_db)):
+    content = db.get(ContentItem, body.content_item_id)
+    if not content or content.workspace_id != ws.id:
+        raise HTTPException(status_code=422, detail="content_item_id not found in this workspace")
     entry = ScheduleEntry(
         workspace_id=ws.id,
         content_item_id=body.content_item_id,
@@ -687,6 +707,11 @@ def add_schedule(body: ScheduleBody, ws: Workspace = Depends(require_workspace_r
 
 class RescheduleBody(BaseModel):
     run_at: datetime
+
+    @field_validator("run_at")
+    @classmethod
+    def _tz_check(cls, v: datetime) -> datetime:
+        return _validate_run_at(v)
 
 
 @calendar_router.patch("/{entry_id}")

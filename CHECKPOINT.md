@@ -101,13 +101,16 @@ is referenced **nowhere else** — no API route, no agent, no UI. It reports
 **Fix:** surface it — a Composer/Studio "repurpose a long-form URL" action producing
 clip drafts into the Ideas queue (natural fit for the pipeline), or formally retire it.
 
-### F8 — `run_at` timezone handling is implicit  ·  P2 · *(verify behavior)*
-**Evidence:** `ScheduleEntry.run_at` is stored as a naive datetime and serialized as
+### F8 — `run_at` timezone handling is implicit  ·  P3 → mostly fixed
+**Evidence:** `ScheduleEntry.run_at` was stored as a naive datetime and serialized as
 `isoformat() + "Z"` (forced UTC label) in `content.py` (calendar routes).
-**Fix:** enforce one convention — accept only `…Z`/offset ISO from the API (`pydantic`
-`datetime` keeps tzinfo; reject naive with 422) — and compare in UTC in the sweep.
-Also add 4xx validation for past `run_at` and content-less entries instead of the
-sweep-cancel path (carried-over item from earlier batches).
+**Fix (applied):** the API now rejects naive and past `run_at` datetimes (422);
+`ScheduleBody.content_item_id` is required (no content-less entries); and
+`add_schedule` validates the content reference exists in the workspace.
+Frontend updated to require content selection before submit.
+Remaining: the DB column is still naive (SQLite doesn't store tzinfo); the forced
+`"Z"` serialization on read remains, which is fine for a UTC-only backend. A future
+Postgres migration could store `timestamptz` explicitly.
 
 ### F9 — Test-artifact cruft  ·  P4
 **Evidence:** `backend/tests/_debug_out.txt`, `backend/tests/test_pipeline.py.tmp_note`,
@@ -177,7 +180,7 @@ but nothing should write there; point writers at `backend/data/`).
 | 2 | `pytest-timeout` + test split; document run order | F1 | S | ✅ done (timeout; split pending) |
 | 3 | Fix `.env.example` (duplicate + untyped keys) | F3 | S | ✅ duplicate fixed; untyped-keys centralization pending |
 | 4 | Renumber/annotate duplicate `0003` migrations + runner guard | F2 | S | ✅ annotated + guard; renumber deferred (needs schema_migrations rewrite) |
-| 5 | Enforce tz-aware `run_at` + 4xx validation on calendar create | F8 | M | ⬜ next |
+| 5 | Enforce tz-aware `run_at` + 4xx validation on calendar create | F8 | M | ✅ done |
 | 6 | Surface clip repurposing as a workflow (or retire it) | F7, I2-2 | M | ⬜ |
 | 7 | Ruff cleanup PRs (unused imports first) → enable lint gate | F5 | M | ⬜ |
 | 8 | Partial-publish status in Publishing/Calendar UI | I2-3 | M | ⬜ |

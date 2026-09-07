@@ -293,17 +293,56 @@ def test_sweep_ignores_future_and_cancelled(db):
     assert db.get(ScheduleEntry, cancelled.id).status == "CANCELLED"
 
 
+def _create_content(db, ws_id: str, title: str = "test") -> str:
+    from app.models import ContentItem
+
+    item = ContentItem(workspace_id=ws_id, topic=title)
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item.id
+
+
 def test_calendar_round_trip_and_due_publish(client, db):
-    """API-created entries become sweep-dispatchable; PATCH/DELETE rules hold."""
+    """API-created entries become sweep-dispatchable; PATCH/DELETE rules hold.
+
+    The API now rejects naive/past datetimes and missing content with 422.
+    The round-trip test validates: create (future + content) → list → reschedule
+    (future) → cancel → 409 on double-cancel.
+    """
+    from datetime import datetime, timedelta as _td, timezone
+
     _tok, ws_id, headers = _register(client)
+    content_id = _create_content(db, ws_id)
+    _future = lambda mins: (datetime.now(timezone.utc) + _td(minutes=mins)).isoformat()
+    _past = lambda mins: (datetime.now(timezone.utc) - _td(minutes=mins)).isoformat()
 
-    # future entry via API
-    from datetime import timedelta as _td
-
-    from app.models.base import utcnow as _u
+    # --- API rejects: naive datetime, missing content, past run_at ---
     r = client.post(
         f"/api/v1/workspaces/{ws_id}/calendar",
-        json={"platform": "instagram", "run_at": (_u() + _td(minutes=5)).isoformat()},
+        json={"platform": "instagram", "run_at": "2026-09-10T12:00"},  # naive
+        headers=headers,
+    )
+    assert r.status_code == 422, r.text
+
+    r = client.post(
+        f"/api/v1/workspaces/{ws_id}/calendar",
+        json={"platform": "instagram", "run_at": _future(5)},  # missing content_item_id
+        headers=headers,
+    )
+    assert r.status_code == 422, r.text
+
+    r = client.post(
+        f"/api/v1/workspaces/{ws_id}/calendar",
+        json={"platform": "instagram", "run_at": _past(1), "content_item_id": content_id},
+        headers=headers,
+    )
+    assert r.status_code == 422, r.text
+
+    # --- valid create ---
+    r = client.post(
+        f"/api/v1/workspaces/{ws_id}/calendar",
+        json={"platform": "instagram", "run_at": _future(5), "content_item_id": content_id},
         headers=headers,
     )
     assert r.status_code == 201, r.text
@@ -313,20 +352,24 @@ def test_calendar_round_trip_and_due_publish(client, db):
     r = client.get(f"/api/v1/workspaces/{ws_id}/calendar", headers=headers)
     assert any(e["id"] == entry_id for e in r.json()["items"])
 
-    # reschedule into the past -> sweep cancels it honestly (no content attached)
+    # --- reschedule to a new future time ---
     r = client.patch(
         f"/api/v1/workspaces/{ws_id}/calendar/{entry_id}",
-        json={"run_at": (_u() - _td(minutes=1)).isoformat()},
+        json={"run_at": _future(60)},
         headers=headers,
     )
+    assert r.status_code == 200, r.text
+
+    # --- reschedule into the past rejected ---
+    r = client.patch(
+        f"/api/v1/workspaces/{ws_id}/calendar/{entry_id}",
+        json={"run_at": _past(1)},
+        headers=headers,
+    )
+    assert r.status_code == 422, r.text
+
+    # --- cancel, then 409 on double-cancel ---
+    r = client.delete(f"/api/v1/workspaces/{ws_id}/calendar/{entry_id}", headers=headers)
     assert r.status_code == 200
-
-    from app.engine.autopilot import sweep_due_schedules
-    sweep_due_schedules()
-
-    from app.models import ScheduleEntry
-    assert db.get(ScheduleEntry, entry_id).status == "CANCELLED"
-
-    # cancelling a CANCELLED entry conflicts
     r = client.delete(f"/api/v1/workspaces/{ws_id}/calendar/{entry_id}", headers=headers)
     assert r.status_code == 409

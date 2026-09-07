@@ -27,6 +27,33 @@ from app.migrations.runner import run_migrations
 from app.services import jobs as jobs_service
 from app.services import telegram_service
 
+_FILE_LOGGING_CONFIGURED = False
+
+
+def _configure_file_logging() -> None:
+    """Add one rotated file sink under backend/data/logs (gitignored).
+
+    Keeps long-running server output diagnosable without unbounded root-level
+    log files. Guarded so re-imports (tests, uvicorn workers) never double-add.
+    """
+    global _FILE_LOGGING_CONFIGURED
+    if _FILE_LOGGING_CONFIGURED:
+        return
+    log_dir = Path(__file__).resolve().parents[1] / "data" / "logs"
+    logger.add(
+        log_dir / "ymoney.log",
+        level=settings.log_level.upper(),
+        rotation="10 MB",
+        retention="14 days",
+        enqueue=True,
+        backtrace=True,
+        diagnose=False,  # never serialize locals into the file
+    )
+    _FILE_LOGGING_CONFIGURED = True
+
+
+_configure_file_logging()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

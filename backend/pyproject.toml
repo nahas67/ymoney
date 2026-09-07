@@ -23,6 +23,7 @@ dev = [
     "pytest-asyncio>=0.25.0",
     "ruff>=0.8.6",
     "respx>=0.22.0",
+    "pytest-timeout>=2.4.0",
 ]
 
 [tool.ruff]
@@ -32,6 +33,14 @@ target-version = "py312"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# A hung test must fail visibly instead of stalling the whole suite (CI gate).
+# Generous ceiling: a healthy run of the full suite stays far below this.
+timeout = 240
+# Markers used to classify tests that need a running stack or real providers.
+markers = [
+    "live: requires a running dev stack or real provider (skipped by default)",
+    "slow: longer-running integration coverage",
+]
 
 [build-system]
 requires = ["hatchling"]

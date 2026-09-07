@@ -45,7 +45,29 @@ def load_migrations() -> list[tuple[str, object]]:
             # module name convention: NNNN_description.py
             mods.append((m.name, mod))
     mods.sort(key=lambda t: t[0])
+    _warn_on_colliding_sequence(mods)
     return mods
+
+
+def _warn_on_colliding_sequence(mods: list[tuple[str, object]]) -> None:
+    """Warn (not fail) when two migrations share a numeric prefix.
+
+    The runner keys applied state on the full filename, so duplicate prefixes
+    still apply in lexical order — but the sequence number is ambiguous and a
+    future "after 0003" migration has no guaranteed position. Known exception:
+    0003_video_progress.py + 0003_video_thumbnails.py (both additive column
+    guards; see versions/README.md). Failures here are loud, never silent.
+    """
+    seen: dict[str, list[str]] = {}
+    for name, _ in mods:
+        prefix = name.split("_", 1)[0]
+        if prefix.isdigit():
+            seen.setdefault(prefix, []).append(name)
+    for prefix, names in sorted(seen.items()):
+        if len(names) > 1:
+            logger.warning(
+                f"migration sequence collision on prefix {prefix}: {', '.join(names)}"
+            )
 
 
 def run_migrations(session: Session, *, create_missing_tables: bool = True) -> list[str]:

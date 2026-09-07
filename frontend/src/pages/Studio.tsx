@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { wsApi } from "../lib/api";
-import { AsyncSection, Badge, Card, PageHeader, Tabs, fmtDate } from "../components/ui";
+import { AsyncSection, Badge, Card, Field, Modal, PageHeader, Tabs, fmtDate } from "../components/ui";
 
 const STATUS_TABS = [
   { key: "all", label: "All" },
@@ -20,6 +20,8 @@ export default function Studio() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [patterns, setPatterns] = useState<any[]>([]);
+  const [repurposeOpen, setRepurposeOpen] = useState(false);
+  const [repurposeResult, setRepurposeResult] = useState<any[] | null>(null);
   const nav = useNavigate();
 
   const load = useCallback(async () => {
@@ -59,14 +61,25 @@ export default function Studio() {
         title="Content Studio"
         subtitle={`${total} item(s) in the library — every artifact the system produced.`}
         actions={
-          <input
-            className="input !w-56"
-            placeholder="Search topics…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            aria-label="Search content"
-          />
+          <div className="flex gap-2">
+            <button className="btn-outline !text-xs" onClick={() => { setRepurposeResult(null); setRepurposeOpen(true); }}>
+              Repurpose URL
+            </button>
+            <input
+              className="input !w-56"
+              placeholder="Search topics…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search content"
+            />
+          </div>
         }
+      />
+
+      <RepurposeModal
+        open={repurposeOpen}
+        onClose={() => { setRepurposeOpen(false); if (repurposeResult) load(); }}
+        onResult={setRepurposeResult}
       />
 
       <Tabs tabs={STATUS_TABS.map((t) => ({ ...t, count: undefined }))} active={tab} onChange={setTab} />
@@ -134,6 +147,68 @@ export default function Studio() {
         )}
       </AsyncSection>
     </div>
+  );
+}
+
+function RepurposeModal({ open, onClose, onResult }: { open: boolean; onClose: () => void; onResult: (items: any[] | null) => void }) {
+  const [url, setUrl] = useState("");
+  const [clipSec, setClipSec] = useState(45);
+  const [maxClips, setMaxClips] = useState(5);
+  const [vertical, setVertical] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit() {
+    setBusy(true); setErr(null);
+    try {
+      const r = await wsApi.post("/content/repurpose", {
+        url,
+        clip_seconds: clipSec,
+        max_clips: maxClips,
+        vertical,
+      });
+      onResult(r.items ?? []);
+    } catch (e: any) {
+      setErr(typeof e.message === "string" ? e.message : "repurpose failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose}>
+      <div className="space-y-4">
+        <h3 className="font-semibold">Repurpose a long-form URL</h3>
+        <p className="text-[13px]" style={{ color: "var(--text-muted)", lineHeight: 1.5 }}>
+          Cut a YouTube/TikTok/other video into short-form clips (each becomes a
+          content draft). Requires <code>yt-dlp</code> and <code>ffmpeg</code> on the server.
+        </p>
+        <Field label="Source URL">
+          <input className="input" placeholder="https://youtube.com/watch?v=…" value={url} onChange={(e) => setUrl(e.target.value)} autoFocus />
+        </Field>
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Clip length (s)">
+            <input className="input" type="number" min={5} max={300} value={clipSec} onChange={(e) => setClipSec(Number(e.target.value))} />
+          </Field>
+          <Field label="Max clips">
+            <input className="input" type="number" min={1} max={20} value={maxClips} onChange={(e) => setMaxClips(Number(e.target.value))} />
+          </Field>
+          <Field label="Vertical (9:16)">
+            <label className="flex items-center gap-2 mt-1 text-sm">
+              <input type="checkbox" checked={vertical} onChange={(e) => setVertical(e.target.checked)} />
+              Crop to vertical
+            </label>
+          </Field>
+        </div>
+        {err && <p className="text-[13px]" style={{ color: "var(--error)", lineHeight: 1.5 }}>{err}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <button className="btn-outline" onClick={onClose}>Cancel</button>
+          <button className="btn-primary" onClick={submit} disabled={!url || busy}>
+            {busy ? "Processing…" : "Repurpose"}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

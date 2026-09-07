@@ -950,3 +950,88 @@ def campaign_detail(campaign_id: str, ws: Workspace = Depends(require_workspace_
         "progress": {"content_items": content_count, "published": published_count},
     }
 
+
+# ---------------------------------------------------------------------------
+# Clip repurposing
+# ---------------------------------------------------------------------------
+
+
+class RepurposeBody(BaseModel):
+    url: str = Field(..., min_length=5, max_length=2000)
+    clip_seconds: float = Field(default=45.0, ge=5, le=300)
+    max_clips: int = Field(default=5, ge=1, le=20)
+    vertical: bool = Field(default=True)
+
+
+@content_router.post("/repurpose", summary="Repurpose a long-form URL into short-form clip drafts")
+def repurpose_url(
+    body: RepurposeBody,
+    ws: Workspace = Depends(require_workspace_role("admin")),
+    db=Depends(get_db),
+):
+    """Download + cut a source video into short segments, each becoming a
+    ContentItem draft in the library. Returns the list of created items.
+
+    Falls back to honest error responses when yt-dlp/ffmpeg are unavailable
+    rather than silently producing nothing.
+    """
+    from app.providers.clips import ClipError, ClipRepurposer
+
+    repurposer = ClipRepurposer()
+    cap = repurposer.status()
+    try:
+        source = repurposer.acquire(body.url, ws.id)
+    except ClipError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    try:
+        clips = repurposer.cut_segments(
+            source,
+            ws.id,
+            clip_seconds=body.clip_seconds,
+            max_clips=body.max_clips,
+            vertical=body.vertical,
+        )
+    except ClipError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    created = []
+    for clip in clips:
+        item = ContentItem(
+            workspace_id=ws.id,
+            topic=f"{source.title} — clip {len(created)+1} ({clip.start:.0f}s–{clip.end:.0f}s)",
+            status="IDEA",
+        )
+        db.add(item)
+        db.flush()  # get item.id for metadata_json
+        item.tags_json = [
+            "repurposed",
+            f"clip-{len(created)+1}",
+            f"source:{source.title[:80]}",
+        ]
+        item.strategy_json = {
+            "source_url": body.url,
+            "source_title": source.title,
+            "clip_start": clip.start,
+            "clip_end": clip.end,
+            "clip_duration": clip.duration,
+            "clip_path": clip.path,
+            "vertical": body.vertical,
+        }
+        db.flush()
+        created.append({
+            "id": item.id,
+            "topic": item.topic,
+            "status": item.status,
+            "clip_start": clip.start,
+            "clip_end": clip.end,
+            "clip_duration": clip.duration,
+            "source_title": source.title,
+        })
+
+    db.commit()
+    return {
+        "items": created,
+        "source": {"title": source.title, "duration": source.duration},
+        "capabilities": cap,
+    }
+

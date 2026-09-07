@@ -41,6 +41,7 @@ operating system.
 15. `.env.example` deduplicated (`VIDEO_ENGINE` appears once, defaults aligned to `ffmpeg_avatar`); empty "Analytics collection" section removed.
 16. Migration versioning policy documented (`versions/README.md`); runner now warns loudly on duplicate numeric prefixes (`_warn_on_colliding_sequence`).
 17. Single rotated log sink (`backend/data/logs/ymoney.log`, 10 MB / 14-day retention) — root-level unbounded logs eliminated.
+18. Clip repurposing surfaced: `POST /content/repurpose` + Studio "Repurpose URL" button/modal.
 
 
 ---
@@ -94,12 +95,14 @@ enable `ruff` in CI with `--output-format concise` on new code only.
 **Fix:** loguru rotation (size/time) in `config.py`, single log location under
 `backend/data/logs/` (already gitignored), keep root clean.
 
-### F7 — Clip repurposing is dead capability  ·  P2 · *incomplete workflow*
+### F7 — Clip repurposing is dead capability  ·  P3 → fixed
 **Evidence:** `app/providers/clips.py` (`ClipRepurposer`, yt-dlp + ffmpeg long-form→clips)
-is referenced **nowhere else** — no API route, no agent, no UI. It reports
-`unavailable` honestly, but nothing ever calls it.
-**Fix:** surface it — a Composer/Studio "repurpose a long-form URL" action producing
-clip drafts into the Ideas queue (natural fit for the pipeline), or formally retire it.
+was referenced nowhere — no API route, no agent, no UI.
+**Fix (applied):** `POST /workspaces/{id}/content/repurpose` route now acquires + cuts
+via `ClipRepurposer`, creates `ContentItem` drafts (status IDEA) with clip metadata
+in `strategy_json` and tags. Studio page gains a "Repurpose URL" button + modal
+(URL, clip length, max clips, vertical toggle). Content items appear in the library
+immediately after cutting.
 
 ### F8 — `run_at` timezone handling is implicit  ·  P3 → mostly fixed
 **Evidence:** `ScheduleEntry.run_at` was stored as a naive datetime and serialized as
@@ -181,7 +184,7 @@ but nothing should write there; point writers at `backend/data/`).
 | 3 | Fix `.env.example` (duplicate + untyped keys) | F3 | S | ✅ duplicate fixed; untyped-keys centralization pending |
 | 4 | Renumber/annotate duplicate `0003` migrations + runner guard | F2 | S | ✅ annotated + guard; renumber deferred (needs schema_migrations rewrite) |
 | 5 | Enforce tz-aware `run_at` + 4xx validation on calendar create | F8 | M | ✅ done |
-| 6 | Surface clip repurposing as a workflow (or retire it) | F7, I2-2 | M | ⬜ |
+| 6 | Surface clip repurposing as a workflow (or retire it) | F7, I2-2 | M | ✅ done |
 | 7 | Ruff cleanup PRs (unused imports first) → enable lint gate | F5 | M | ⬜ |
 | 8 | Partial-publish status in Publishing/Calendar UI | I2-3 | M | ⬜ |
 | 9 | Correlation IDs + structured logging | I1-4 | M | ⬜ file sink added; request-ID pending |

@@ -190,7 +190,7 @@ but nothing should write there; point writers at `backend/data/`).
 | 6 | Surface clip repurposing as a workflow (or retire it) | F7, I2-2 | M | ✅ done |
 | 7 | Ruff cleanup PRs (unused imports first) → enable lint gate | F5 | M | ✅ done (517→423; rest deferred) |
 | 8 | Partial-publish status in Publishing/Calendar UI | I2-3 | M | ✅ done |
-| 9 | Correlation IDs + structured logging | I1-4 | M | ⬜ file sink added; request-ID pending |
+| 9 | Correlation IDs + structured logging | I1-4 | M | ✅ done |
 | 10 | Log rotation + single log dir | F6 | S | ✅ done |
 
 ---

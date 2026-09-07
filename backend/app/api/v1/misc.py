@@ -148,8 +148,16 @@ def oauth_youtube_callback(workspace_id: str, code: str = "", state: str = "", e
 
 @publishing_router.get("/jobs")
 def list_publishing_jobs(ws: Workspace = Depends(require_workspace_role("viewer")), db=Depends(get_db), limit: int = 100):
-    rows = db.scalars(
-        select(PublishingJob).where(PublishingJob.workspace_id == ws.id).order_by(PublishingJob.created_at.desc()).limit(limit)
+    from app.models.content import ContentItem, Video, VideoVariant
+
+    rows = db.execute(
+        select(PublishingJob, ContentItem.topic, ContentItem.id.label("cid"))
+        .join(Video, PublishingJob.video_id == Video.id)
+        .join(VideoVariant, Video.variant_id == VideoVariant.id)
+        .outerjoin(ContentItem, VideoVariant.content_item_id == ContentItem.id)
+        .where(PublishingJob.workspace_id == ws.id)
+        .order_by(PublishingJob.created_at.desc())
+        .limit(limit)
     ).all()
     return {
         "items": [
@@ -161,11 +169,13 @@ def list_publishing_jobs(ws: Workspace = Depends(require_workspace_role("viewer"
                 "remote_post_id": j.remote_post_id,
                 "attempt": j.attempt,
                 "error": j.error[:300],
+                "content_item_id": cid,
+                "content_topic": topic[:120] if topic else None,
                 "scheduled_at": j.scheduled_at.isoformat() + "Z" if j.scheduled_at else None,
                 "published_at": j.published_at.isoformat() + "Z" if j.published_at else None,
                 "created_at": j.created_at.isoformat() + "Z",
             }
-            for j in rows
+            for j, topic, cid in rows
         ]
     }
 

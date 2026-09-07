@@ -199,24 +199,7 @@ export default function Publishing() {
         <AsyncSection data={jobs} loading={loading} error={error} onRetry={load}
           empty="No publishing attempts yet">
           {(list) => (
-            <Card pad={false} className="overflow-x-auto">
-              <table className="table">
-                <thead><tr><th>Platform</th><th>Status</th><th>Link</th><th>Error</th><th>When</th></tr></thead>
-                <tbody>
-                  {(list as any[]).map((j) => (
-                    <tr key={j.id}>
-                      <td className="capitalize">{j.platform}</td>
-                      <td><Badge tone={j.status === "PUBLISHED" ? "success" : j.status === "FAILED" ? "error" : j.status === "QUEUED" || j.status === "RETRYING" ? "info" : "neutral"}>{j.status.toLowerCase()}</Badge>
-                        {j.attempt > 1 && <span className="text-[10px] ml-1.5" style={{ color: "var(--text-muted)" }}>try #{j.attempt}</span>}
-                      </td>
-                      <td>{j.remote_url?.startsWith("http") ? <a className="underline text-xs" href={j.remote_url} target="_blank" rel="noreferrer">open</a> : "—"}</td>
-                      <td className="max-w-[240px] truncate text-[12px] text-red-500">{j.error}</td>
-                      <td className="text-[12px]" style={{ color: "var(--text-muted)" }}>{fmtDate(j.published_at ?? j.scheduled_at ?? j.created_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Card>
+            <ContentPublishGroup jobs={list as any[]} />
           )}
         </AsyncSection>
       )}
@@ -242,6 +225,60 @@ export default function Publishing() {
         </div>
       )}
     </div>
+  );
+}
+
+function ContentPublishGroup({ jobs }: { jobs: any[] }) {
+  // Group jobs by content item; fall back to flat list when no content_topic.
+  const groups = new Map<string, { topic: string | null; jobs: any[] }>();
+  for (const j of jobs) {
+    const key = j.content_item_id ?? j.id;
+    if (!groups.has(key)) groups.set(key, { topic: j.content_topic ?? null, jobs: [] });
+    groups.get(key)!.jobs.push(j);
+  }
+
+  return (
+    <Card pad={false} className="overflow-x-auto">
+      <table className="table">
+        <thead>
+          <tr><th>Content</th><th>Platforms</th><th>Latest</th><th>Error</th></tr>
+        </thead>
+        <tbody>
+          {Array.from(groups.values()).map((g, i) => {
+            const latest = g.jobs[0];
+            return (
+              <tr key={i}>
+                <td className="max-w-[260px]">
+                  <span className="line-clamp-1 font-medium text-[13px]">{g.topic ?? "—"}</span>
+                </td>
+                <td>
+                  <div className="flex flex-wrap gap-1.5">
+                    {g.jobs.map((j) => (
+                      <span key={j.id} className="inline-flex items-center gap-1 text-[12px]">
+                        <Badge tone={
+                          j.status === "PUBLISHED" ? "success" :
+                          j.status === "FAILED" ? "error" :
+                          "info"
+                        }>
+                          {j.platform} {j.status.toLowerCase()}
+                        </Badge>
+                        {j.attempt > 1 && <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>try #{j.attempt}</span>}
+                      </span>
+                    ))}
+                  </div>
+                </td>
+                <td className="text-[12px]" style={{ color: "var(--text-muted)" }}>
+                  {fmtDate(latest.published_at ?? latest.scheduled_at ?? latest.created_at)}
+                </td>
+                <td className="max-w-[200px] truncate text-[12px] text-red-500">
+                  {g.jobs.some((j) => j.error) ? g.jobs.find((j) => j.error)?.error : "—"}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </Card>
   );
 }
 

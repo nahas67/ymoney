@@ -7,7 +7,7 @@ def upgrade(session) -> None:
     inspector = inspect(session.bind)
     tables = set(inspector.get_table_names())
 
-    for table in ("agent_runs", "event_logs"):
+    for table in ("agent_runs", "events"):
         if table not in tables:
             continue
         cols = {c["name"] for c in inspector.get_columns(table)}

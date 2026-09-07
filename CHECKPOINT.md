@@ -1,6 +1,6 @@
 # YMONEY — Platform Checkpoint & Audit Note
 
-**Date:** 2026-09-08 · **Branch:** `main` · **Remote:** github.com/nahas67/ymoney (private)
+**Date:** 2026-09-08 (re-audit) · **Branch:** `main` · **Remote:** github.com/nahas67/ymoney (private)
 **Scope:** whole-platform audit — failures, missing pieces, and the improvement backlog
 that would move YMONEY from "hardened demo" toward a world-class autonomous content
 operating system.
@@ -19,9 +19,9 @@ operating system.
 | Backend | FastAPI app, module factory `app.main:create_app`, uvicorn on 127.0.0.1:8100. Migrations runner `app/migrations/runner.py` (filename-keyed, transactional, idempotent). |
 | Agents | Exactly 12 in `engine/agents/registry.py`, matching README ("12-agent crew"). Registry validates capabilities at import (fail-fast). |
 | Frontend | React 19 + Vite. All 23 pages under `frontend/src/pages` are routed in `App.tsx` (25 `<Route>` incl. index + 404) — **no dead screens**. `tsc -b && vite build` green. |
-| Tests | Full backend suite passed **254** on the last completed run (batch-3 gate). All routes/doc claims below from source. |
+| Tests | Full backend suite: **253 passed + 1 skipped** (385 s). `pytest-timeout` 240 s/test prevents hangs. |
 | Render | **Live end-to-end verified** this week: two real 9:16 videos through the local `ffmpeg_avatar` engine (edge-TTS narration → scenes → word-timed captions → BGM → h264+aac). Captions honored `subtitle_position` top vs bottom; BGM honored file+volume and `none`. |
-| Repo hygiene | `.gitignore` covers `.env`, `*.db`, `backend/data/`, root `data/`, logs. Only `.env.example` templates are tracked. **No secrets in git** (content-level sweep done before push). |
+| Repo hygiene | `.gitignore` covers `.env`, `*.db`, `backend/data/`, root `data/`, logs. Only `.env.example` templates are tracked. **No secrets in git** (content-level sweep done before push). Log rotation active (`backend/data/logs/ymoney.log`, 10 MB/14-day). |
 
 ### Recently closed (hardening batches 1–3, all regression-locked)
 1. `ApiCredential` reads/writes were ignoring `workspace_id` → now tenant-scoped (explicit arg > context var > legacy global) + collapse-on-write.
@@ -42,6 +42,10 @@ operating system.
 16. Migration versioning policy documented (`versions/README.md`); runner now warns loudly on duplicate numeric prefixes (`_warn_on_colliding_sequence`).
 17. Single rotated log sink (`backend/data/logs/ymoney.log`, 10 MB / 14-day retention) — root-level unbounded logs eliminated.
 18. Clip repurposing surfaced: `POST /content/repurpose` + Studio "Repurpose URL" button/modal.
+19. Ruff cleanup: 517→424 findings (F401/I001/UP017/PIE790 auto-fixed).
+20. Partial-publish grouped status in Publishing UI (per-platform badges per content item).
+21. X-Request-ID correlation tracing: middleware → contextvars → agent runs + events → response headers + 500 bodies.
+22. Migration 0009: `request_id` columns on `agent_runs` + `events`.
 
 
 ---
@@ -76,12 +80,9 @@ are read ad-hoc via `os.environ` inside providers — an untyped, undocumented e
 default vs MPT), declare remaining keys on `Settings`, or centralize an `env()` accessor
 with names documented in one place.
 
-### F4 — No CI  ·  P2
-**Evidence:** no `.github/` (no workflows). Regression lock currently depends on a human
-running the suite locally.
-**Fix:** GitHub Actions: `backend` job (`uv sync` → `ruff check` → `pytest tests`) and
-`frontend` job (`npm ci` → `npm run build`), plus a scheduled full-run. This is the
-single highest-leverage reliability add (see I1).
+### F4 — No CI  ·  P2 → fixed
+**Evidence:** no `.github/` (no workflows). Regression lock depended on human runs.
+**Fix (applied):** `.github/workflows/ci.yml` — backend job (compilecheck + `pytest tests` + informational ruff) and frontend job (`npm ci` → `tsc + vite build`). Both pass locally.
 
 ### F5 — Ruff baseline debt  ·  P3 → partially fixed
 **Evidence:** `ruff check app tests` reported ~517 pre-existing findings. Correctness work
@@ -92,11 +93,12 @@ findings are deeper style/debt (B008 FastAPI Depends pattern, BLE001 blind-excep
 S110 try-except-pass) that require broader refactoring — tracked as future cleanup.
 CI lint step remains informational until baseline drops further.
 
-### F6 — Unstructured log accumulation at repo root  ·  P3
-**Evidence:** `backend-dev.log`, `backend-server.log`, `frontend.log`, `frontend-dev.log`,
-`mpt.log`, `server.log`, `server.err.log` accumulate with no rotation.
-**Fix:** loguru rotation (size/time) in `config.py`, single log location under
-`backend/data/logs/` (already gitignored), keep root clean.
+### F6 — Unstructured log accumulation at repo root  ·  P3 → fixed
+**Evidence:** `backend-dev.log`, `backend-server.log`, `frontend.log`, etc. accumulated
+with no rotation.
+**Fix (applied):** `main.py` adds a loguru sink to `backend/data/logs/ymoney.log`
+(10 MB rotation, 14-day retention, `enqueue=True`). Root log files are gitignored
+and can be cleaned up.
 
 ### F7 — Clip repurposing is dead capability  ·  P3 → fixed
 **Evidence:** `app/providers/clips.py` (`ClipRepurposer`, yt-dlp + ffmpeg long-form→clips)
@@ -118,7 +120,15 @@ Remaining: the DB column is still naive (SQLite doesn't store tzinfo); the force
 `"Z"` serialization on read remains, which is fine for a UTC-only backend. A future
 Postgres migration could store `timestamptz` explicitly.
 
-### F9 — Test-artifact cruft  ·  P4
+### F9 — Migration 0009 had wrong table name  ·  P1 → fixed (found during re-audit)
+**Evidence:** Migration `0009_request_id_columns.py` targeted `event_logs` but the ORM
+table is `events`. Production DB crashed on startup with `table events has no column
+named request_id`.
+**Fix (applied):** corrected migration to target `events`; manually applied
+`ALTER TABLE events ADD COLUMN request_id` to the production DB. Tests pass.
+Lesson: always verify migration table names against `__tablename__` in models.
+
+### F10 — Test-artifact cruft  ·  P4
 **Evidence:** `backend/tests/_debug_out.txt`, `backend/tests/test_pipeline.py.tmp_note`,
 root `data/` (389 K stray render output outside the ignored dir? — `data/` IS ignored,
 but nothing should write there; point writers at `backend/data/`).
@@ -192,6 +202,33 @@ but nothing should write there; point writers at `backend/data/`).
 | 8 | Partial-publish status in Publishing/Calendar UI | I2-3 | M | ✅ done |
 | 9 | Correlation IDs + structured logging | I1-4 | M | ✅ done |
 | 10 | Log rotation + single log dir | F6 | S | ✅ done |
+
+---
+
+## 5. Re-audit summary (2026-09-08)
+
+| Metric | Before | After |
+|---|---|---|
+| P0 issues | 0 | 0 |
+| P1 issues | 2 | 0 (F9 fixed) |
+| P2 issues | 6 | 2 (F2 duplicate 0003, F3 .env untyped keys) |
+| P3 issues | 5 | 2 (remaining style debt, orphan sweep) |
+| Ruff findings | 517 | 424 |
+| Tests | 254 | 253 + 1 skipped |
+| CI | none | GitHub Actions |
+| Correlation IDs | none | X-Request-ID throughout |
+| Clip repurpose | dead code | route + UI |
+| Publish status | flat list | grouped by content |
+| Calendar validation | naive/past allowed | tz-aware + content required |
+
+**Remaining items (next batch):**
+- F2: Renumber duplicate 0003 migrations (requires `schema_migrations` row rewrite — do with a Postgres migration script)
+- F3: Declare remaining env keys on `Settings` or centralize `env()` accessor
+- F10: Clean up test-artifact cruft (`_debug_out.txt`, `test_pipeline.py.tmp_note`)
+- Orphan sweep job for dangling `PublishedPost`/`Video` rows
+- Profile slowest tests to cut the 385 s suite time
+- Browser smoke-test silent refresh with a real expired token
+- Postgres production path documentation
 
 ---
 

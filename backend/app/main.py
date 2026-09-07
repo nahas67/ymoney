@@ -13,6 +13,8 @@ import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import uuid
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -100,10 +102,15 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(Exception)
     async def unhandled(request: Request, exc: Exception):
-        # Keep the API response stable while logging the complete traceback.
-        # This also avoids leaking database/provider secrets to clients.
-        logger.opt(exception=exc).error(f"unhandled error on {request.method} {request.url.path}")
-        return JSONResponse(status_code=500, content={"detail": "internal server error"})
+        from app.core.request_context import request_id as _rid
+
+        rid = _rid()
+        logger.opt(exception=exc).error(f"unhandled error on {request.method} {request.url.path} rid={rid}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "internal server error", "request_id": rid},
+            headers={"X-Request-ID": rid} if rid else {},
+        )
 
     @app.get("/health", include_in_schema=False)
     def root_health():
@@ -114,9 +121,18 @@ def create_app() -> FastAPI:
     # request logging for security audit trail (lightweight)
     @app.middleware("http")
     async def audit_middleware(request: Request, call_next):
-        response = await call_next(request)
+        from app.core.request_context import set_request_id as _set_rid
+
+        rid = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:16]
+        token = _set_rid(rid)
+        try:
+            response = await call_next(request)
+        finally:
+            from app.core.request_context import _request_id
+            _request_id.reset(token)
+        response.headers["X-Request-ID"] = rid
         if request.method != "GET" and request.url.path.startswith("/api/"):
-            logger.bind(audit=True).info(
+            logger.bind(audit=True, request_id=rid).info(
                 f"{request.method} {request.url.path} -> {response.status_code}"
             )
         return response

@@ -77,6 +77,7 @@ class AgentRun(Base, PKMixin, TimestampMixin):
     error: Mapped[str] = mapped_column(Text, default="")
     # ordered step trace: [{step, detail, started_ms, duration_ms, status}]
     steps_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    request_id: Mapped[str] = mapped_column(String(32), default="", index=True)
 
 
 class AutopilotRun(Base, PKMixin, TimestampMixin):
@@ -134,6 +135,7 @@ class EventLog(Base, PKMixin, TimestampMixin):
     kind: Mapped[str] = mapped_column(String(60), default="event", index=True)
     message: Mapped[str] = mapped_column(Text, default="")
     data_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    request_id: Mapped[str] = mapped_column(String(32), default="")
 
 
 class CostEntry(Base, PKMixin, TimestampMixin):

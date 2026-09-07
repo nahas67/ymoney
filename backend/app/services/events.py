@@ -36,6 +36,9 @@ def record_event(
 
     Safe to call from sync code; the fan-out is scheduled when a loop exists.
     """
+    from app.core.request_context import request_id as _rid
+
+    rid = _rid()
     payload = {
         "kind": kind,
         "message": message,
@@ -43,6 +46,7 @@ def record_event(
         "source": source,
         "workspace_id": workspace_id,
         "data": data or {},
+        "request_id": rid,
     }
     with session_scope() as session:
         row = EventLog(
@@ -52,6 +56,7 @@ def record_event(
             level=level,
             source=source,
             data_json=data or {},
+            request_id=rid,
         )
         session.add(row)
         session.flush()

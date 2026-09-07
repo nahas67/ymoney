@@ -375,6 +375,8 @@ def _on_dead(ctx: JobContext, exc: Exception) -> None:
 
 
 def start_agent_run(workspace_id, agent_key, task_type, job_id=None, cycle_id=None, input_summary="") -> str:
+    from app.core.request_context import request_id as _rid
+
     with session_scope() as s:
         run = AgentRun(
             workspace_id=workspace_id,
@@ -383,6 +385,7 @@ def start_agent_run(workspace_id, agent_key, task_type, job_id=None, cycle_id=No
             job_id=job_id,
             cycle_id=cycle_id,
             input_summary=input_summary[:2000],
+            request_id=_rid(),
         )
         s.add(run)
         s.flush()

@@ -41,13 +41,13 @@ from app.models.ops import (
 
 __all__ = [
     "AgentConfig",
-    "CapabilityPermission",
     "AgentRun",
     "ApiCredential",
     "AuditLog",
     "AutopilotRun",
     "Base",
     "Campaign",
+    "CapabilityPermission",
     "ContentItem",
     "ContentStatus",
     "CostEntry",

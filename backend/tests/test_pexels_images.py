@@ -10,7 +10,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.providers.images import ImageProviderError, reset_image_provider
 from app.providers.images_pexels import PexelsImageProvider
 
-
 # ---------------------------------------------------------------- query reduction
 
 def test_prompt_to_query_stops_stopwords_and_caps_words():

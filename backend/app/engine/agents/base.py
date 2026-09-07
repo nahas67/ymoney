@@ -10,12 +10,12 @@ from typing import Any
 from sqlalchemy import select
 
 from app.db import session_scope
+from app.engine.capabilities import get_skill, get_tool
 from app.models import AgentConfig, Workspace
 from app.services import cost as cost_service
 from app.services import jobs as jobs_service
 from app.services import provider_settings
 from app.services.events import record_event
-from app.engine.capabilities import SkillSpec, ToolSpec, get_skill, get_tool
 
 
 @dataclass

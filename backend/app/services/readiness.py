@@ -17,13 +17,13 @@ explicitly overrides (audited).
 from __future__ import annotations
 
 import shutil
-from app.models.base import utcnow
 from pathlib import Path
 
 import httpx
 from loguru import logger
 
 from app.core.config import settings
+from app.models.base import utcnow
 
 STALE_AFTER_HOURS = 24
 

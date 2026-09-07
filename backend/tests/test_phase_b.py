@@ -7,7 +7,6 @@ import os
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # image providers
 # ---------------------------------------------------------------------------
@@ -64,8 +63,9 @@ def test_image_factory_rejects_unknown(monkeypatch):
 
 def test_pollinations_prompt_is_path_encoded():
     """Commas/spaces in prompts must be percent-encoded into the path."""
-    from app.providers.images import PollinationsImageProvider
     from urllib.parse import quote
+
+    from app.providers.images import PollinationsImageProvider
 
     clean = "a colorful robot, flat illustration"
     encoded = quote(clean, safe="")

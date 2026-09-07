@@ -10,7 +10,7 @@ content are cancelled rather than silently skipped.
 from __future__ import annotations
 
 import os
-from datetime import timedelta
+from datetime import timedelta, UTC
 
 import pytest
 from fastapi.testclient import TestClient
@@ -310,12 +310,13 @@ def test_calendar_round_trip_and_due_publish(client, db):
     The round-trip test validates: create (future + content) → list → reschedule
     (future) → cancel → 409 on double-cancel.
     """
-    from datetime import datetime, timedelta as _td, timezone
+    from datetime import datetime, timezone
+    from datetime import timedelta as _td
 
     _tok, ws_id, headers = _register(client)
     content_id = _create_content(db, ws_id)
-    _future = lambda mins: (datetime.now(timezone.utc) + _td(minutes=mins)).isoformat()
-    _past = lambda mins: (datetime.now(timezone.utc) - _td(minutes=mins)).isoformat()
+    _future = lambda mins: (datetime.now(UTC) + _td(minutes=mins)).isoformat()
+    _past = lambda mins: (datetime.now(UTC) - _td(minutes=mins)).isoformat()
 
     # --- API rejects: naive datetime, missing content, past run_at ---
     r = client.post(

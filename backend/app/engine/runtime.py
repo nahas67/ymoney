@@ -8,7 +8,8 @@ legacy pipeline remains compatible.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 from app.engine.capabilities import get_skill, get_tool
 

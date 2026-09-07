@@ -110,7 +110,6 @@ class TestDecideAgainstDb:
         assert any(f.name == "lifecycle" for f in decision.factors)
 
     def test_skip_on_duplicate_of_recent_content(self, workspace_with_user):
-        from datetime import datetime
 
         from app.db import session_scope
         from app.engine.decision import decide_next_best_action

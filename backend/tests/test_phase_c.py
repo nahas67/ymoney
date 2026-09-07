@@ -3,18 +3,13 @@ opportunity API metadata, and migration 0006."""
 
 from __future__ import annotations
 
-import json
-
-import pytest
-
-
 # ---------------------------------------------------------------------------
 # step tracing (BaseAgent)
 # ---------------------------------------------------------------------------
 
 
 def test_step_tracing_records_order_and_durations():
-    from app.engine.agents.base import BaseAgent, AgentMeta
+    from app.engine.agents.base import AgentMeta, BaseAgent
 
     class _Traced(BaseAgent):
         meta = AgentMeta(key="traced", title="Traced", description="t")
@@ -38,7 +33,7 @@ def test_step_tracing_records_order_and_durations():
 
 def test_step_tracing_marks_interrupted_steps_on_success():
     """A step left open when fn returns is recorded as interrupted — never a lie."""
-    from app.engine.agents.base import BaseAgent, AgentMeta
+    from app.engine.agents.base import AgentMeta, BaseAgent
 
     class _Leaky(BaseAgent):
         meta = AgentMeta(key="leaky", title="Leaky", description="t")
@@ -66,7 +61,6 @@ def test_finish_agent_run_persists_steps():
     ]
     jobs_service.finish_agent_run(run_id, status="COMPLETED", output_summary="ok", steps=steps)
 
-    from sqlalchemy import select
 
     from app.db import session_scope
     from app.models import AgentRun
@@ -124,7 +118,6 @@ def test_opportunity_response_includes_discovery_metadata(monkeypatch):
     """API exposes velocity/source_url when discovery recorded them."""
     from types import SimpleNamespace
 
-    from app.api.v1 import content as content_mod
 
     opp = SimpleNamespace(
         id="opp-1", topic="t", source="hacker_news", score=77.0,

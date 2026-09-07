@@ -1,6 +1,7 @@
 """Test doubles for production-only integrations (shared)."""
 
 from __future__ import annotations
+
 import json as _json
 
 from app.providers.analytics import PostStats
@@ -104,7 +105,7 @@ class FakeEngine:
         return RenderHandle(engine_task_id=tid, engine=self.engine_name)
 
     def status(self, handle):
-        from app.providers.video_engine.base import RenderStatus, STATE_COMPLETE
+        from app.providers.video_engine.base import STATE_COMPLETE, RenderStatus
 
         return RenderStatus(state=STATE_COMPLETE, progress=100,
                             videos=[f"{handle.engine_task_id}/final-1.mp4"])

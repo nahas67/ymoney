@@ -6,8 +6,6 @@ dependency is unconfigured, agents raise actionable errors.
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 

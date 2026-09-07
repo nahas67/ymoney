@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.engine.capabilities import ToolSpec, get_skill, register_tool, skill_catalog
 from app.engine.agents.registry import AGENT_META, agent_catalog
+from app.engine.capabilities import ToolSpec, get_skill, register_tool, skill_catalog
 
 
 def test_core_capabilities_are_registered():

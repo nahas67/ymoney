@@ -81,7 +81,7 @@ class FakeEngine:
 def fake_engine(monkeypatch):
     eng = FakeEngine()
 
-    import app.providers.video_engine.factory as factory
+    from app.providers.video_engine import factory
 
     monkeypatch.setattr(factory, "get_video_engine", lambda: eng)
 

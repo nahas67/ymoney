@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
@@ -326,8 +326,8 @@ def estimate_cost(body: EstimateBody, ws: Workspace = Depends(require_workspace_
     any engine: unreachable engines still return the configuration estimate.
     """
     from app.core.config import settings as app_settings
-    from app.providers.video_engine.factory import get_video_engine
     from app.providers.video_engine.base import RenderRequest
+    from app.providers.video_engine.factory import get_video_engine
     from app.services import provider_settings as ps
 
     req = RenderRequest(
@@ -420,7 +420,6 @@ def get_video(video_id: str, ws: Workspace = Depends(require_workspace_role("vie
 
 @videos_router.get("/{video_id}/thumbnail", summary="Poster frame for this video")
 def video_thumbnail(video_id: str, ws: Workspace = Depends(require_workspace_role("viewer")), db=Depends(get_db)):
-    from pathlib import Path as _P
 
     from fastapi.responses import FileResponse
 
@@ -642,7 +641,7 @@ def _validate_run_at(v: datetime) -> datetime:
             "run_at must be an explicit timezone-aware ISO datetime (e.g. '2026-09-08T12:00:00Z'), "
             "not a naive local-time value."
         )
-    if v < datetime.now(timezone.utc):
+    if v < datetime.now(UTC):
         raise ValueError("run_at cannot be in the past")
     return v
 
@@ -836,8 +835,8 @@ def generate_images(
     """Generate images via the configured provider and store them as workspace
     assets. Mock provider results are labeled is_mock=true."""
     from app.providers.images import ImageProviderError, get_image_provider
-    from app.services.storage import get_storage
     from app.services import provider_settings as ps
+    from app.services.storage import get_storage
 
     try:
         with ps.workspace_scope(ws.id):
@@ -934,7 +933,7 @@ def campaign_detail(campaign_id: str, ws: Workspace = Depends(require_workspace_
         )
     ) or 0
     return {
-        **{
+        
             "id": c.id,
             "name": c.name,
             "goal": c.goal,
@@ -945,8 +944,8 @@ def campaign_detail(campaign_id: str, ws: Workspace = Depends(require_workspace_
             "automation_level": c.automation_level,
             "budget_daily_usd": c.budget_daily_usd,
             "starts_at": c.starts_at.isoformat() + "Z" if c.starts_at else None,
-            "ends_at": c.ends_at.isoformat() + "Z" if c.ends_at else None,
-        },
+            "ends_at": c.ends_at.isoformat() + "Z" if c.ends_at else None
+        ,
         "progress": {"content_items": content_count, "published": published_count},
     }
 

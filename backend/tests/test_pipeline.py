@@ -1,11 +1,13 @@
 """End-to-end pipeline integration test: FIND → … → LEARN through the real
 job system with all providers mocked. Also covers failure recovery."""
 
-import time
 import pathlib
+import time
 
 import pytest
 
+# import registers handlers
+import app.engine.autopilot  # noqa: F401,E402
 from app.db import session_scope
 from app.engine.autopilot import (
     get_autopilot_status,
@@ -14,9 +16,6 @@ from app.engine.autopilot import (
 )
 from app.models import ContentItem, Opportunity, PublishedPost
 from app.services import jobs as jobs_service
-
-# import registers handlers
-import app.engine.autopilot  # noqa: F401,E402
 
 
 def _patch_ready(monkeypatch):
@@ -101,7 +100,7 @@ def test_single_cycle_reaches_learned(workspace_with_user, running_workers, monk
         assert len(items) >= 1
         learned = [i for i in items if i.status in ("LEARNED", "PUBLISHED")]
         if not learned:
-            from app.models import QualityCheck, EventLog
+            from app.models import EventLog, QualityCheck
             dbg = []
             for i in items:
                 dbg.append(f"CONTENT {i.status} err={(i.error or '')[:200]}")

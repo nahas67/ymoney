@@ -143,7 +143,6 @@ def agent_graph(ws: Workspace = Depends(require_workspace_role("viewer")), db=De
     The frontend renders this as a horizontal DAG; each node shows live status
     (busy/idle/disabled/error), run counts, failure rate and average duration.
     """
-    from app.engine.agents.registry import AGENT_META
 
     stats_rows = db.execute(
         select(

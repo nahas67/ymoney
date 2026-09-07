@@ -68,7 +68,6 @@ class TestQualityV2:
 
     def test_evaluate_respects_workspace_min_qc(self, workspace_with_user):
         from app.db import session_scope
-        from app.engine.agents.production import QualityAgent
         from app.models import Workspace
 
         ws = workspace_with_user["workspace"]

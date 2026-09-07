@@ -13,7 +13,6 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
-
 # Normalized lifecycle states every adapter must map into.
 STATE_QUEUED = "queued"
 STATE_PROCESSING = "processing"

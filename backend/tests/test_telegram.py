@@ -75,9 +75,9 @@ def test_pairing_code_lifecycle(tg_env, db_session):
 
 
 def test_handle_update_pairs_chat(tg_env, db_session):
-    from app.services import telegram_service as tg
     from app.db import session_scope
     from app.models import TelegramLink
+    from app.services import telegram_service as tg
 
     ws_id = _mk_workspace(db_session, f"ws-pair-{os.urandom(3).hex()}")
     code = tg.create_pairing_code(ws_id, "user-1")["code"]
@@ -100,9 +100,9 @@ def test_handle_update_pairs_chat(tg_env, db_session):
 
 
 def test_handle_update_rejects_bad_code(tg_env):
-    from app.services import telegram_service as tg
     from app.db import session_scope
     from app.models import TelegramLink
+    from app.services import telegram_service as tg
 
     tg.handle_update({
         "update_id": 2,
@@ -147,9 +147,9 @@ def test_on_event_filtering(tg_env, monkeypatch):
 
 def test_quality_failed_and_cycle_failure_notify(tg_env, db_session, monkeypatch):
     """The operator's phone must light up on QC failure and cycle failure."""
-    from app.services import telegram_service as tg
     from app.db import session_scope
     from app.models import TelegramLink
+    from app.services import telegram_service as tg
 
     ws_id = _mk_workspace(db_session, f"ws-notify-{os.urandom(3).hex()}")
     with session_scope() as s:
@@ -170,9 +170,9 @@ def test_quality_failed_and_cycle_failure_notify(tg_env, db_session, monkeypatch
 
 def test_noisy_successes_are_suppressed(tg_env, db_session):
     """Per-render successes stay off the phone; milestones still notify."""
-    from app.services import telegram_service as tg
     from app.db import session_scope
     from app.models import TelegramLink
+    from app.services import telegram_service as tg
 
     ws_id = _mk_workspace(db_session, f"ws-quiet-{os.urandom(3).hex()}")
     with session_scope() as s:

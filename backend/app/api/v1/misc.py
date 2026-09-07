@@ -6,8 +6,6 @@ import asyncio
 import json
 from datetime import timedelta
 
-from app.models.base import utcnow
-
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -32,6 +30,7 @@ from app.models import (
     SystemLog,
     Workspace,
 )
+from app.models.base import utcnow
 from app.services import jobs as jobs_service
 from app.services import memory as memory_service
 from app.services.auth_service import require_workspace_role
@@ -124,6 +123,7 @@ def oauth_youtube_start(ws: Workspace = Depends(require_workspace_role("admin"))
 def oauth_youtube_callback(workspace_id: str, code: str = "", state: str = "", error: str = ""):
     """Browser-facing callback. Returns a tiny HTML page that closes the popup."""
     from fastapi.responses import HTMLResponse
+
     from app.services import oauth_service
 
     ok, message = True, "YouTube connected — you can close this window."
@@ -410,8 +410,8 @@ class AgentConfigBody(BaseModel):
 
 @agents_router.get("/capabilities", summary="List registered agent skills and tools")
 def list_agent_capabilities(ws: Workspace = Depends(require_workspace_role("viewer"))):
-    from app.engine.capabilities import skill_catalog, tool_catalog
     from app.engine.agents.registry import agent_catalog
+    from app.engine.capabilities import skill_catalog, tool_catalog
 
     return {
         "agents": agent_catalog(),
@@ -752,8 +752,8 @@ def _publisher_status() -> dict:
     relay = relay_ready()
     from sqlalchemy import func, select
 
-    from app.models import SocialAccount
     from app.db import get_db
+    from app.models import SocialAccount
 
     connected: dict = {}
     try:

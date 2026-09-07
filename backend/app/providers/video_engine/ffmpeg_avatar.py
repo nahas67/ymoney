@@ -23,7 +23,6 @@ This is a REAL render — fully local except the stock assets themselves.
 from __future__ import annotations
 
 import json
-import math
 import os
 import random
 import subprocess

@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from loguru import logger
@@ -163,7 +163,7 @@ class ClipRepurposer:
                     "-c:a", "aac", "-b:a", "128k", str(dest)]
             try:
                 proc = subprocess.run(cmd, capture_output=True, timeout=900)
-            except subprocess.TimeoutExpired as exc:
+            except subprocess.TimeoutExpired:
                 logger.warning(f"clip {i} cut timed out")
                 continue
             if proc.returncode != 0 or not dest.exists():

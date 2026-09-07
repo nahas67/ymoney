@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, ForeignKey, Index, JSON, String, Text
+from sqlalchemy import JSON, Boolean, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
-from app.models.base import PKMixin, TimestampMixin, utcnow
+from app.models.base import PKMixin, TimestampMixin
 
 
 class CapabilityPermission(Base, PKMixin, TimestampMixin):

@@ -10,7 +10,7 @@ Client credentials resolve through provider_settings (DB -> env).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import httpx
 import jwt
@@ -19,8 +19,8 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.security import decrypt_secret, encrypt_secret
 from app.db import session_scope
-from app.models.base import utcnow
 from app.models import SocialAccount
+from app.models.base import utcnow
 from app.services import provider_settings
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"

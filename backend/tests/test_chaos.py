@@ -2,7 +2,6 @@
 
 import pytest
 
-from app.providers.publishers.base import PublishMetadata
 from app.providers.trends import TrendSourceError, create_source
 
 
@@ -32,7 +31,6 @@ def test_trend_source_failure_is_typed():
 
 def test_publisher_retry_then_failure(monkeypatch):
     """Retryable errors are retried once; non-retryable are not."""
-    from app.providers.publishers import factory
 
     calls = {"n": 0}
 

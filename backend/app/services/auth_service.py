@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -18,8 +18,8 @@ from app.core.security import (
     verify_password,
 )
 from app.db import get_db
-from app.models.base import utcnow
 from app.models import RefreshToken, User, Workspace, WorkspaceMember
+from app.models.base import utcnow
 
 _bearer = HTTPBearer(auto_error=False)
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")

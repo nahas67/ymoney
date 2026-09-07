@@ -23,7 +23,6 @@ import asyncio
 import secrets
 import string
 import time
-from datetime import timedelta
 
 import httpx
 from loguru import logger
@@ -31,10 +30,10 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.db import session_scope
-from app.models import TelegramLink, Workspace
+from app.models import TelegramLink
 from app.models.base import utcnow
-from app.services import provider_settings
 from app.services import events as events_service
+from app.services import provider_settings
 
 PROVIDER_KEY_TOKEN = "telegram.bot_token"
 

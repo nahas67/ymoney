@@ -8,7 +8,7 @@ state so restarts converge correctly.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy import and_, func, or_, select, update
 

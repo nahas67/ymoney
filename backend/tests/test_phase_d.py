@@ -8,7 +8,6 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
@@ -140,7 +139,6 @@ def test_breakdowns_endpoint_empty_workspace(client):
 
 def test_breakdowns_grouping_logic():
     """The hook-style classifier and duration bucketing behave sensibly."""
-    from app.api.v1.misc import analytics_breakdowns  # importable
 
     # reimplement the classifier inline to check behavior without a DB
     def hook_style(hook: str) -> str:

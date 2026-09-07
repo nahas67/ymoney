@@ -3,8 +3,8 @@
 from app.core.security import (
     create_access_token,
     decode_access_token,
-    encrypt_secret,
     decrypt_secret,
+    encrypt_secret,
     hash_password,
     verify_password,
 )

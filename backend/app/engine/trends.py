@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-
 LIFECYCLES = ("EMERGING", "RISING", "PEAK", "DECLINING", "EVERGREEN", "UNKNOWN")
 
 

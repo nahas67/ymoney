@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 import httpx
 from loguru import logger
+from datetime import UTC
 
 
 @dataclass
@@ -399,7 +400,7 @@ def _parse_pubdate(value: str | None) -> float | None:
 
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
         try:
-            return datetime.strptime(value.strip(), fmt).replace(tzinfo=timezone.utc).timestamp()
+            return datetime.strptime(value.strip(), fmt).replace(tzinfo=UTC).timestamp()
         except ValueError:
             continue
     return None

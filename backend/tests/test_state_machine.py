@@ -1,6 +1,5 @@
 """Content lifecycle state machine tests."""
 
-import pytest
 
 from app.models.base import CONTENT_TRANSITIONS, ContentStatus, can_transition
 

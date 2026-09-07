@@ -6,7 +6,6 @@ and the normalized state mapping are exercised.
 
 import pytest
 
-from app.core.config import settings
 from app.providers.video_engine.base import (
     STATE_COMPLETE,
     STATE_FAILED,

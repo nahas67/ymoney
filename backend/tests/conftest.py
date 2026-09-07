@@ -19,9 +19,9 @@ os.environ["MOCK_ANALYTICS"] = "true"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tests import fakes as _fakes  # noqa: E402
-
 import pytest  # noqa: E402
+
+from tests import fakes as _fakes  # noqa: E402
 
 
 @pytest.fixture()
@@ -50,7 +50,6 @@ def workspace_with_user(db_session):
 @pytest.fixture(scope="session", autouse=True)
 def _migrate_once():
     import app.models  # noqa: F401 - ensure all ORM models are on Base.metadata
-
     from app.db import session_scope
     from app.migrations.runner import run_migrations
 
@@ -90,7 +89,7 @@ def fake_trends(monkeypatch):
 @pytest.fixture(autouse=True)
 def fake_video_engine(monkeypatch):
     """Pipeline tests render through an instant engine double."""
-    import app.providers.video_engine.factory as factory
+    from app.providers.video_engine import factory
 
     eng = _fakes.FakeEngine()
 
@@ -106,8 +105,8 @@ def fake_video_engine(monkeypatch):
 @pytest.fixture(autouse=True)
 def fake_publishing(monkeypatch):
     """Publishing succeeds through an in-test recorder; no network, no mocks shipped."""
-    from app.core.config import settings as cfg
     import app.providers.publishers.factory as pfactory
+    from app.core.config import settings as cfg
 
     pub = _fakes.FakePublisher()
     monkeypatch.setattr(cfg, "mock_publishing", False)

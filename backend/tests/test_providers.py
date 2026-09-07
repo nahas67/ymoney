@@ -2,13 +2,11 @@
 
 import pytest
 
-from app.providers.publishers.base import PublishMetadata
 from app.providers.trends import create_source
 
 
-
 def test_trend_registry_creates_sources():
-    from app.providers.trends import GoogleTrendsSource, RedditTrendSource
+    from app.providers.trends import RedditTrendSource
 
     assert create_source("google_trends", {"geo": "DE"}).geo == "DE"
     assert isinstance(create_source("reddit", {}), RedditTrendSource)

@@ -2,11 +2,10 @@
 from __future__ import annotations
 
 import os
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
-
-from unittest.mock import patch
 
 
 @pytest.fixture()
@@ -41,8 +40,8 @@ def test_publisher_status_flags_real_path_only_when_configured(db_session):
 
 
 def test_publisher_status_counts_connected_accounts(db_session, workspace_with_user):
-    from app.models import SocialAccount
     from app.api.v1.misc import _publisher_status
+    from app.models import SocialAccount
 
     db_session.add(
         SocialAccount(

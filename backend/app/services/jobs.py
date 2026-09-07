@@ -20,7 +20,7 @@ import asyncio
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from loguru import logger
 from sqlalchemy import select, update
@@ -200,7 +200,6 @@ class _Backpressure(Exception):
     with a delay by the handler before raising this.
     """
 
-    pass
 
 
 async def _worker_loop(worker_idx: int) -> None:
@@ -391,7 +390,6 @@ def start_agent_run(workspace_id, agent_key, task_type, job_id=None, cycle_id=No
 
 
 def finish_agent_run(run_id: str, status="COMPLETED", output_summary="", cost_usd=0.0, error="", steps=None):
-    import datetime as dt
 
     with session_scope() as s:
         run = s.get(AgentRun, run_id)

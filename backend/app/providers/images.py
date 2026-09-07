@@ -264,7 +264,6 @@ class XkiroImageProvider(BaseImageProvider):
     def _poll_and_download(self, client, job_id: str, prompt: str) -> bytes:
         import time as _time
 
-        import httpx
 
         deadline = _time.time() + self._POLL_DEADLINE
         wait = self._POLL_INTERVAL

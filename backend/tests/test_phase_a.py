@@ -1,6 +1,5 @@
 """Phase A capability tests: TTS providers, HN trend source, clip repurposing."""
 
-import struct
 
 import pytest
 
@@ -14,7 +13,6 @@ from app.providers.tts import (
     tts_provider_status,
     wav_duration_seconds,
 )
-
 
 # ---------------------------------------------------------------------------
 # TTS provider layer

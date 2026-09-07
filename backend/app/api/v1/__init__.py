@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import auth, autopilot, content, workspaces
+from app.api.v1.connections import connections_router
 from app.api.v1.content import (
     assets_router,
     calendar_router,
@@ -11,21 +12,24 @@ from app.api.v1.content import (
     cycles_router,
     videos_router,
 )
+from app.api.v1.live import router as live_router
 from app.api.v1.misc import (
     activity_router,
     agents_router,
     analytics_router,
-    memory_router,
     costs_router,
     jobs_router,
     logs_router,
+    memory_router,
     publishing_router,
     system_router,
 )
-from app.api.v1.connections import connections_router
+from app.api.v1.safety import (
+    cost_intel_router,
+    decision_router,
+    safety_router,
+)
 from app.api.v1.telegram import router as telegram_router
-from app.api.v1.live import router as live_router
-from app.api.v1.safety import (cost_intel_router,decision_router,safety_router,)
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router)

@@ -17,7 +17,6 @@ from app.engine.agents.base import AgentMeta, BaseAgent
 from app.models import SocialAccount
 from app.providers import llm
 from app.providers.publishers.base import PublishMetadata, PublishResult
-from app.providers.publishers.factory import relay_ready
 from app.providers.publishers.platforms import UploadPostRelay
 
 PLATFORM_META_TEMPLATES = {
@@ -161,7 +160,6 @@ class PublisherAgent(BaseAgent):
                     })
                     continue
 
-                from app.providers.publishers.base import BasePublisher
 
                 result: PublishResult = publisher.publish(video_path, meta, account or {})
                 if result.success:

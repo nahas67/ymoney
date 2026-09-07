@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 
-import pytest
 
 @pytest.fixture(autouse=True)
 def _bypass_gate(monkeypatch):

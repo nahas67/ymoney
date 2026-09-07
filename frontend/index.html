@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YMONEY — Autonomous Content OS</title>
+    <script>
+      // Apply theme before first paint (no flash); default = system preference.
+      (function () {
+        try {
+          var v = localStorage.getItem("ym_theme");
+          var dark = v === "dark" || (v !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (dark) document.documentElement.classList.add("dark");
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      /* Pre-CSS boot background so the very first frame already feels dark/instrumental */
+      html, body { background: #05070a; }
+      html:not(.dark) body { background: #eef1f4; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

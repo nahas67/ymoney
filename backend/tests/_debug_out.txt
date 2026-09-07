@@ -1,0 +1,21 @@
+=== research claims (exit 1) ===
+tests\test_intelligence_v2.py:23: 
+app\engine\agents\creation.py:74: 
+app\engine\agents\base.py:75: 
+app\engine\agents\creation.py:74: 
+app\engine\agents\creation.py:20: 
+app\providers\llm.py:133: 
+        """Synchronous completion. Raises LLMError when unavailable and no mock.
+            raise LLMError(
+>       raise LLMError(f"all LLM models failed: {last_exc}")
+E       app.providers.llm.LLMError: all LLM models failed: name '_FakeLLMTransport__json' is not defined
+app\providers\llm.py:128: LLMError
+tests/test_intelligence_v2.py::TestResearchClaims::test_mock_research_produces_normalized_claims
+  C:\Users\nahas\OneDrive\Desktop\ymoney\backend\app\services\jobs.py:393: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+FAILED tests/test_intelligence_v2.py::TestResearchClaims::test_mock_research_produces_normalized_claims
+
+=== single cycle debug (exit 1) ===
+>       assert ok, f"state={st} statuses={statuses} errors={errs} jobs={jobs}"
+E       AssertionError: state={'state': 'STARTING', 'mode': 'SINGLE_CYCLE', 'cycles_completed': 0, 'cycles_target': 1, 'scheduled_start_at': None, 'scheduled_stop_at': None, 'current_cycle': None, 'queued_jobs': 1, 'config': {'interval_seconds': 1, 'measure_delay_minutes': 0.02}, 'last_error': ''} statuses=[] errors=[] jobs=[('autopilot.start_next_cycle', 'QUEUED', 0, '')]
+tests\test_single_debug.py:24: AssertionError
+FAILED tests/test_single_debug.py::test_single_cycle_debug - AssertionError: ...

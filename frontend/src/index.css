@@ -1,0 +1,264 @@
+@import "tailwindcss";
+
+/* ===========================================================================
+   YMONEY — MINIMAL MODERN design system
+   Quiet confidence: soft radii, generous whitespace, one accent, subtle
+   depth. Monochrome UI where color = meaning (status/accent only).
+   Every page composes from these tokens & component classes.
+=========================================================================== */
+
+/* -----------------------------------------------
+   Tokens — light theme (paper)
+----------------------------------------------- */
+:root {
+  --bg: #fafafa;
+  --bg-panel: #ffffff;
+  --bg-panel-2: #f5f5f5;
+  --bg-subtle: #f5f5f5;
+  --bg-inset: #f7f7f8;
+  --border: #e8e8e6;
+  --border-strong: #d9d9d6;
+
+  --text: #18181b;
+  --text-muted: #71717a;
+  --text-faint: #a1a1aa;
+
+  --accent: #16a34a;
+  --accent-bright: #22c55e;
+  --accent-hover: #15803d;
+  --accent-dim: rgba(22, 163, 74, 0.09);
+  --accent-glow: rgba(34, 197, 94, 0.25);
+
+  --danger: #dc2626;
+  --danger-dim: rgba(220, 38, 38, 0.09);
+  --warn: #d97706;
+  --warn-dim: rgba(217, 119, 6, 0.1);
+  --info: #2563eb;
+  --info-dim: rgba(37, 99, 235, 0.09);
+
+  --font-ui: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --seam: 1px solid var(--border);
+  --panel-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+
+/* -----------------------------------------------
+   Tokens — dark theme (graphite)
+----------------------------------------------- */
+html.dark {
+  --bg: #101012;
+  --bg-panel: #18181b;
+  --bg-panel-2: #1f1f23;
+  --bg-subtle: #1f1f23;
+  --bg-inset: #141416;
+  --border: #26262a;
+  --border-strong: #35353b;
+
+  --text: #f4f4f5;
+  --text-muted: #a1a1aa;
+  --text-faint: #71717a;
+
+  --accent: #22c55e;
+  --accent-bright: #4ade80;
+  --accent-hover: #16a34a;
+  --accent-dim: rgba(34, 197, 94, 0.12);
+  --accent-glow: rgba(74, 222, 128, 0.2);
+
+  --danger: #f87171;
+  --danger-dim: rgba(248, 113, 113, 0.12);
+  --warn: #fbbf24;
+  --warn-dim: rgba(251, 191, 36, 0.12);
+  --info: #60a5fa;
+  --info-dim: rgba(96, 165, 250, 0.12);
+
+  --panel-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+html { color-scheme: light; }
+html.dark { color-scheme: dark; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-feature-settings: "cv05" 1, "ss01" 1;
+}
+
+.font-mono, code, kbd, pre {
+  font-family: var(--font-mono);
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { border-radius: 8px; background: var(--border-strong); border: 3px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+::-webkit-scrollbar-track { background: transparent; }
+
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection { background: var(--accent-dim); color: var(--text); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ===========================================================================
+   Component classes — names preserved across the whole app
+=========================================================================== */
+
+/* ---- Cards: soft elevated panels ---- */
+.card {
+  border-radius: var(--radius);
+  border: var(--seam);
+  background: var(--bg-panel);
+  box-shadow: var(--panel-shadow);
+}
+
+/* ---- Section labels: small caps captions ---- */
+.panel-label,
+h2.text-xs.font-semibold {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted) !important;
+}
+
+/* ---- Buttons: pill-ish soft rectangles ---- */
+.btn,
+.btn-primary, .btn-danger, .btn-ghost, .btn-outline, .btn-accent {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 1rem;
+  font-size: 13.5px;
+  font-weight: 500;
+  transition: all 150ms ease;
+  user-select: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:disabled, .btn-primary:disabled, .btn-danger:disabled, .btn-ghost:disabled, .btn-outline:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 550;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-danger { background: var(--danger); color: #fff; font-weight: 550; }
+.btn-danger:hover { filter: brightness(1.08); }
+.btn-ghost { background: var(--bg-subtle); color: var(--text); }
+.btn-ghost:hover { background: var(--bg-panel-2); }
+.btn-outline {
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  background: var(--bg-panel);
+}
+.btn-outline:hover { border-color: var(--text-faint); background: var(--bg-subtle); }
+
+/* ---- Inputs ---- */
+.input, .select, .textarea {
+  width: 100%;
+  background: var(--bg-inset);
+  border: var(--seam);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+  font-size: 13.5px;
+  color: var(--text);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.input:focus, .select:focus, .textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+.input::placeholder, .textarea::placeholder { color: var(--text-faint); }
+
+/* ---- Badges: soft status chips ---- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* ---- Skeleton shimmer ---- */
+.skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--bg-subtle) 25%, var(--bg-panel-2) 50%, var(--bg-subtle) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+/* ---- Tables: clean ruled rows ---- */
+.table { width: 100%; font-size: 13.5px; border-collapse: collapse; }
+.table th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+.table td { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.table tr:last-child td { border-bottom: none; }
+.table tbody tr { transition: background 120ms ease; }
+.table tbody tr:hover { background: var(--bg-panel-2); }
+
+/* ---- Tabs: underline style, minimal ---- */
+.tab {
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  transition: all 150ms ease;
+}
+.tab:hover { color: var(--text); background: var(--bg-subtle); }
+.tab.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---- Page titles ---- */
+h1 {
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+/* ---- Live pulse dot ---- */
+@keyframes livepulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-glow); }
+  50% { box-shadow: 0 0 0 5px transparent; }
+}
+.live-dot { animation: livepulse 2s ease-in-out infinite; }

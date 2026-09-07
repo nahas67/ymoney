@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Env & secrets
+.env
+.env.local
+*.key
+
+# Data
+backend/data/
+*.db
+*.sqlite3
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# MoneyPrinterTurbo runtime artifacts
+MoneyPrinterTurbo/storage/
+# MoneyPrinterTurbo real config carries live API keys — never commit it
+MoneyPrinterTurbo/config.toml
+
+# Local runtime data (videos, renders, task state)
+data/
+*.log
+backend-dev.log
+frontend-dev.log
+frontend.log
+mpt.log
+server.log
+server.err.log
+
+# Vendored MoneyPrinterTurbo: code only; heavy stock assets stay out of git
+MoneyPrinterTurbo/resource/
+MoneyPrinterTurbo/storage/
+MoneyPrinterTurbo/config.toml
+MoneyPrinterTurbo/.venv/
+MoneyPrinterTurbo/__pycache__/
+MoneyPrinterTurbo/.git.disabled/

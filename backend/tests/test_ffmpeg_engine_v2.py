@@ -62,6 +62,67 @@ def test_pick_encoder_returns_supported():
     assert enc in ("h264_qsv", "h264_nvenc", "h264_amf", "libx264")
 
 
+def test_caption_style_honors_position_and_ratio():
+    from app.providers.video_engine.ffmpeg_avatar import _caption_style
+
+    bottom = _caption_style("1080", "bottom")
+    assert "Alignment=2" in bottom and "MarginV=60" in bottom
+    assert "FontSize=12" in bottom  # portrait (1080 tall)
+
+    top = _caption_style("1920", "top")
+    assert "Alignment=8" in top and "MarginV=40" in top
+    assert "FontSize=15" in top  # landscape (1080 wide -> 1920 label)
+
+    center = _caption_style("1080", "center")
+    assert "Alignment=5" in center and "MarginV=0" in center
+
+    # unknown positions degrade to bottom, never crash the filter string
+    assert "Alignment=2" in _caption_style("1080", "sideways")
+
+
+def test_clamp_volume_sanitizes_input():
+    from app.providers.video_engine.ffmpeg_avatar import _clamp_volume
+
+    assert _clamp_volume(0.15) == 0.15
+    assert _clamp_volume(2.5) == 1.0
+    assert _clamp_volume(-3) == 0.0
+    assert _clamp_volume(0) == 0.0
+    assert _clamp_volume("garbage") == 0.2
+    assert _clamp_volume(None) == 0.2
+
+
+def test_bgm_for_honors_type_and_file(tmp_path, monkeypatch):
+    from app.providers.video_engine import ffmpeg_avatar as mod
+    from app.providers.video_engine.ffmpeg_avatar import _bgm_for
+
+    bed = tmp_path / "bed.mp3"
+    bed.write_bytes(b"x")
+    monkeypatch.setattr(mod, "_pick_bgm", lambda: bed)
+
+    # explicit mute switches kill the bed entirely
+    for t in ("none", "off", "mute", "No"):
+        assert _bgm_for(t, "") is None
+
+    # an explicit file that exists wins over the random pick
+    custom = tmp_path / "custom.mp3"
+    custom.write_bytes(b"y")
+    assert _bgm_for("random", str(custom)) == custom
+
+    # missing explicit file falls back to the random bed
+    assert _bgm_for("random", str(tmp_path / "missing.mp3")) == bed
+
+
+def test_request_hash_covers_styling_fields():
+    from app.providers.video_engine.base import RenderRequest
+
+    base_kwargs = dict(subject="t", script="s")
+    a = RenderRequest(**base_kwargs)
+    b = RenderRequest(**base_kwargs, subtitle_position="top")
+    c = RenderRequest(**base_kwargs, bgm_volume=0.5)
+    d = RenderRequest(**base_kwargs, voice_volume=0.8)
+    assert len({a.request_hash(), b.request_hash(), c.request_hash(), d.request_hash()}) == 4
+
+
 def test_pick_bgm_none_when_dir_missing(tmp_path, monkeypatch):
     from app.providers.video_engine import ffmpeg_avatar as mod
 

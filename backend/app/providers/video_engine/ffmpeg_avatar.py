@@ -242,6 +242,50 @@ def _pick_bgm() -> Path | None:
     return random.choice(tracks) if tracks else None
 
 
+def _caption_style(height_label: str, position: str) -> str:
+    """force_style payload honoring RenderRequest.subtitle_position.
+
+    libass alignment: 2 = bottom-center (default), 5 = middle-center,
+    8 = top-center. MarginV is the distance from the caption box to the
+    nearest screen edge for that alignment.
+    """
+    fontsize = 15 if height_label == "1920" else 12
+    alignment = {"top": 8, "center": 5}.get((position or "bottom").lower(), 2)
+    margin = 40 if alignment == 8 else 0 if alignment == 5 else 60
+    return (
+        f"FontName=Arial,FontSize={fontsize},PrimaryColour=&H00FFFFFF,"
+        f"OutlineColour=&H00000000,BorderStyle=3,Outline=2,Shadow=1,"
+        f"Alignment={alignment},MarginV={margin}"
+    )
+
+
+def _clamp_volume(volume, default: float = 0.2) -> float:
+    """Sanitize a volume request: NaN/parse failure -> default, <=0 -> mute."""
+    try:
+        v = float(volume)
+    except (TypeError, ValueError):
+        return default
+    if v != v or v <= 0:  # NaN or muted
+        return 0.0
+    return min(v, 1.0)
+
+
+def _bgm_for(bgm_type: str, bgm_file: str) -> Path | None:
+    """Resolve the background bed honoring RenderRequest.bgm_type/bgm_file.
+
+    none/off/mute disables the bed; an explicit file that exists wins over the
+    random pick; anything else falls back to the bundled bed selection.
+    """
+    t = (bgm_type or "").strip().lower()
+    if t in ("none", "off", "mute", "no"):
+        return None
+    if bgm_file:
+        p = Path(bgm_file)
+        if p.is_file():
+            return p
+    return _pick_bgm()
+
+
 class FFmpegAvatarEngine(BaseVideoEngine):
     engine_name = "ffmpeg_avatar"
 
@@ -391,7 +435,12 @@ class FFmpegAvatarEngine(BaseVideoEngine):
             tts = get_tts_provider()
             audio_path = out_dir / "narration.mp3"
             try:
-                res = tts.synthesize(req.script, voice=req.voice_name)
+                res = tts.synthesize(
+                    req.script,
+                    voice=req.voice_name,
+                    rate=req.voice_rate,
+                    volume=req.voice_volume,
+                )
                 audio_path.write_bytes(res.audio_bytes)
             except TTSError as exc:
                 raise VideoEngineError(f"tts failed: {exc}") from exc
@@ -468,29 +517,29 @@ class FFmpegAvatarEngine(BaseVideoEngine):
             else:
                 last = "[v0]"
 
-            # captions burned via subtitles filter (styled, word-timed)
+            # captions burned via subtitles filter (styled, word-timed); the
+            # position/style honor RenderRequest.subtitle_position
             if has_captions and _font_file():
                 fpath = _escape_subtitles_path(srt_path)
-                fontsize = 15 if h == "1920" else 12
                 filters.append(
                     f"{last}subtitles='{fpath}'"
-                    f":force_style='FontName=Arial,FontSize={fontsize},"
-                    f"PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
-                    f"BorderStyle=3,Outline=2,Shadow=1,MarginV=60'"
+                    f":force_style='{_caption_style(h, req.subtitle_position)}'"
                     f"[vcap]"
                 )
                 last = "[vcap]"
 
             vf = ";".join(filters)
 
-            # 5) BGM bed under narration (adopted from MPT bgm.py) --------------
-            bgm = _pick_bgm()
+            # 5) BGM bed under narration (adopted from MPT bgm.py); honors
+            #    RenderRequest.bgm_type / bgm_file / bgm_volume
+            bgm = _bgm_for(req.bgm_type, req.bgm_file)
+            bgm_vol = _clamp_volume(req.bgm_volume)
             map_audio = f"{audio_idx}:a"
-            if bgm:
+            if bgm and bgm_vol > 0:
                 inputs += ["-stream_loop", "-1", "-i", str(bgm)]
                 bgm_idx = audio_idx + 1
                 filters.append(
-                    f"[{bgm_idx}:a]volume=0.12,afade=t=out:st={max(0.0, duration - 2.5):.2f}"
+                    f"[{bgm_idx}:a]volume={bgm_vol:.2f},afade=t=out:st={max(0.0, duration - 2.5):.2f}"
                     f":d=2.5[bgm]"
                 )
                 filters.append(

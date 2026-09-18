@@ -66,6 +66,7 @@ class Opportunity(Base, PKMixin, TimestampMixin):
     # Trend lifecycle classification from emerging-trend detection.
     lifecycle: Mapped[str] = mapped_column(String(15), default="UNKNOWN")  # EMERGING|RISING|PEAK|DECLINING|EVERGREEN|UNKNOWN
     confidence: Mapped[float] = mapped_column(Float, default=0.5)  # 0..1 scoring confidence
+    virality: Mapped[float] = mapped_column(Float, default=0.0)  # 0..100 breakout potential (informational)
     selected: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     skipped_reason: Mapped[str] = mapped_column(String(300), default="")
 

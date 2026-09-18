@@ -63,6 +63,7 @@ def list_opportunities(
                 "recommendation": o.recommendation,
                 "lifecycle": o.lifecycle or "UNKNOWN",
                 "confidence": o.confidence,
+                "virality": getattr(o, "virality", 0.0) or 0.0,
                 "selected": o.selected,
                 "skipped_reason": o.skipped_reason or "",
                 # discovery metadata for the Trend Center (None when absent)

@@ -154,6 +154,7 @@ class TrendAnalystAgent(BaseAgent):
                     opp.recommendation = breakdown["recommendation"]
                     opp.lifecycle = breakdown.get("lifecycle", "UNKNOWN")
                     opp.confidence = float(breakdown.get("confidence", 0.5))
+                    opp.virality = float(breakdown.get("virality", 0.0))
                     ids.append(opp.id)
                 self.step_done("ok", f"scored {len(ids)} opportunity(ies)")
                 s.flush()

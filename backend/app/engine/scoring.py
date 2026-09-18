@@ -48,6 +48,7 @@ class ScoredOpportunity:
     recommendation: str  # CREATE_NOW | PRODUCE | WAIT | SKIP
     lifecycle: str = "UNKNOWN"
     confidence: float = 0.5
+    virality: float = 0.0  # 0..100 breakout potential (informational; not in overall)
     components: list[ComponentScore] = field(default_factory=list)
 
     def breakdown(self) -> dict:
@@ -56,6 +57,7 @@ class ScoredOpportunity:
             "recommendation": self.recommendation,
             "lifecycle": self.lifecycle,
             "confidence": round(self.confidence, 2),
+            "virality": round(self.virality, 1),
             "components": {
                 c.key: {
                     "score": round(c.value, 1),
@@ -257,10 +259,22 @@ def score_opportunity(
     confidences = [c.confidence for c in comps]
     overall_confidence = sum(confidences) / len(confidences)
 
+    # Virality (breakout potential, informational only): momentum × novelty ×
+    # whitespace × social proof. Deliberately excluded from `overall` so it
+    # cannot change recommendations until the decision engine opts in.
+    by_key = {c.key: c.value for c in comps}
+    virality = _clamp(
+        by_key.get("trend_velocity", 50) * 0.45
+        + by_key.get("novelty", 50) * 0.25
+        + (100.0 - by_key.get("competition", 50)) * 0.15
+        + by_key.get("engagement", 50) * 0.15
+    )
+
     return ScoredOpportunity(
         overall=round(overall, 1),
         recommendation=rec,
         lifecycle=lifecycle,
         confidence=round(overall_confidence, 2),
+        virality=round(virality, 1),
         components=comps,
     )

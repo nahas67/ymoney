@@ -1,167 +1,82 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { wsApi } from "../lib/api";
-import {
-  AsyncSection, Badge, Card, Field, Modal, PageHeader, useToast,
-} from "../components/ui";
-
-const PLATFORM_OPTIONS = ["youtube", "tiktok", "facebook", "instagram"];
+import { useFetch } from "../hooks/hooks";
+import { Badge, Card, Field, Modal, PageHeader, Section, statusTone } from "../components/ui";
+import { fmtDate } from "../lib/format";
 
 export default function Campaigns() {
-  const [campaigns, setCampaigns] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
-  const { push } = useToast();
+  const list = useFetch(() => wsApi.get("/campaigns"), []);
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [goal, setGoal] = useState("");
+  const [platforms, setPlatforms] = useState<string[]>(["youtube", "tiktok"]);
+  const [detail, setDetail] = useState<any>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true); setError(null);
+  async function create() {
+    if (!name.trim()) return;
     try {
-      const r = await wsApi.get("/campaigns");
-      setCampaigns(r.items ?? []);
-    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
-  }, []);
+      await wsApi.post("/campaigns", { name, goal, platforms });
+      setName("");
+      setGoal("");
+      setOpen(false);
+      list.reload();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  }
 
-  useEffect(() => { load(); }, [load]);
+  function toggle(p: string) {
+    setPlatforms(platforms.includes(p) ? platforms.filter((x) => x !== p) : [...platforms, p]);
+  }
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Campaigns"
-        subtitle="Time-boxed content operations with goals, budgets and cadence."
-        actions={<button className="btn-primary" onClick={() => setShowCreate(true)}>+ New campaign</button>}
-      />
-
-      <AsyncSection data={campaigns} loading={loading} error={error} onRetry={load}
-        empty="No campaigns yet"
-        emptyHint="The autopilot runs workspace-wide; campaigns organize production toward a specific goal.">
-        {(list) => (
-          <div className="grid md:grid-cols-2 gap-4">
-            {(list as any[]).map((c) => (
-              <CampaignCard key={c.id} campaign={c} onChanged={load} />
+    <div className="space-y-4">
+      <PageHeader title="Campaigns" subtitle="Group content under goals with platform targets."
+        actions={<button className="btn-primary !text-xs" onClick={() => setOpen(true)}>+ New campaign</button>} />
+      <Section data={(list.data as any)?.items} loading={list.loading} error={list.error} onRetry={list.reload}
+        empty="No campaigns" emptyHint="Campaigns group videos under a goal; the autopilot can target them.">
+        {(rows) => (
+          <div className="grid md:grid-cols-2 gap-3">
+            {rows.map((c: any) => (
+              <Card key={c.id} className="cursor-pointer" style={{ padding: 15 }} >
+                <div onClick={async () => setDetail(await wsApi.get(`/campaigns/${c.id}`))}>
+                  <div className="flex gap-2 items-center mb-1">
+                    <b className="text-[14px]">{c.name}</b>
+                    <Badge tone={statusTone(c.status)}>{c.status}</Badge>
+                  </div>
+                  <div className="text-[12.5px] line-clamp-2" style={{ color: "var(--text-muted)" }}>{c.goal || "—"}</div>
+                  <div className="flex gap-1.5 mt-2 flex-wrap">
+                    {(c.platforms ?? []).map((p: string) => <Badge key={p} tone="muted">{p}</Badge>)}
+                  </div>
+                </div>
+              </Card>
             ))}
           </div>
         )}
-      </AsyncSection>
-
-      <CreateModal open={showCreate} onClose={() => { setShowCreate(false); load(); }} />
-    </div>
-  );
-}
-
-function CampaignCard({ campaign: c, onChanged }: any) {
-  const [detail, setDetail] = useState<any>(null);
-  useEffect(() => {
-    wsApi.get(`/campaigns/${c.id}`).then(setDetail).catch(() => {});
-  }, [c.id]);
-
-  async function start() {
-    await wsApi.post("/autopilot/start", {
-      mode: "CONTINUOUS",
-      cycles_target: c.target_videos || 0,
-      config: { interval_seconds: 30 },
-    });
-    onChanged();
-  }
-
-  const progressPct = detail?.target_videos
-    ? Math.min(100, Math.round((detail.progress.published / detail.target_videos) * 100))
-    : null;
-
-  return (
-    <Card>
-      <div className="flex items-start justify-between gap-3 mb-2">
-        <h3 className="font-semibold">{c.name}</h3>
-        <Badge tone={c.status === "RUNNING" ? "success" : "neutral"}>{(detail?.status ?? c.status).toLowerCase()}</Badge>
-      </div>
-      {c.goal && <p className="text-[13px] mb-2" style={{ color: "var(--text-muted)" }}>{c.goal}</p>}
-      <dl className="text-[12px] space-y-1 mb-3" style={{ color: "var(--text-muted)" }}>
-        <div>Platforms: {(c.platforms ?? []).join(", ") || "any"}</div>
-        <div>Target: {c.target_videos || "∞"} videos · {c.videos_per_day || "—"}/day</div>
-        {c.budget_daily_usd != null && <div>Budget: ${c.budget_daily_usd}/day</div>}
-      </dl>
-
-      {progressPct != null && (
-        <div className="mb-3">
-          <div className="flex justify-between text-[11px] mb-1" style={{ color: "var(--text-muted)" }}>
-            <span>{detail.progress.published}/{detail.target_videos} published</span>
-            <span>{progressPct}%</span>
-          </div>
-          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--bg-subtle)" }}>
-            <div className="h-full rounded-full transition-all" style={{ width: `${progressPct}%`, background: "var(--accent)" }} />
-          </div>
-        </div>
-      )}
-
-      <div className="flex gap-2">
-        <button className="btn-primary !py-1 text-xs" onClick={start}>Run autopilot for target</button>
-        <LinkDetail id={c.id} />
-      </div>
-    </Card>
-  );
-}
-
-function LinkDetail({ id }: any) {
-  // campaign analytics surface via Analytics page filters; keep honest link to studio filtered by campaign
-  return (
-    <a className="btn-outline !py-1 text-xs" href={`/studio?campaign=${id}`}>View content</a>
-  );
-}
-
-function CreateModal({ open, onClose }: any) {
-  const [name, setName] = useState("");
-  const [goal, setGoal] = useState("");
-  const [targetVideos, setTargetVideos] = useState("10");
-  const [perDay, setPerDay] = useState("1");
-  const [platforms, setPlatforms] = useState<string[]>(["youtube"]);
-  const [budget, setBudget] = useState("");
-  const { push } = useToast();
-
-  async function create() {
-    if (!name.trim()) { push("error", "Name is required"); return; }
-    try {
-      await wsApi.post("/campaigns", {
-        name,
-        goal,
-        target_videos: parseInt(targetVideos) || 0,
-        videos_per_day: parseFloat(perDay) || 0,
-        platforms,
-        automation_level: "FULL_AUTOPILOT",
-        budget_daily_usd: budget ? parseFloat(budget) : null,
-      });
-      push("success", "Campaign created");
-      onClose();
-    } catch (e: any) { push("error", e.message); }
-  }
-
-  return (
-    <Modal open={open} onClose={onClose}>
-      <h3 className="font-semibold mb-4">New campaign</h3>
-      <div className="space-y-4">
-        <Field label="Name"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="30-Day AI Shorts" /></Field>
-        <Field label="Goal"><textarea className="textarea" rows={2} value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="Grow shorts channel with qualified engagement…" /></Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Target videos"><input className="input" type="number" value={targetVideos} onChange={(e) => setTargetVideos(e.target.value)} /></Field>
-          <Field label="Videos / day"><input className="input" type="number" step="0.5" value={perDay} onChange={(e) => setPerDay(e.target.value)} /></Field>
-        </div>
+      </Section>
+      <Modal open={open} onClose={() => setOpen(false)} title="New campaign">
+        <Field label="Name"><input className="input" value={name} onChange={(e) => setName(e.target.value)} /></Field>
+        <Field label="Goal"><textarea className="textarea" rows={2} value={goal} onChange={(e) => setGoal(e.target.value)} /></Field>
         <Field label="Platforms">
           <div className="flex gap-2 flex-wrap">
-            {PLATFORM_OPTIONS.map((p) => (
-              <button key={p} aria-pressed={platforms.includes(p)}
-                onClick={() => setPlatforms((ps) => ps.includes(p) ? ps.filter((x) => x !== p) : [...ps, p])}
-                className={`btn-outline capitalize !py-1 text-xs ${platforms.includes(p) ? "!border-emerald-500 !text-emerald-600 dark:!text-emerald-400" : ""}`}>
-                {p}
-              </button>
+            {["youtube", "tiktok", "facebook", "instagram"].map((p) => (
+              <button key={p} className={platforms.includes(p) ? "btn-primary !text-xs" : "btn-outline !text-xs"} onClick={() => toggle(p)}>{p}</button>
             ))}
           </div>
         </Field>
-        <Field label="Daily budget ($, optional)">
-          <input className="input" type="number" step="0.5" value={budget} onChange={(e) => setBudget(e.target.value)} />
-        </Field>
-        <div className="flex justify-end gap-2">
-          <button className="btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" onClick={create}>Create</button>
-        </div>
-      </div>
-    </Modal>
+        <button className="btn-primary !text-xs" onClick={create}>Create</button>
+      </Modal>
+      <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.name ?? "Campaign"}>
+        {detail && (
+          <div className="text-[13px] space-y-1.5">
+            <div style={{ color: "var(--text-muted)" }}>{detail.goal}</div>
+            <div>Content items: <b className="font-mono">{detail.progress?.content_items ?? 0}</b> · published: <b className="font-mono">{detail.progress?.published ?? 0}</b></div>
+            <div className="font-mono text-[12px]" style={{ color: "var(--text-faint)" }}>
+              {detail.starts_at ? fmtDate(detail.starts_at) : "no start"} → {detail.ends_at ? fmtDate(detail.ends_at) : "open ended"}
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
   );
 }

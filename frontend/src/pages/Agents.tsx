@@ -1,289 +1,175 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { wsApi } from "../lib/api";
-import {
-  AsyncSection, Badge, Card, Modal, PageHeader, StatusDot, fmtDate, fmtUsd,
-} from "../components/ui";
+import { useFetch } from "../hooks/hooks";
+import { Badge, Card, Field, Modal, PageHeader, Section, statusTone } from "../components/ui";
+import { fmtAgo, fmtUSD } from "../lib/format";
 
 export default function Agents() {
-  const [agents, setAgents] = useState<any[]>([]);
-  const [recent, setRecent] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [detailKey, setDetailKey] = useState<string | null>(null);
-  const [capabilities, setCapabilities] = useState<{ skills: any[]; tools: any[] } | null>(null);
-  const [audits, setAudits] = useState<any[] | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true); setError(null);
-    try {
-      const [r, catalog] = await Promise.all([
-        wsApi.get("/agents"),
-        wsApi.get("/agents/capabilities"),
-      ]);
-      setAgents(r.items ?? []);
-      setRecent(r.recent_runs ?? []);
-      setCapabilities({ skills: catalog.skills ?? [], tools: catalog.tools ?? [] });
-      wsApi.get("/agents/tool-audits?limit=20")
-        .then((a) => setAudits(a.items ?? []))
-        .catch(() => setAudits(null)); // admin-only; viewers see nothing rather than an error
-    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => {
-    load();
-    const t = setInterval(load, 6000);
-    return () => clearInterval(t);
-  }, [load]);
-
-  async function toggle(key: string) {
-    const current = agents.find((a) => a.key === key);
-    await wsApi.put(`/agents/config/${key}`, { enabled: !current?.enabled });
-    load();
-  }
+  const fleet = useFetch(() => wsApi.get("/agents"), []);
+  const caps = useFetch(() => wsApi.get("/agents/capabilities"), []);
+  const audits = useFetch(() => wsApi.get("/agents/tool-audits?limit=30"), []);
+  const [open, setOpen] = useState<string | null>(null);
+  const [view, setView] = useState<"fleet" | "audits">("fleet");
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Agent Center"
-        subtitle="The autonomous crew. They operate on their own; you observe and can disable any of them."
-      />
+    <div className="space-y-4">
+      <PageHeader title="Agents" subtitle="The 12-agent crew: live status, per-agent config, run history with step traces, and the tool-call audit trail."
+        actions={
+          <div className="flex gap-1.5">
+            <button className={`tab ${view === "fleet" ? "active" : ""}`} onClick={() => setView("fleet")}>Fleet</button>
+            <button className={`tab ${view === "audits" ? "active" : ""}`} onClick={() => setView("audits")}>Tool audits</button>
+          </div>
+        } />
 
-      {capabilities && (
-        <div className="grid lg:grid-cols-2 gap-4">
-          <CapabilityPanel title="Registered skills" items={capabilities.skills} kind="skill" />
-          <CapabilityPanel title="Controlled tools" items={capabilities.tools} kind="tool" />
-        </div>
-      )}
-
-      <AsyncSection data={agents} loading={loading} error={error} onRetry={load}
-        empty="No agents registered">
-        {(list) => (
-          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {(list as any[]).map((a) => (
-              <Card key={a.key} className="flex flex-col">
-                <div className="flex items-start justify-between gap-2 mb-1">
-                  <h3 className="font-semibold text-sm">{a.title}</h3>
-                  <span className="flex items-center text-[11px]" style={{ color: "var(--text-muted)" }}>
-                    <StatusDot tone={a.status === "busy" ? "success" : "neutral"} pulse={a.status === "busy"} />
-                    {a.status}
-                  </span>
-                </div>                  <p className="text-[12px] leading-relaxed mb-3" style={{ color: "var(--text-muted)" }}>{a.description}</p>
-                  <div className="flex flex-wrap gap-1 mb-3">
-                    {(a.skills ?? []).map((skill: string) => <Badge key={skill} tone="info">skill: {skill}</Badge>)}
-                    {(a.tools ?? []).map((tool: string) => <Badge key={tool} tone="neutral">tool: {tool}</Badge>)}
+      {view === "fleet" && (
+        <Section data={(fleet.data as any)?.items} loading={fleet.loading} error={fleet.error} onRetry={fleet.reload}
+          empty="No agent data" emptyHint="Agents register on backend boot.">
+          {(list) => (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {list.map((a: any) => (
+                <Card key={a.key} className="cursor-pointer" style={{ padding: 15 }} >
+                  <div onClick={() => setOpen(a.key)}>
+                    <div className="flex gap-2 items-center mb-1">
+                      <b className="text-[13.5px]">{a.title}</b>
+                      <Badge tone={a.enabled ? (a.status === "busy" ? "warning" : "success") : "muted"}>
+                        {a.enabled ? a.status : "disabled"}
+                      </Badge>
+                    </div>
+                    <div className="text-[12.5px] line-clamp-2" style={{ color: "var(--text-muted)" }}>{a.description}</div>
+                    <div className="flex gap-3 mt-2 font-mono text-[11.5px]" style={{ color: "var(--text-faint)" }}>
+                      <span>{a.runs} runs</span>
+                      <span>{(a.failure_rate * 100).toFixed(0)}% fail</span>
+                      <span>{fmtUSD(a.total_cost_usd)}</span>
+                    </div>
                   </div>
-
-                <dl className="grid grid-cols-4 gap-1 text-center text-[12px] mb-3">
-                  <div><dt className="text-[9px] uppercase" style={{ color: "var(--text-muted)" }}>Runs</dt><dd>{a.runs}</dd></div>
-                  <div><dt className="text-[9px] uppercase" style={{ color: "var(--text-muted)" }}>Fail</dt><dd>{Math.round(a.failure_rate * 100)}%</dd></div>
-                  <div><dt className="text-[9px] uppercase" style={{ color: "var(--text-muted)" }}>Avg ms</dt><dd>{a.avg_duration_ms ?? "—"}</dd></div>
-                  <div><dt className="text-[9px] uppercase" style={{ color: "var(--text-muted)" }}>Cost</dt><dd>{fmtUsd(a.total_cost_usd)}</dd></div>
-                </dl>
-                <div className="mt-auto flex gap-2">
-                  <button className="btn-outline flex-1 !py-1 text-xs" onClick={() => setDetailKey(a.key)}>Details & logs</button>
-                  <button
-                    className={`flex-1 !py-1 text-xs rounded-lg font-medium transition-colors ${a.enabled ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25" : "bg-zinc-500/10 opacity-70 hover:opacity-100"}`}
-                    onClick={() => toggle(a.key)}
-                  >
-                    {a.enabled ? "Enabled — click to disable" : "Disabled"}
-                  </button>
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
-      </AsyncSection>
-
-      {audits && audits.length > 0 && (
-        <section>
-          <h2 className="text-xs font-semibold uppercase tracking-wider mb-2.5" style={{ color: "var(--text-muted)" }}>
-            Recent tool executions
-          </h2>
-          <Card pad={false} className="overflow-x-auto">
-            <table className="table">
-              <thead><tr><th>Agent</th><th>Tool</th><th>Status</th><th>Summary</th><th>Duration</th><th>Cost</th><th>When</th></tr></thead>
-              <tbody>
-                {audits.map((t: any) => (
-                  <tr key={t.id}>
-                    <td>{t.agent_key}</td>
-                    <td className="font-mono text-[12px]">{t.tool_name}</td>
-                    <td><Badge tone={t.status === "COMPLETED" ? "success" : t.status === "FAILED" ? "error" : "info"}>{t.status.toLowerCase()}</Badge></td>
-                    <td className="max-w-[240px] truncate text-[12px]" style={{ color: "var(--text-muted)" }}>{t.error || t.output_summary || t.input_summary}</td>
-                    <td>{t.duration_ms != null ? `${t.duration_ms}ms` : "—"}</td>
-                    <td>{fmtUsd(t.actual_cost_usd ?? t.estimated_cost_usd)}</td>
-                    <td className="text-[12px]" style={{ color: "var(--text-muted)" }}>{fmtDate(t.created_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        </section>
+                </Card>
+              ))}
+            </div>
+          )}
+        </Section>
       )}
 
-      <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wider mb-2.5" style={{ color: "var(--text-muted)" }}>Latest runs across the crew</h2>
-        <Card pad={false} className="overflow-x-auto">
-          <table className="table">
-            <thead><tr><th>Agent</th><th>Task</th><th>Status</th><th>Duration</th><th>Output</th><th>When</th></tr></thead>
-            <tbody>
-              {recent.slice(0, 15).map((r: any, i: number) => (
-                <tr key={i}>
-                  <td>{r.agent_key}</td>
-                  <td>{r.task_type}</td>
-                  <td><Badge tone={r.status === "COMPLETED" ? "success" : r.status === "RUNNING" ? "info" : "error"}>{r.status.toLowerCase()}</Badge></td>
-                  <td>{r.duration_ms != null ? `${r.duration_ms}ms` : "—"}</td>
-                  <td className="max-w-[260px] truncate text-[12px]" style={{ color: "var(--text-muted)" }}>{r.output_summary}</td>
-                  <td className="text-[12px]" style={{ color: "var(--text-muted)" }}>{fmtDate(r.created_at)}</td>
-                </tr>
-              ))}
-              {recent.length === 0 && <tr><td colSpan={6} className="text-center py-8" style={{ color: "var(--text-muted)" }}>No runs yet.</td></tr>}
-            </tbody>
-          </table>
-        </Card>
-      </section>
-
-      <AgentDetailModal agentKey={detailKey} onClose={() => setDetailKey(null)} />
-    </div>
-  );
-}
-
-function AgentDetailModal({ agentKey, onClose }: { agentKey: string | null; onClose: () => void }) {
-  const [detail, setDetail] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!agentKey) { setDetail(null); return; }
-    setDetail(null); setError(null);
-    wsApi.get(`/agents/${agentKey}`).then(setDetail).catch((e) => setError(e.message));
-  }, [agentKey]);
-
-  return (
-    <Modal open={!!agentKey} onClose={onClose} wide>
-      {!detail && !error && <p>Loading…</p>}
-      {error && <p className="text-sm text-red-500">{error}</p>}
-      {detail && (
-        <div className="space-y-5">
-          <div>
-            <h2 className="text-lg font-semibold">{detail.title}</h2>
-            <p className="text-[13px] mt-0.5" style={{ color: "var(--text-muted)" }}>{detail.description}</p>
-          </div>
-
-          <div className="grid grid-cols-4 gap-3 text-sm">
-            <Stat k="Runs" v={detail.stats.runs} />
-            <Stat k="Failure rate" v={`${Math.round(detail.stats.failure_rate * 100)}%`} />
-            <Stat k="Avg duration" v={detail.stats.avg_duration_ms != null ? `${detail.stats.avg_duration_ms}ms` : "—"} />
-            <Stat k="Total cost" v={fmtUsd(detail.stats.total_cost_usd)} />
-          </div>
-
-          <div className="flex gap-4 text-[13px]">
-            <Badge tone={detail.enabled ? "success" : "error"}>{detail.enabled ? "enabled" : "disabled"}</Badge>
-            <span style={{ color: "var(--text-muted)" }}>
-              model: {detail.model || "system default"} · timeout: {detail.timeout_seconds}s ·
-              cost limit: {detail.cost_limit_usd != null ? `$${detail.cost_limit_usd}` : "none"}
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {(detail.skills ?? []).map((skill: string) => <Badge key={skill} tone="info">skill: {skill}</Badge>)}
-            {(detail.tools ?? []).map((tool: string) => <Badge key={tool} tone="neutral">tool: {tool}</Badge>)}
-          </div>
-          <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-            Permissions: {(detail.permissions ?? []).join(", ") || "none"} · execution: {detail.execution_policy}
-          </div>
-
-          <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>Run log (last 50)</h3>
-            <div className="max-h-96 overflow-y-auto rounded-lg border" style={{ borderColor: "var(--border)" }}>
+      {view === "audits" && (
+        <Section data={(audits.data as any)?.items} loading={audits.loading} error={audits.error} onRetry={audits.reload}
+          empty="No tool calls audited" emptyHint="Controlled tool invocations are recorded here.">
+          {(list) => (
+            <Card pad={false} className="overflow-x-auto">
               <table className="table">
-                <thead><tr><th>Task</th><th>Status</th><th>Output / error</th><th>When</th></tr></thead>
+                <thead><tr><th>Agent</th><th>Tool</th><th>Status</th><th>Duration</th><th>When</th></tr></thead>
                 <tbody>
-                  {detail.runs.map((r: any) => (
-                    <RunRow key={r.id} run={r} />
+                  {list.map((t: any) => (
+                    <tr key={t.id}>
+                      <td className="font-mono text-[12px]">{t.agent_key}</td>
+                      <td className="font-mono text-[12px]">{t.tool_name}</td>
+                      <td><Badge tone={statusTone(t.status)}>{t.status}</Badge></td>
+                      <td className="font-mono">{t.duration_ms ?? "—"}ms</td>
+                      <td className="text-[12px]" style={{ color: "var(--text-muted)" }}>{fmtAgo(t.created_at)}</td>
+                    </tr>
                   ))}
-                  {detail.runs.length === 0 && (
-                    <tr><td colSpan={4} className="text-center py-6" style={{ color: "var(--text-muted)" }}>This agent has not run yet.</td></tr>
-                  )}
                 </tbody>
               </table>
-            </div>
-          </div>
-        </div>
-      )}
-    </Modal>
-  );
-}
-
-function RunRow({ run }: { run: any }) {
-  const [expanded, setExpanded] = useState(false);
-  const steps: any[] = run.steps ?? [];
-  return (
-    <>
-      <tr
-        className={steps.length ? "cursor-pointer" : ""}
-        onClick={steps.length ? () => setExpanded((e) => !e) : undefined}
-      >
-        <td>
-          {run.task_type}
-          {steps.length > 0 && (
-            <span className="ml-1.5 text-[10px]" style={{ color: "var(--text-muted)" }}>
-              {expanded ? "▾" : "▸"} {steps.length} step{steps.length === 1 ? "" : "s"}
-            </span>
+            </Card>
           )}
-        </td>
-        <td><Badge tone={run.status === "COMPLETED" ? "success" : run.status === "RUNNING" ? "info" : "error"}>{run.status.toLowerCase()}</Badge></td>
-        <td className="max-w-[300px] truncate text-[12px]" style={{ color: run.error ? "var(--danger)" : "var(--text-muted)" }}>
-          {run.error || run.output_summary}
-        </td>
-        <td className="text-[11px] whitespace-nowrap" style={{ color: "var(--text-muted)" }}>{fmtDate(run.created_at)}</td>
-      </tr>
-      {expanded && steps.map((s: any, i: number) => (
-        <tr key={`${run.id}-step-${i}`} style={{ background: "var(--bg-subtle)" }}>
-          <td className="pl-5 text-[12px]">
-            <span className="font-mono">{s.step}</span>
-            {s.detail && <span className="block text-[11px]" style={{ color: "var(--text-muted)" }}>{s.detail}</span>}
-          </td>
-          <td>
-            <Badge tone={s.status === "ok" ? "success" : s.status === "running" ? "info" : "error"}>{s.status}</Badge>
-          </td>
-          <td className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-            {s.duration_ms != null ? `${(s.duration_ms / 1000).toFixed(1)}s` : ""}
-          </td>
-          <td />
-        </tr>
-      ))}
-    </>
-  );
-}
+        </Section>
+      )}
 
-function CapabilityPanel({ title, items, kind }: { title: string; items: any[]; kind: "skill" | "tool" }) {
-  return (
-    <Card>
-      <h2 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--text-muted)" }}>{title}</h2>
-      <div className="space-y-2.5">
-        {items.map((item) => (
-          <div key={item.key ?? item.name} className="rounded-lg border p-3" style={{ borderColor: "var(--border)" }}>
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-sm">{item.title ?? item.name}</span>
-              <Badge tone={kind === "skill" ? "info" : "neutral"}>{item.version ?? item.provider}</Badge>
-            </div>
-            <p className="text-[12px] mt-1" style={{ color: "var(--text-muted)" }}>{item.description}</p>
-            {kind === "tool" && (
-              <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>
-                Permissions: {(item.permissions ?? []).join(", ") || "none"} · timeout: {item.timeout_seconds}s · estimate: {fmtUsd(item.estimated_cost_usd)}
-              </p>
-            )}
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-function Stat({ k, v }: any) {
-  return (
-    <div className="rounded-lg p-3 text-center" style={{ background: "var(--bg-subtle)" }}>
-      <dd className="font-semibold">{v}</dd>
-      <dt className="text-[10px] uppercase mt-0.5" style={{ color: "var(--text-muted)" }}>{k}</dt>
+      <Modal open={!!open} onClose={() => setOpen(null)} title="Agent detail" wide>
+        {open && <AgentDetail agentKey={open} capabilities={(caps.data as any)} />}
+      </Modal>
     </div>
   );
 }
 
+function AgentDetail({ agentKey, capabilities }: { agentKey: string; capabilities: any }) {
+  const d = useFetch(() => wsApi.get(`/agents/${agentKey}`), [agentKey]);
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [model, setModel] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const a: any = d.data;
+
+  async function save() {
+    setSaving(true);
+    try {
+      await wsApi.put(`/agents/config/${agentKey}`, {
+        ...(enabled != null ? { enabled } : {}),
+        ...(model != null ? { model } : {}),
+      });
+      d.reload();
+      setEnabled(null);
+      setModel(null);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (d.loading) return <div className="text-[13px]" style={{ color: "var(--text-muted)" }}>Loading…</div>;
+  if (d.error || !a) return <div className="text-[13px]" style={{ color: "var(--danger)" }}>{d.error ?? "Missing"}</div>;
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 items-center flex-wrap">
+        <b>{a.title}</b>
+        <Badge tone={a.enabled ? "success" : "muted"}>{a.enabled ? "enabled" : "disabled"}</Badge>
+        <span className="text-[12.5px]" style={{ color: "var(--text-muted)" }}>{a.runs} runs · {(a.failure_rate * 100).toFixed(1)}% fail · {a.avg_duration_ms ?? "—"}ms avg · {fmtUSD(a.total_cost_usd)}</span>
+      </div>
+      <div className="text-[13px]" style={{ color: "var(--text-muted)" }}>{a.description}</div>
+      <div className="grid md:grid-cols-2 gap-3">
+        <Card>
+          <b className="text-[13px]">Configuration</b>
+          <div className="mt-2 space-y-2.5">
+            <Field label="Enabled">
+              <select className="select" value={String(enabled ?? a.enabled)} onChange={(e) => setEnabled(e.target.value === "true")}>
+                <option value="true">Enabled</option>
+                <option value="false">Disabled</option>
+              </select>
+            </Field>
+            <Field label="Model override (blank = workspace default)">
+              <input className="input" value={model ?? a.model ?? ""} onChange={(e) => setModel(e.target.value)} placeholder="e.g. gpt-4o-mini" />
+            </Field>
+            <button className="btn-primary !text-xs" disabled={saving || (enabled == null && model == null)} onClick={save}>Save</button>
+          </div>
+        </Card>
+        <Card>
+          <b className="text-[13px]">Skills · tools · permissions</b>
+          <div className="mt-2 text-[12.5px] space-y-1">
+            <div><span style={{ color: "var(--text-faint)" }}>skills: </span><span className="font-mono">{(a.skills ?? []).join(", ") || "—"}</span></div>
+            <div><span style={{ color: "var(--text-faint)" }}>tools: </span><span className="font-mono">{(a.tools ?? []).join(", ") || "—"}</span></div>
+            <div><span style={{ color: "var(--text-faint)" }}>permissions: </span><span className="font-mono">{(a.permissions ?? []).join(", ") || "—"}</span></div>
+            <div><span style={{ color: "var(--text-faint)" }}>policy: </span><span className="font-mono">{a.model_policy} · {a.execution_policy}</span></div>
+          </div>
+          {capabilities && <div className="text-[11.5px] mt-2" style={{ color: "var(--text-faint)" }}>{(capabilities.skills ?? []).length} skills · {(capabilities.tools ?? []).length} tools registered platform-wide.</div>}
+        </Card>
+      </div>
+      <div>
+        <div className="panel-label mb-1.5">Recent runs</div>
+        <AgentRunsList runs={(a as any).runs ?? []} />
+      </div>
+    </div>
+  );
+}
+
+function AgentRunsList({ runs }: { runs: any[] }) {
+  if (!runs.length) return <div className="text-[12.5px]" style={{ color: "var(--text-faint)" }}>No runs recorded.</div>;
+  return (
+    <div className="space-y-2">
+      {runs.slice(0, 12).map((r: any) => (
+        <div key={r.id} className="rounded-lg p-2.5 text-[12.5px]" style={{ background: "var(--bg-inset)", border: "var(--seam)" }}>
+          <div className="flex gap-2 items-center flex-wrap">
+            <span className="font-mono">{r.task_type}</span>
+            <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+            {r.duration_ms != null && <span className="font-mono" style={{ color: "var(--text-faint)" }}>{r.duration_ms}ms</span>}
+            {r.cost_usd > 0 && <span className="font-mono" style={{ color: "var(--text-faint)" }}>{fmtUSD(r.cost_usd)}</span>}
+          </div>
+          {r.output_summary && <div className="mt-0.5" style={{ color: "var(--text-muted)" }}>{r.output_summary}</div>}
+          {r.error && <div style={{ color: "var(--danger)" }}>{r.error}</div>}
+          {(r.steps ?? []).length > 0 && (
+            <div className="mt-1 font-mono text-[11.5px]" style={{ color: "var(--text-muted)" }}>
+              {r.steps.map((s: any, i: number) => <div key={i}>{s.status === "ok" ? "✓" : s.status === "failed" ? "✗" : "…"} {s.step}{s.detail ? ` — ${s.detail}` : ""}</div>)}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}

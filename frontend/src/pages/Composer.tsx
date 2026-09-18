@@ -1,139 +1,60 @@
-import { useEffect, useState } from "react";
-import { wsApi, api } from "../lib/api";
-import { Badge, Card, Field, PageHeader, useToast } from "../components/ui";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { wsApi } from "../lib/api";
+import { useFetch } from "../hooks/hooks";
+import { Card, Field, PageHeader } from "../components/ui";
 
-const PLATFORMS = ["youtube", "tiktok", "facebook", "instagram"];
+/* Manual schedule composer: pick any render-ready content, platform and time. */
 
-/**
- * Universal post composer: schedules a real calendar entry per platform with
- * platform-specific copy. AI-generated metadata arrives from the SEO agent
- * during the pipeline; manual scheduling composes what you type here.
- */
 export default function Composer() {
-  const [platforms, setPlatforms] = useState<string[]>(["youtube"]);
-  const [runAt, setRunAt] = useState(() => new Date(Date.now() + 3600_000).toISOString().slice(0, 16));
+  const nav = useNavigate();
+  const lib = useFetch(() => wsApi.get("/content?limit=100"), []);
   const [contentId, setContentId] = useState("");
-  const [contentItems, setContentItems] = useState<any[]>([]);
-  const [perPlatform, setPerPlatform] = useState<Record<string, { title: string; caption: string; hashtags: string }>>({});
+  const [platform, setPlatform] = useState("youtube");
+  const [runAt, setRunAt] = useState("");
   const [busy, setBusy] = useState(false);
-  const [estimate, setEstimate] = useState<any>(null);
-  const { push } = useToast();
+  const [error, setError] = useState("");
 
-  useEffect(() => {
-    wsApi.get("/content?limit=50").then((r) => setContentItems(r.items ?? [])).catch(() => {});
-    // Cost estimate is engine-aware and static per configuration
-    wsApi.post("/content/estimate-cost", { video_count: 1 }).then(setEstimate).catch(() => {});
-  }, []);
+  const items: any[] = ((lib.data as any)?.items ?? []).filter((c: any) => c.video?.status === "READY");
 
-  function toggle(p: string) {
-    setPlatforms((ps) => ps.includes(p) ? ps.filter((x) => x !== p) : [...ps, p]);
-    setPerPlatform((m) => (m[p] ? m : { ...m, [p]: { title: "", caption: "", hashtags: "" } }));
-  }
-
-  async function schedule() {
-    if (!contentId) { push("error", "Select a content item to schedule"); return; }
-    if (platforms.length === 0) { push("error", "Pick at least one platform"); return; }
+  async function submit() {
     setBusy(true);
+    setError("");
     try {
-      for (const p of platforms) {
-        await wsApi.post("/calendar", {
-          platform: p,
-          run_at: new Date(runAt).toISOString(),
-          content_item_id: contentId,
-        });
-      }
-      push("success", `Scheduled on ${platforms.length} platform(s)`);
+      // datetime-local is naive — convert to explicit UTC ISO for the API guard.
+      const iso = new Date(runAt).toISOString();
+      await wsApi.post("/calendar", { content_item_id: contentId, platform, run_at: iso });
+      nav("/calendar");
     } catch (e: any) {
-      push("error", e.message);
+      setError(e.message);
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="space-y-5 max-w-3xl">
-      <PageHeader
-        title="Composer"
-        subtitle="Schedule platform-specific posts for existing content. Each platform gets its own copy."
-      />
-
+    <div className="max-w-[620px] mx-auto">
+      <PageHeader title="Composer" subtitle="Manually queue any render-ready video for a platform and time." />
       <Card>
-        <div className="space-y-5">
-          <Field label="Content item">
-            <select className="select" value={contentId} onChange={(e) => setContentId(e.target.value)}>
-              <option value="">— select content —</option>
-              {contentItems.map((c) => (
-                <option key={c.id} value={c.id}>
-                  [{c.status}] {c.topic.slice(0, 80)}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Platforms" hint="Each selected platform is scheduled separately with its own copy below.">
-            <div className="flex gap-2 flex-wrap">
-              {PLATFORMS.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => toggle(p)}
-                  aria-pressed={platforms.includes(p)}
-                  className={`btn-outline capitalize ${platforms.includes(p) ? "!border-emerald-500 !text-emerald-600 dark:!text-emerald-400" : ""}`}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-          </Field>
-
-          <Field label="Publish at">
-            <input className="input !w-64" type="datetime-local" value={runAt} onChange={(e) => setRunAt(e.target.value)} />
-          </Field>
-
-          {platforms.map((p) => (
-            <div key={p} className="rounded-lg border p-4 space-y-3" style={{ borderColor: "var(--border)" }}>
-              <div className="flex items-center justify-between">
-                <h3 className="font-medium text-sm uppercase tracking-wide">{p}</h3>
-                <Badge tone="neutral">platform-specific</Badge>
-              </div>
-              {p === "youtube" && (
-                <Field label="Title">
-                  <input className="input" maxLength={100}
-                    value={perPlatform[p]?.title ?? ""}
-                    onChange={(e) => setPerPlatform((m) => ({ ...m, [p]: { ...m[p], title: e.target.value } }))} />
-                </Field>
-              )}
-              <Field label={p === "youtube" ? "Description" : "Caption"}>
-                <textarea className="textarea" rows={3} maxLength={2200}
-                  value={perPlatform[p]?.caption ?? ""}
-                  onChange={(e) => setPerPlatform((m) => ({ ...m, [p]: { ...m[p], caption: e.target.value } }))} />
-              </Field>
-              <Field label="Hashtags" hint="Space-separated; appended where the platform supports them.">
-                <input className="input" placeholder="#money #finance"
-                  value={perPlatform[p]?.hashtags ?? ""}
-                  onChange={(e) => setPerPlatform((m) => ({ ...m, [p]: { ...m[p], hashtags: e.target.value } }))} />
-              </Field>
-            </div>
-          ))}
-
-          <div className="flex items-center justify-between gap-3 pt-1 flex-wrap">
-            {estimate && (
-              <span className="badge" style={{ background: "var(--bg-subtle)", color: "var(--text-muted)" }}
-                    title={`Engine: ${estimate.engine} — flat per-render estimate`}>
-                ≈ ${estimate.per_video_usd?.toFixed?.(2) ?? estimate.per_video_usd} / render · {estimate.engine}
-              </span>
-            )}
-            <button className="btn-primary" onClick={schedule} disabled={busy}>
-              {busy ? "Scheduling…" : `Schedule on ${platforms.length || 0} platform(s)`}
-            </button>
-          </div>
-        </div>
+        <Field label="Video (render-ready only)">
+          <select className="select" value={contentId} onChange={(e) => setContentId(e.target.value)}>
+            <option value="">— pick a video —</option>
+            {items.map((c: any) => <option key={c.id} value={c.id}>{c.topic.slice(0, 80)} ({c.video?.engine})</option>)}
+          </select>
+        </Field>
+        <Field label="Platform">
+          <select className="select" value={platform} onChange={(e) => setPlatform(e.target.value)}>
+            {["youtube", "tiktok", "facebook", "instagram"].map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </Field>
+        <Field label="Publish at (local time)" hint="Converted to UTC ISO — the sweep dispatches when due.">
+          <input className="input" type="datetime-local" value={runAt} onChange={(e) => setRunAt(e.target.value)} />
+        </Field>
+        {error && <div className="text-[13px] mb-3" style={{ color: "var(--danger)" }}>{error}</div>}
+        <button className="btn-primary" disabled={busy || !contentId || !runAt} onClick={submit}>
+          {busy ? "…" : "Schedule publish"}
+        </button>
       </Card>
-
-      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-        Note: AI-optimized titles/captions/hashtags are generated by the SEO agent during
-        the autopilot pipeline and stored on each content item's variants. Manual entries
-        here control your own scheduled copies.
-      </p>
     </div>
   );
 }

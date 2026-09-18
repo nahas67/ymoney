@@ -1,13 +1,11 @@
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { api, setAuth, setWorkspace } from "./lib/api";
-import { initTheme } from "./lib/theme";
 import Login from "./pages/Login";
 import Layout from "./components/Layout";
 import CommandCenter from "./pages/CommandCenter";
 import Autopilot from "./pages/Autopilot";
 import Trends from "./pages/Trends";
-import Ideas from "./pages/Ideas";
 import Studio from "./pages/Studio";
 import ContentDetail from "./pages/ContentDetail";
 import CalendarPage from "./pages/CalendarPage";
@@ -27,14 +25,16 @@ import Setup from "./pages/Setup";
 import Integrations from "./pages/Integrations";
 import LiveMonitor from "./pages/LiveMonitor";
 
+function Ideas() {
+  const nav = useNavigate();
+  useEffect(() => {
+    nav("/trends", { replace: true });
+  }, [nav]);
+  return null;
+}
+
 export default function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
-  const nav = useNavigate();
-
-  // theme bootstrapping (system | light | dark — see lib/theme.ts)
-  useEffect(() => {
-    initTheme();
-  }, []);
 
   useEffect(() => {
     if (!localStorage.getItem("ym_token")) {
@@ -55,16 +55,7 @@ export default function App() {
   }
 
   if (!authed) {
-    return (
-      <Login
-        onAuthed={(token, ws) => {
-          setAuth(token);
-          setWorkspace(ws);
-          setAuthed(true);
-          nav("/");
-        }}
-      />
-    );
+    return <Login onAuthed={() => setAuthed(true)} />;
   }
 
   return (

@@ -1,37 +1,34 @@
-import { Card, EmptyState, PageHeader } from "../components/ui";
+import { wsApi } from "../lib/api";
+import { useFetch } from "../hooks/hooks";
+import { Card, PageHeader, Section } from "../components/ui";
+import { fmtAgo } from "../lib/format";
 
-/**
- * Social Inbox.
- *
- * HONEST PRODUCT NOTE: YMONEY's current provider integrations (YouTube Data API,
- * TikTok Content Posting API, Facebook Graph via upload relay) support PUBLISHING
- * and public metrics — none of the configured providers expose comment/mention
- * read APIs in this build. Rather than fake an inbox, this surface explains
- * exactly what is and isn't available.
- */
+/* Inbox lights up only when read-API providers connect — honest by design. */
+
 export default function Inbox() {
+  const data = useFetch(() => wsApi.get("/inbox").catch((e: any) => {
+    if (e?.status === 404) return { items: [], capability: "Comments/mentions APIs are not connected yet." };
+    throw e;
+  }), []);
+  const items: any[] = (data.data as any)?.items ?? [];
+
   return (
-    <div className="space-y-5 max-w-2xl">
-      <PageHeader
-        title="Inbox"
-        subtitle="Comments, mentions and messages across platforms."
-      />
-      <Card>
-        <EmptyState
-          icon="✉"
-          title="No inbox provider connected"
-          hint="Reading comments and messages requires platform read APIs that are not part of the current publishing integrations (YouTube Data API comments, TikTok display API, Meta Graph). Connect official read scopes to enable this surface."
-        />
-        <div className="mt-4 pt-4 border-t text-[13px] space-y-2" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
-          <p className="font-medium" style={{ color: "var(--text)" }}>What each platform would need:</p>
-          <ul className="list-disc pl-5 space-y-1">
-            <li><strong>YouTube:</strong> commentThreads.list scope on the connected OAuth account</li>
-            <li><strong>TikTok:</strong> comments are not exposed by the public Content Posting API</li>
-            <li><strong>Facebook/Instagram:</strong> Page conversations + comment webhooks</li>
-          </ul>
-          <p>This page will light up automatically once a provider with read access is connected.</p>
-        </div>
-      </Card>
+    <div className="space-y-4 max-w-[720px]">
+      <PageHeader title="Inbox" subtitle="Comments, mentions and review requests — live when read providers connect." />
+      <Section data={items} loading={data.loading} error={data.error} onRetry={data.reload}
+        empty="Inbox is quiet"
+        emptyHint={(data.data as any)?.capability ?? "Connect a platform with comment-read access to see mentions here. Approval-hold items appear in Studio → Approval hold."}>
+        {(list) => (
+          <div className="space-y-2">
+            {list.map((m: any, i: number) => (
+              <Card key={m.id ?? i} style={{ padding: 13 }}>
+                <div className="text-[13.5px]">{m.message ?? m.text}</div>
+                <div className="text-[11.5px] font-mono mt-1" style={{ color: "var(--text-faint)" }}>{m.platform ?? ""} · {fmtAgo(m.created_at)}</div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </Section>
     </div>
   );
 }

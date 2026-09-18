@@ -1,243 +1,105 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { wsApi } from "../lib/api";
-import {
-  AsyncSection, Badge, Card, Modal, PageHeader, Tabs, useToast,
-} from "../components/ui";
-
-const LIFECYCLE_TABS = [
-  { key: "RISING", label: "Rising" },
-  { key: "EMERGING", label: "Emerging" },
-  { key: "PEAK", label: "Peak" },
-  { key: "EVERGREEN", label: "Evergreen" },
-  { key: "DECLINING", label: "Declining" },
-  { key: "UNKNOWN", label: "All" },
-];
+import { useFetch } from "../hooks/hooks";
+import { Badge, Card, Modal, PageHeader, ScoreBar, Section, Tabs, lifecycleTone } from "../components/ui";
 
 export default function Trends() {
-  const [tab, setTab] = useState("RISING");
-  const [items, setItems] = useState<any[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<any | null>(null);
-  const [cursor, setCursor] = useState(0);
-  const { push } = useToast();
+  const [filter, setFilter] = useState("available");
+  const [sort, setSort] = useState<"score" | "virality">("score");
+  const opps = useFetch(() => wsApi.get(`/opportunities?status=${filter}&limit=100`), [filter]);
+  const [open, setOpen] = useState<any>(null);
+  const [busy, setBusy] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  async function act(o: any, kind: "select" | "skip") {
+    setBusy(o.id + kind);
     try {
-      const r = await wsApi.get(`/opportunities?limit=100`);
-      setTotal(r.total ?? 0);
-      let list: any[] = r.items ?? [];
-      if (tab !== "UNKNOWN") list = list.filter((o) => (o.lifecycle ?? "UNKNOWN") === tab);
-      setItems(list);
-      setCursor(0);
+      if (kind === "select") await wsApi.post(`/opportunities/${o.id}/select`);
+      else await wsApi.post(`/opportunities/${o.id}/skip`, { reason: "archived by operator" });
+      opps.reload();
+      setOpen(null);
     } catch (e: any) {
-      setError(e.message);
+      alert(e.message);
     } finally {
-      setLoading(false);
-    }
-  }, [tab]);
-
-  useEffect(() => { load(); }, [load]);
-
-  // keyboard navigation: ↑/↓ move, Enter opens, Esc handled by Modal
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (selected || items.length === 0) return;
-      if ((e.target as HTMLElement)?.tagName === "INPUT") return;
-      if (e.key === "ArrowDown") { e.preventDefault(); setCursor((c) => Math.min(items.length - 1, c + 1)); }
-      else if (e.key === "ArrowUp") { e.preventDefault(); setCursor((c) => Math.max(0, c - 1)); }
-      else if (e.key === "Enter") { e.preventDefault(); setSelected(items[cursor]); }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [items, cursor, selected]);
-
-  async function act(opportunityId: string, action: "select" | "skip") {
-    try {
-      if (action === "select") {
-        await wsApi.post(`/opportunities/${opportunityId}/select`);
-        push("success", "Idea created — it will be produced in an upcoming cycle or via Composer.");
-      } else {
-        await wsApi.post(`/opportunities/${opportunityId}/skip`, { reason: "dismissed by user" });
-        push("info", "Trend ignored.");
-      }
-      setSelected(null);
-      load();
-    } catch (e: any) {
-      push("error", e.message);
+      setBusy("");
     }
   }
 
-  const counts: Record<string, number> = {};
-  // counts come from the unfiltered fetch on first load; approximate by tab switch
+  const items: any[] = [...((opps.data as any)?.items ?? [])].sort((a, b) =>
+    sort === "virality" ? (b.virality ?? 0) - (a.virality ?? 0) : b.score - a.score
+  );
+
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Trend Center"
-        subtitle="Live opportunities with explainable scores. YMONEY picks automatically — you can force or ignore."
-        actions={<Badge tone="neutral">{total} tracked</Badge>}
-      />
-
-      <Tabs tabs={LIFECYCLE_TABS} active={tab} onChange={setTab} />
-
-      <AsyncSection
-        data={items}
-        loading={loading}
-        error={error}
-        onRetry={load}
-        empty="No trends in this stage"
-        emptyHint="Run the autopilot to refresh discovery, or switch lifecycle tab."
-      >
+    <div className="space-y-4">
+      <PageHeader title="Trend Center" subtitle="Scored opportunities with lifecycle, virality breakout score and full evidence. Produce the best, skip the rest."
+        actions={
+          <div className="flex gap-1.5">
+            <button className={`tab ${sort === "score" ? "active" : ""}`} onClick={() => setSort("score")}>Top score</button>
+            <button className={`tab ${sort === "virality" ? "active" : ""}`} onClick={() => setSort("virality")}>Top virality</button>
+          </div>
+        } />
+      <Tabs tabs={[
+        { key: "available", label: "Available" }, { key: "selected", label: "Selected" }, { key: "skipped", label: "Skipped" },
+      ]} active={filter} onChange={setFilter} />
+      <Section data={items} loading={opps.loading} error={opps.error} onRetry={opps.reload}
+        empty="No opportunities here" emptyHint="Run the autopilot FIND stage or wait for the next discovery refresh.">
         {(list) => (
-          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {list.map((o, i) => (
-              <TrendCard
-                key={o.id}
-                opp={o}
-                focused={i === cursor}
-                onOpen={() => setSelected(o)}
-                onHover={() => setCursor(i)}
-              />
+          <div className="grid md:grid-cols-2 gap-3">
+            {list.map((o: any) => (
+              <Card key={o.id} className="cursor-pointer hover:opacity-95" style={{ padding: 15 }} >
+                <div onClick={() => setOpen(o)}>
+                  <div className="flex gap-2 items-center mb-1.5 flex-wrap">
+                    <Badge tone={lifecycleTone(o.lifecycle)}>{o.lifecycle}</Badge>
+                    <Badge tone="muted">{o.source}</Badge>
+                    {o.selected && <Badge tone="success">selected</Badge>}
+                  </div>
+                  <div className="font-medium text-[14px] leading-snug mb-2">{o.topic}</div>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <span className="flex items-center gap-1.5 text-[12px]" style={{ color: "var(--text-muted)" }}>Score <ScoreBar value={o.score} /></span>
+                    <span className="flex items-center gap-1.5 text-[12px]" style={{ color: "var(--text-muted)" }}>🔥 <b className="font-mono">{(o.virality ?? 0).toFixed(0)}</b></span>
+                    {o.velocity != null && <span className="font-mono text-[11.5px]" style={{ color: "var(--text-faint)" }}>vel {(o.velocity * 100).toFixed(0)}%</span>}
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-3">
+                  {!o.selected && !o.skipped_reason && (
+                    <>
+                      <button className="btn-primary !text-xs !py-1.5" disabled={busy === o.id + "select"} onClick={() => act(o, "select")}>Produce</button>
+                      <button className="btn-ghost !text-xs !py-1.5" disabled={busy === o.id + "skip"} onClick={() => act(o, "skip")}>Skip</button>
+                    </>
+                  )}
+                  {o.source_url && <a className="btn-ghost !text-xs !py-1.5 ml-auto no-underline" style={{ color: "var(--info)" }} href={o.source_url} target="_blank" rel="noreferrer">Evidence ↗</a>}
+                </div>
+              </Card>
             ))}
           </div>
         )}
-      </AsyncSection>
+      </Section>
 
-      <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-        ↑↓ navigate · Enter open · click a card for the score breakdown
-      </p>
-
-      <Modal open={!!selected} onClose={() => setSelected(null)} wide>
-        {selected && <TrendDetail opp={selected} onAct={act} />}
+      <Modal open={!!open} onClose={() => setOpen(null)} title="Score breakdown" wide>
+        {open && (
+          <div className="space-y-3">
+            <div className="font-medium">{open.topic}</div>
+            <div className="flex gap-2 flex-wrap">
+              <Badge tone={lifecycleTone(open.lifecycle)}>{open.lifecycle}</Badge>
+              <Badge tone="info">virality {(open.virality ?? 0).toFixed(0)}</Badge>
+              <Badge tone="muted">confidence {Math.round((open.confidence ?? 0) * 100)}%</Badge>
+              <Badge tone="muted">{open.recommendation}</Badge>
+            </div>
+            {Object.entries(open.components ?? {}).map(([k, v]: any) => (
+              <div key={k} className="py-1.5" style={{ borderBottom: "var(--seam)" }}>
+                <div className="flex justify-between text-[13px] mb-1">
+                  <span className="font-mono">{k}</span>
+                  <ScoreBar value={v.score} />
+                </div>
+                <div className="text-[12px]" style={{ color: "var(--text-muted)" }}>{v.reason} · {v.source} · conf {v.confidence}</div>
+              </div>
+            ))}
+            <div className="flex gap-2 pt-1">
+              <button className="btn-primary !text-xs" onClick={() => act(open, "select")}>Produce this topic</button>
+              <button className="btn-ghost !text-xs" onClick={() => act(open, "skip")}>Skip</button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );
 }
-
-function TrendCard({ opp, focused, onOpen, onHover }: {
-  opp: any; focused: boolean; onOpen: () => void; onHover: () => void;
-}) {
-  const lc = opp.lifecycle ?? "UNKNOWN";
-  const score = Number(opp.score);
-  return (
-    <button
-      className="card p-4 text-left w-full transition-colors"
-      style={focused ? { borderColor: "var(--accent, #10b981)", borderWidth: 1.5 } : undefined}
-      onClick={onOpen}
-      onMouseEnter={onHover}
-    >
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <Badge tone={
-          lc === "EMERGING" ? "success" : lc === "RISING" ? "info"
-          : lc === "DECLINING" ? "error" : lc === "PEAK" ? "warning" : "neutral"
-        }>{lc.toLowerCase()}</Badge>
-        <span className="font-mono text-sm font-semibold">{score.toFixed(0)}</span>
-      </div>
-      {/* score bar — communicates the number visually, no decoration */}
-      <div className="h-1 rounded-full mb-2" style={{ background: "var(--bg-subtle)" }}>
-        <div
-          className="h-1 rounded-full"
-          style={{
-            width: `${Math.max(2, Math.min(100, score))}%`,
-            background: score >= 70 ? "var(--accent, #10b981)" : score >= 45 ? "#3b82f6" : "#94a3b8",
-          }}
-        />
-      </div>
-      <p className="text-sm font-medium leading-snug line-clamp-2">{opp.topic}</p>
-      <div className="mt-2.5 flex items-center justify-between text-[11px]" style={{ color: "var(--text-muted)" }}>
-        <span className="flex items-center gap-1.5">
-          {opp.source}
-          {opp.velocity != null && <VelocityBadge velocity={opp.velocity} />}
-        </span>
-        <span>{new Date(opp.created_at).toLocaleDateString()}</span>
-      </div>
-      {opp.selected && <div className="mt-2"><Badge tone="success">selected</Badge></div>}
-    </button>
-  );
-}
-
-function VelocityBadge({ velocity }: { velocity: number | null | undefined }) {
-  if (velocity == null) return null;
-  const pct = Math.round(velocity * 100);
-  const tone = pct >= 70 ? "success" : pct >= 35 ? "info" : "neutral";
-  const label = pct >= 70 ? "fast" : pct >= 35 ? "steady" : "slow";
-  return (
-    <Badge tone={tone as any}>
-      {label} · {pct}
-    </Badge>
-  );
-}
-
-function TrendDetail({ opp, onAct }: { opp: any; onAct: (id: string, a: "select" | "skip") => void }) {
-  const comps: Record<string, any> = opp.components ?? {};
-  return (
-    <div className="space-y-5">
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-lg font-semibold leading-snug">{opp.topic}</h2>
-          <span className="font-mono text-xl font-bold">{Number(opp.score).toFixed(0)}</span>
-        </div>
-        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-          source: {opp.source} · detected {new Date(opp.created_at).toLocaleString()} · lifecycle {opp.lifecycle}
-          {opp.velocity != null && <> · velocity {Math.round(opp.velocity * 100)}/100</>}
-        </p>
-        {opp.source_url && (
-          <a
-            href={opp.source_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs underline inline-flex items-center gap-1 mt-1"
-            style={{ color: "var(--accent, #10b981)" }}
-          >
-            View source ↗
-          </a>
-        )}
-      </div>
-
-      <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>
-          Why this score?
-        </h3>
-        <div className="space-y-1">
-          {Object.entries(comps).map(([key, c]: [string, any]) => (
-            <div key={key} className="flex items-center justify-between text-[13px]">
-              <div className="min-w-0">
-                <span className="capitalize">{key.replace(/_/g, " ")}</span>
-                <span className="block text-[11px]" style={{ color: "var(--text-muted)" }}>{c.reason}</span>
-              </div>
-              <div className="text-right shrink-0 ml-3">
-                <span className={`font-mono ${c.score >= 50 ? "" : "text-red-500"}`}>{Number(c.score).toFixed(0)}</span>
-                <span className="block text-[10px]" style={{ color: "var(--text-muted)" }}>
-                  ×{c.weight} · {(c.confidence * 100).toFixed(0)}%
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex gap-2 pt-2 border-t" style={{ borderColor: "var(--border)" }}>
-        {!opp.selected ? (
-          <button className="btn-primary" onClick={() => onAct(opp.id, "select")}>Create content</button>
-        ) : (
-          <Badge tone="success">already selected</Badge>
-        )}
-        <button className="btn-outline" onClick={() => onAct(opp.id, "skip")}>Ignore</button>
-        {opp.source_url && (
-          <a
-            className="btn-outline"
-            href={opp.source_url}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Evidence ↗
-          </a>
-        )}
-      </div>
-    </div>
-  );
-}
-

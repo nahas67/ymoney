@@ -1,316 +1,194 @@
-import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { wsApi } from "../lib/api";
-import { Badge, Card, PageHeader, Skeleton, Tabs, fmtDate } from "../components/ui";
-
-const TABS = ["overview", "research", "strategy", "script", "video", "publishing", "timeline"];
+import { useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { wsApi, videoFileUrl, videoThumbUrl } from "../lib/api";
+import { useFetch } from "../hooks/hooks";
+import { Badge, Card, PageHeader, ScoreBar, Tabs, WhyPanel } from "../components/ui";
+import { fmtDate } from "../lib/format";
 
 export default function ContentDetail() {
   const { contentId } = useParams();
   const nav = useNavigate();
-  const [item, setItem] = useState<any>(null);
-  const [timeline, setTimeline] = useState<any[]>([]);
-  const [posts, setPosts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState("overview");
+  const detail = useFetch(() => wsApi.get(`/content/${contentId}`), [contentId]);
+  const timeline = useFetch(() => wsApi.get(`/content/${contentId}/timeline`), [contentId]);
+  const [tab, setTab] = useState<"video" | "research" | "strategy" | "variants" | "timeline">("video");
+  const [busy, setBusy] = useState("");
+  const [thumbAt, setThumbAt] = useState("1.0");
+  const [sched, setSched] = useState<{ platform: string; runAt: string } | null>(null);
 
-  const load = useCallback(async () => {
-    if (!contentId) return;
-    setLoading(true);
-    setError(null);
+  const c: any = detail.data;
+
+  async function action(a: string) {
+    setBusy(a);
     try {
-      const detail = await wsApi.get(`/content/${contentId}`);
-      setItem(detail);
-      wsApi.get(`/content/${contentId}/timeline`).then((tl) => setTimeline(tl.items ?? [])).catch(() => {});
+      await wsApi.post(`/content/${contentId}/actions`, { action: a });
+      detail.reload();
     } catch (e: any) {
-      setError(e.message);
+      alert(e.message);
     } finally {
-      setLoading(false);
+      setBusy("");
     }
-  }, [contentId]);
-
-  useEffect(() => { load(); }, [load]);
-
-  // poll while a render is in flight so real progress reaches the UI
-  useEffect(() => {
-    if (item?.video?.status !== "RENDERING") return;
-    const t = setInterval(() => wsApi.get(`/content/${contentId}`).then(setItem).catch(() => {}), 3000);
-    return () => clearInterval(t);
-  }, [item?.video?.status, contentId]);
-
-  async function act(action: string) {
-    if (!item) return;
-    await wsApi.post(`/content/${item.id}/actions`, { action });
-    load();
   }
 
-  if (loading && !item) return <Skeleton rows={8} />;
-  if (error)
-    return (
-      <div className="space-y-4">
-        <Link to="/studio" className="btn-outline inline-flex">← Studio</Link>
-        <Card><p className="text-sm text-red-500">{error}</p></Card>
-      </div>
-    );
-  if (!item) return null;
+  async function remakeThumb() {
+    if (!c?.video?.id) return;
+    setBusy("thumb");
+    try {
+      await wsApi.post(`/videos/${c.video.id}/thumbnail`, { at_seconds: parseFloat(thumbAt) || 1 });
+      detail.reload();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy("");
+    }
+  }
 
-  const why = item.strategy?.decision;
-  const research = item.research ?? {};
-  const selectedVariant = (item.variants ?? []).find((v: any) => v.selected);
+  async function schedule() {
+    if (!sched) return;
+    setBusy("sched");
+    try {
+      // datetime-local is naive — the API requires explicit timezone ISO.
+      await wsApi.post("/calendar", { content_item_id: contentId, platform: sched.platform, run_at: new Date(sched.runAt).toISOString() });
+      alert("Scheduled");
+      setSched(null);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy("");
+    }
+  }
 
   return (
-    <div className="space-y-5">
-      <button className="btn-outline" onClick={() => nav("/studio")}>← Content Studio</button>
+    <div className="space-y-4">
+      <PageHeader title={c?.topic ?? "Content"} subtitle={c ? `${c.status} · ${fmtDate(c.created_at)}` : undefined}
+        actions={<>
+          <button className="btn-ghost !text-xs" onClick={() => nav("/studio")}>← Library</button>
+          {c && ["QC", "APPROVED", "SCHEDULED"].includes(c.status) && (
+            <>
+              <button className="btn-primary !text-xs" disabled={busy === "approve"} onClick={() => action("approve")}>Approve</button>
+              <button className="btn-outline !text-xs" disabled={busy === "retry"} onClick={() => action("retry")}>Retry</button>
+              <button className="btn-ghost !text-xs" disabled={busy === "skip"} onClick={() => action("skip")}>Skip</button>
+            </>
+          )}
+        </>} />
+      {detail.loading && <Card>Loading…</Card>}
+      {detail.error && <Card>Error: {detail.error}</Card>}
+      {c && (
+        <>
+          {c.video?.quality_notes?.includes("originality") || c.video?.quality_notes?.includes("fact") ? (
+            <Card style={{ borderColor: "var(--warn)" }}>
+              <span className="text-[13px]">⚠️ {c.video.quality_notes}</span>
+            </Card>
+          ) : null}
+          <Tabs tabs={[
+            { key: "video", label: "Video & QC" }, { key: "research", label: "Research & claims" },
+            { key: "strategy", label: "Strategy" }, { key: "variants", label: `Variants (${c.variants?.length ?? 0})` },
+            { key: "timeline", label: "Timeline" },
+          ]} active={tab} onChange={setTab} />
 
-      <PageHeader
-        title={item.topic}
-        subtitle={`Created ${fmtDate(item.created_at)} · ${item.variants_count} variant(s)`}
-        actions={
-          <>
-            <Badge tone={
-              ["LEARNED", "PUBLISHED", "APPROVED"].includes(item.status) ? "success"
-              : ["FAILED", "SKIPPED"].includes(item.status) ? "error" : "info"
-            }>{item.status.toLowerCase()}</Badge>
-            <button className="btn-outline" onClick={() => act("retry")}>Retry</button>
-            <button className="btn-ghost" onClick={() => act("skip")}>Archive</button>
-            {item.status === "QC" && <button className="btn-primary" onClick={() => act("approve")}>Approve</button>}
-          </>
-        }
-      />
+          {tab === "video" && (
+            <div className="grid lg:grid-cols-2 gap-4">
+              <Card>
+                {c.video?.id ? (
+                  <>
+                    <video key={c.video.id} controls preload="metadata" className="w-full rounded-lg aspect-[9/16] max-h-[520px] bg-black"
+                      src={videoFileUrl(c.video.id)} poster={c.video.thumbnail_path ? videoThumbUrl(c.video.id) : undefined} />
+                    <div className="flex gap-2 mt-3 items-center flex-wrap">
+                      <input className="input !w-24" value={thumbAt} onChange={(e) => setThumbAt(e.target.value)} aria-label="Thumbnail timestamp" />
+                      <button className="btn-outline !text-xs" disabled={busy === "thumb"} onClick={remakeThumb}>Remake cover @sec</button>
+                      <span className="text-[12px] font-mono" style={{ color: "var(--text-muted)" }}>{c.video.engine} · {c.video.aspect_ratio} · {c.video.status}</span>
+                    </div>
+                  </>
+                ) : <div className="text-[13px]" style={{ color: "var(--text-muted)" }}>No render yet for this item.</div>}
+              </Card>
+              <Card>
+                <b className="text-[14px]">Quality control</b>
+                {c.video?.quality != null ? (
+                  <div className="mt-2 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <ScoreBar value={c.video.quality} />
+                      <Badge tone={c.video.quality_passed ? "success" : "error"}>{c.video.quality_passed ? "PASSED" : "REJECTED"}</Badge>
+                    </div>
+                    {Object.entries(c.video.quality_components ?? {}).map(([k, v]: any) => (
+                      <div key={k} className="flex justify-between text-[12.5px]">
+                        <span className="font-mono" style={{ color: "var(--text-muted)" }}>{k}</span>
+                        <ScoreBar value={Number(v)} />
+                      </div>
+                    ))}
+                    {c.video.quality_notes && <div className="text-[12.5px] pt-1" style={{ color: "var(--text-muted)" }}>{c.video.quality_notes}</div>}
+                  </div>
+                ) : <div className="text-[13px] mt-2" style={{ color: "var(--text-muted)" }}>Not QC'd yet.</div>}
+                <div className="mt-4 pt-3" style={{ borderTop: "var(--seam)" }}>
+                  <b className="text-[13px]">Schedule this video</b>
+                  <div className="flex gap-2 mt-2 flex-wrap">
+                    <select className="select !w-36" value={sched?.platform ?? "youtube"} onChange={(e) => setSched({ platform: e.target.value, runAt: sched?.runAt ?? "" })}>
+                      {["youtube", "tiktok", "facebook", "instagram"].map((p) => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                    <input className="input !w-56" type="datetime-local" value={sched?.runAt ?? ""} onChange={(e) => setSched({ platform: sched?.platform ?? "youtube", runAt: e.target.value })} />
+                    <button className="btn-outline !text-xs" disabled={busy === "sched" || !sched?.runAt} onClick={schedule}>Schedule</button>
+                  </div>
+                  <p className="text-[11.5px] mt-1.5" style={{ color: "var(--text-faint)" }}>Use timezone-aware ISO time; the sweep publishes when due. Best hours live on the Calendar page.</p>
+                </div>
+              </Card>
+            </div>
+          )}
 
-      <Tabs tabs={TABS.map((t) => ({ key: t, label: t[0].toUpperCase() + t.slice(1) }))} active={tab} onChange={setTab} />
-
-      {tab === "overview" && (
-        <div className="grid lg:grid-cols-2 gap-5">
-          {why && (
+          {tab === "research" && (
             <Card>
-              <h3 className="text-xs font-semibold uppercase tracking-wider mb-2.5" style={{ color: "var(--text-muted)" }}>
-                Why was this produced?
-              </h3>
-              <Badge tone="success">{why.action}</Badge>
-              <ul className="mt-2.5 space-y-1">
-                {(why.reasons ?? []).map((r: string, i: number) => (
-                  <li key={i} className="text-[13px] flex gap-2"><span style={{ color: "var(--text-muted)" }}>—</span>{r}</li>
-                ))}
-              </ul>
-              {(why.factors ?? []).map((f: any, i: number) => (
-                <div key={i} className="flex justify-between text-[12px] mt-1">
-                  <span style={{ color: "var(--text-muted)" }}>{String(f.name).replace(/_/g, " ")}</span>
-                  <span className={`font-mono ${f.contribution >= 0 ? "text-emerald-500" : "text-red-500"}`}>{f.value}</span>
+              <p className="text-[13.5px] mb-3">{c.research?.summary ?? "No research brief."}</p>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <div className="panel-label mb-1.5">Key facts</div>
+                  {(c.research?.key_facts ?? []).map((f: string, i: number) => <div key={i} className="text-[13px] py-1" style={{ borderBottom: "var(--seam)" }}>• {f}</div>)}
+                  <div className="panel-label mt-3 mb-1.5">Angles</div>
+                  {(c.research?.angles ?? []).map((f: string, i: number) => <div key={i} className="text-[13px] py-1" style={{ borderBottom: "var(--seam)" }}>• {f}</div>)}
+                </div>
+                <div>
+                  <div className="panel-label mb-1.5">Claims + factual confidence {c.research?.factual_confidence != null ? `(${Math.round(c.research.factual_confidence * 100)}% · ${c.research.fact_status})` : ""}</div>
+                  {(c.research?.claims ?? []).map((cl: any, i: number) => (
+                    <div key={i} className="py-1.5" style={{ borderBottom: "var(--seam)" }}>
+                      <Badge tone={cl.status === "VERIFIED" ? "success" : cl.status === "LIKELY" ? "info" : cl.status === "CONFLICTING" ? "error" : "warning"}>{cl.status}</Badge>
+                      <span className="text-[13px] ml-2">{cl.claim}</span>
+                      {cl.basis && <div className="text-[12px]" style={{ color: "var(--text-faint)" }}>{cl.basis}</div>}
+                    </div>
+                  ))}
+                  {!((c.research?.claims ?? []).length) && <div className="text-[13px]" style={{ color: "var(--text-faint)" }}>No tracked claims.</div>}
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {tab === "strategy" && (
+            <Card>
+              <pre className="text-[12.5px] font-mono whitespace-pre-wrap">{JSON.stringify(c.strategy ?? {}, null, 2)}</pre>
+              {c.strategy?.decision && <div className="mt-3"><WhyPanel why={c.strategy.decision} /></div>}
+            </Card>
+          )}
+
+          {tab === "variants" && (
+            <div className="space-y-3">
+              {(c.variants ?? []).map((v: any) => (
+                <Card key={v.id} style={v.selected ? { borderColor: "var(--accent)" } : undefined}>
+                  <div className="flex gap-2 items-center flex-wrap mb-2">
+                    <Badge tone={v.selected ? "success" : "muted"}>{v.label}{v.selected ? " · selected" : ""}</Badge>
+                    {v.predicted_score != null && <span className="font-mono text-[12px]">hook {v.predicted_score}</span>}
+                  </div>
+                  <p className="text-[13.5px] whitespace-pre-wrap">{v.script}</p>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {tab === "timeline" && (
+            <Card>
+              {((timeline.data as any)?.items ?? []).map((t: any, i: number) => (
+                <div key={i} className="flex gap-3 py-2 text-[13px]" style={{ borderBottom: "var(--seam)" }}>
+                  <span className="font-mono text-[11.5px] whitespace-nowrap" style={{ color: "var(--text-faint)" }}>{t.at?.slice(0, 16).replace("T", " ")}</span>
+                  <div><b className="font-mono text-[11.5px]">{t.kind}</b> — {t.label}{t.detail ? <span style={{ color: "var(--text-muted)" }}> · {t.detail}</span> : null}</div>
                 </div>
               ))}
             </Card>
           )}
-          <Card>
-            <h3 className="text-xs font-semibold uppercase tracking-wider mb-2.5" style={{ color: "var(--text-muted)" }}>Video</h3>
-            {item.video ? (
-              <div className="space-y-1.5 text-[13px]">
-                <p>Engine: {item.video.engine} {item.video.engine === "mock" && <Badge tone="warning">MOCK</Badge>}</p>
-                <p>{item.video.aspect_ratio} · {item.video.resolution}</p>
-                <p>QC: {item.video.quality != null ? `${Math.round(item.video.quality)}/100` : "pending"}</p>
-              {item.video.status === "READY" && !item.video.file_path?.startsWith("mock:") && (
-                <video
-                  className="rounded-lg w-full max-h-[420px] bg-black"
-                  src={`/api/v1/workspaces/${localStorage.getItem("ym_ws")}/videos/${item.video.id}/file`}
-                  poster={item.video.thumbnail_path ? `/api/v1/workspaces/${localStorage.getItem("ym_ws")}/videos/${item.video.id}/thumbnail` : undefined}
-                  controls
-                  preload="none"
-                  playsInline
-                />
-              )}
-                <a
-                  className="btn-outline mt-2 inline-flex"
-                  href={`/api/v1/workspaces/${localStorage.getItem("ym_ws")}/videos/${item.video.id}/file`}
-                  target="_blank" rel="noreferrer"
-                >
-                  Open artifact{item.video.engine === "mock" ? " (render spec)" : ""}
-                </a>
-              </div>
-            ) : <p style={{ color: "var(--text-muted)" }}>No video yet.</p>}
-          </Card>
-        </div>
-      )}
-
-      {tab === "research" && (
-        <Card>
-          {research.summary ? (
-            <div className="space-y-4 text-sm">
-              <p>{research.summary}</p>
-              {research.fact_status && (
-                <Badge tone={
-                  research.fact_status === "OK" ? "success"
-                  : research.fact_status === "CONFLICTING" ? "error" : "warning"
-                }>
-                  facts: {String(research.fact_status).toLowerCase()} ({research.factual_confidence})
-                </Badge>
-              )}
-              {(research.claims ?? []).length > 0 && (
-                <div className="space-y-2">
-                  {research.claims.map((c: any, i: number) => (
-                    <div key={i} className="flex items-start gap-2 text-[13px]">
-                      <Badge tone={
-                        c.status === "VERIFIED" ? "success" : c.status === "LIKELY" ? "info"
-                        : c.status === "CONFLICTING" ? "error" : "neutral"
-                      }>{c.status}</Badge>
-                      <div>{c.claim}<span className="block text-[11px]" style={{ color: "var(--text-muted)" }}>{c.basis}</span></div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <ul className="list-disc pl-5 space-y-1">
-                {(research.key_facts ?? []).map((f: string, i: number) => <li key={i}>{f}</li>)}
-              </ul>
-            </div>
-          ) : <p style={{ color: "var(--text-muted)" }}>Research not available yet.</p>}
-        </Card>
-      )}
-
-      {tab === "strategy" && (
-        <Card>
-          {item.strategy?.angle ? (
-            <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
-              {[["Angle", item.strategy.angle], ["Audience", item.strategy.target_audience],
-                ["Hook", item.strategy.hook_type], ["Duration", `${item.strategy.duration_seconds}s`],
-                ["Tone", item.strategy.tone], ["CTA", item.strategy.cta],
-                ["Platforms", (item.strategy.platforms ?? []).join(", ")], ["Aspect", item.strategy.aspect_ratio]].map(([k, v]) => (
-                <div key={k as string}>
-                  <dt className="text-[11px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{k}</dt>
-                  <dd>{String(v ?? "—")}</dd>
-                </div>
-              ))}
-            </dl>
-          ) : <p style={{ color: "var(--text-muted)" }}>Strategy not generated yet.</p>}
-        </Card>
-      )}
-
-      {tab === "script" && (
-        <div className="space-y-4">
-          {(item.variants ?? []).map((v: any) => (
-            <Card key={v.id}>
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-medium text-sm">Variant {v.label}</h3>
-                <div className="flex gap-2">
-                  {v.predicted_score != null && <Badge tone="info">hook score {v.predicted_score}</Badge>}
-                  {v.selected && <Badge tone="success">selected</Badge>}
-                </div>
-              </div>
-              <p className="text-sm whitespace-pre-wrap leading-relaxed">{v.script}</p>
-              {v.metadata && Object.keys(v.metadata).length > 0 && (
-                <details className="mt-3">
-                  <summary className="text-xs cursor-pointer" style={{ color: "var(--text-muted)" }}>Platform metadata</summary>
-                  <pre className="text-[11px] mt-2 overflow-x-auto">{JSON.stringify(v.metadata, null, 2)}</pre>
-                </details>
-              )}
-            </Card>
-          ))}
-          {(item.variants ?? []).length === 0 && <Card><p style={{ color: "var(--text-muted)" }}>No scripts yet.</p></Card>}
-        </div>
-      )}
-
-      {tab === "video" && (
-        <Card>
-          {item.video ? (
-            <div className="space-y-3 text-[13px]">
-              {item.video.status === "RENDERING" && (
-                <div>
-                  <div className="flex justify-between mb-1">
-                    <span className="font-medium">Rendering…</span>
-                    <span className="font-mono">{item.video.progress ?? 0}%</span>
-                  </div>
-                  <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--bg-subtle)" }}>
-                    <div className="h-full transition-all" style={{ width: `${item.video.progress ?? 0}%`, background: "var(--accent)" }} />
-                  </div>
-                </div>
-              )}
-              <p>Engine: {item.video.engine}{item.video.engine === "mock" && " — simulated artifact, no real render"}</p>
-              <p>Status: {item.video.status} · {item.video.aspect_ratio} · {item.video.resolution}</p>
-              {item.video.duration_seconds != null && <p>Duration: {Number(item.video.duration_seconds).toFixed(1)}s</p>}
-              {selectedVariant && <p>Script used: variant {selectedVariant.label}</p>}
-              {(() => {
-                const qc = item.video?.quality_components ?? {};
-                const vis = qc.vision;
-                if (!vis) return null;
-                return (
-                  <div className="mt-3 rounded-lg border p-3" style={{ borderColor: "var(--border)" }}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <h4 className="text-xs font-semibold uppercase tracking-wider">Media inspection</h4>
-                      {vis.is_mock && <Badge tone="warning">MOCK</Badge>}
-                    </div>
-                    <div className="flex flex-wrap gap-1.5 mb-2">
-                      <Badge tone={vis.audio_present ? "success" : "error"}>{vis.audio_present ? "audio track" : "no audio"}</Badge>
-                      <Badge tone={(vis.silent_sections ?? []).length ? "warning" : "success"}>
-                        {(vis.silent_sections ?? []).length ? `${vis.silent_sections.length} silent section(s)` : "no silent gaps"}
-                      </Badge>
-                      <Badge tone={vis.subtitles_aligned ? "success" : "error"}>{vis.subtitles_aligned ? "subtitles aligned" : "subtitles misaligned"}</Badge>
-                      {(vis.scenes ?? []).some((s: any) => s.black_frames || s.corrupted) && (
-                        <Badge tone="error">black/corrupted frames detected</Badge>
-                      )}
-                    </div>
-                    {vis.notes && <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>{vis.notes}</p>}
-                    {vis.provider && <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>inspector: {vis.provider}</p>}
-                  </div>
-                );
-  })()}
-              {item.video.status === "READY" && !item.video.file_path?.startsWith("mock:") && (
-                <video
-                  className="rounded-lg w-full max-h-[420px] bg-black"
-                  src={`/api/v1/workspaces/${localStorage.getItem("ym_ws")}/videos/${item.video.id}/file`}
-                  poster={item.video.thumbnail_path ? `/api/v1/workspaces/${localStorage.getItem("ym_ws")}/videos/${item.video.id}/thumbnail` : undefined}
-                  controls
-                  preload="none"
-                  playsInline
-                />
-              )}
-                <a
-                  className="btn-outline inline-flex mt-1"
-                href={`/api/v1/workspaces/${localStorage.getItem("ym_ws")}/videos/${item.video.id}/file`}
-                target="_blank" rel="noreferrer"
-              >
-                Open artifact
-              </a>
-            </div>
-          ) : <p style={{ color: "var(--text-muted)" }}>No video rendered.</p>}
-        </Card>
-      )}
-
-      {tab === "publishing" && (
-        <Card pad={false}>
-          <table className="table">
-            <thead><tr><th>Platform</th><th>Title</th><th>Views</th><th>Published</th><th>Link</th></tr></thead>
-            <tbody>
-              {posts.filter((p: any) => p.title && p.published_at).slice(0, 10).map((p: any) => (
-                <tr key={p.id}>
-                  <td className="capitalize">{p.platform}{p.is_mock && <Badge tone="warning">mock</Badge>}</td>
-                  <td className="max-w-[240px] truncate">{p.title}</td>
-                  <td>{p.metrics?.views ?? 0}</td>
-                  <td className="text-[12px]" style={{ color: "var(--text-muted)" }}>{fmtDate(p.published_at)}</td>
-                  <td>{p.remote_url?.startsWith("http") ? <a className="underline" href={p.remote_url} target="_blank" rel="noreferrer">open</a> : "—"}</td>
-                </tr>
-              ))}
-              {posts.filter((p: any) => p.title && p.published_at).length === 0 && (
-                <tr><td colSpan={5} className="text-center py-8" style={{ color: "var(--text-muted)" }}>Not published yet.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </Card>
-      )}
-
-      {tab === "timeline" && (
-        <Card>
-          <ol className="relative border-l ml-2 space-y-4" style={{ borderColor: "var(--border)" }}>
-            {timeline.map((t, i) => (
-              <li key={i} className="ml-4">
-                <span className="absolute -left-[5px] mt-1.5 h-2 w-2 rounded-full" style={{ background: "var(--text-muted)" }} />
-                <p className="text-sm">{t.label}</p>
-                <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-                  {fmtDate(t.at)}{t.detail ? ` · ${t.detail}` : ""}
-                </p>
-              </li>
-            ))}
-            {timeline.length === 0 && <li className="text-[13px]" style={{ color: "var(--text-muted)" }}>No events recorded.</li>}
-          </ol>
-        </Card>
+        </>
       )}
     </div>
   );

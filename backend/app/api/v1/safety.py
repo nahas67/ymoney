@@ -40,6 +40,7 @@ class SafetyBody(BaseModel):
     require_human_review_risk_above: float | None = Field(default=None, ge=0, le=100)
     produce_score_threshold: float | None = Field(default=None, ge=0, le=100)
     max_concurrent_renders: int | None = Field(default=None, ge=1, le=8)
+    require_approval_before_publish: bool | None = None
 
 
 @safety_router.get("")
@@ -183,6 +184,7 @@ class SafetyBody(BaseModel):
     require_human_review_risk_above: float | None = Field(default=None, ge=0, le=100)
     produce_score_threshold: float | None = Field(default=None, ge=0, le=100)
     max_concurrent_renders: int | None = Field(default=None, ge=1, le=8)
+    require_approval_before_publish: bool | None = None
 
 
 @safety_router.get("")

@@ -1,256 +1,201 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import { fmtAgo } from "../lib/format";
 
-/* ---------------------------------------------------------------------------
-   YMONEY design-system primitives. Every screen composes from these so the
-   product stays visually coherent and accessible.
---------------------------------------------------------------------------- */
+export { statusTone, lifecycleTone } from "../lib/format";
 
-export function PageHeader({
-  title,
-  subtitle,
-  actions,
-}: {
-  title: string;
-  subtitle?: string;
-  actions?: React.ReactNode;
-}) {
-  return (
-    <header className="flex items-start justify-between gap-4 flex-wrap">
-      <div>
-        <h1 className="text-xl font-bold tracking-tight">{title}</h1>
-        {subtitle && <p className="text-[13px] mt-0.5" style={{ color: "var(--text-muted)" }}>{subtitle}</p>}
-      </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
-    </header>
-  );
-}
+/* Shared UI primitives — every page composes from these. */
 
-export function Card({ children, className = "", pad = true }: any) {
-  return <div className={`card ${pad ? "p-5" : ""} ${className}`}>{children}</div>;
-}
-
-type BadgeTone = "neutral" | "success" | "error" | "warning" | "info";
-const badgeToneCss: Record<BadgeTone, React.CSSProperties> = {
-  neutral: { background: "var(--bg-subtle)", color: "var(--text-muted)", border: "1px solid var(--border)" },
-  success: { background: "var(--accent-dim)", color: "var(--accent)", border: "1px solid var(--accent)" },
-  error: { background: "var(--danger-dim)", color: "var(--danger)", border: "1px solid var(--danger)" },
-  warning: { background: "var(--warn-dim)", color: "var(--warn)", border: "1px solid var(--warn)" },
-  info: { background: "var(--info-dim)", color: "var(--info)", border: "1px solid var(--info)" },
+const tones: Record<string, { fg: string; bg: string }> = {
+  success: { fg: "var(--accent)", bg: "var(--accent-dim)" },
+  warning: { fg: "var(--warn)", bg: "var(--warn-dim)" },
+  error: { fg: "var(--danger)", bg: "var(--danger-dim)" },
+  info: { fg: "var(--info)", bg: "var(--info-dim)" },
+  muted: { fg: "var(--text-muted)", bg: "var(--bg-subtle)" },
 };
 
-export function Badge({ tone = "neutral", children }: { tone?: BadgeTone; children: React.ReactNode }) {
-  return <span className="badge" style={badgeToneCss[tone]}>{children}</span>;
-}
-
-export function StatusDot({ tone = "neutral", pulse }: { tone?: BadgeTone; pulse?: boolean }) {
-  const colors: Record<BadgeTone, string> = {
-    neutral: "var(--text-faint)", success: "var(--accent)", error: "var(--danger)",
-    warning: "var(--warn)", info: "var(--info)",
-  };
+export function Badge({ tone = "muted", children }: { tone?: keyof typeof tones | string; children: ReactNode }) {
+  const t = tones[tone] ?? tones.muted;
   return (
-    <span className="relative inline-flex h-2 w-2 mr-1.5 align-middle">
-      {pulse && <span className="animate-ping absolute h-full w-full rounded-full opacity-60" style={{ background: colors[tone] }} />}
-      <span className="relative inline-flex rounded-full h-2 w-2" style={{ background: colors[tone] }} />
+    <span className="badge" style={{ color: t.fg, background: t.bg }}>
+      {children}
     </span>
   );
 }
 
-export function Tabs({ tabs, active, onChange }: {
-  tabs: { key: string; label: string; count?: number }[];
-  active: string;
-  onChange: (k: string) => void;
-}) {
+export function Card({ children, pad = true, className = "", style }: { children: ReactNode; pad?: boolean; className?: string; style?: any }) {
   return (
-    <div className="flex gap-1 flex-wrap" role="tablist">
+    <div className={`card ${className}`} style={{ padding: pad ? 18 : 0, ...style }}>
+      {children}
+    </div>
+  );
+}
+
+export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+      <div>
+        <h1>{title}</h1>
+        {subtitle && <p className="text-[13px] mt-1" style={{ color: "var(--text-muted)" }}>{subtitle}</p>}
+      </div>
+      {actions && <div className="flex items-center gap-2 flex-wrap">{actions}</div>}
+    </div>
+  );
+}
+
+export function Stat({ label, value, hint, tone }: { label: string; value: ReactNode; hint?: string; tone?: string }) {
+  return (
+    <Card>
+      <div className="panel-label mb-1">{label}</div>
+      <div className="text-[22px] font-semibold tracking-tight" style={tone ? { color: tone } : undefined}>{value}</div>
+      {hint && <div className="text-[12px] mt-1" style={{ color: "var(--text-muted)" }}>{hint}</div>}
+    </Card>
+  );
+}
+
+export function ScoreBar({ value, max = 100 }: { value: number; max?: number }) {
+  const pct = Math.max(0, Math.min(100, (value / max) * 100));
+  const color = pct >= 75 ? "var(--accent)" : pct >= 55 ? "var(--warn)" : "var(--danger)";
+  return (
+    <div className="flex items-center gap-2 min-w-[110px]">
+      <div className="flex-1 h-[7px] rounded-full overflow-hidden" style={{ background: "var(--bg-subtle)" }}>
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+      </div>
+      <span className="text-[12px] font-semibold font-mono" style={{ color }}>{value.toFixed(0)}</span>
+    </div>
+  );
+}
+
+export function Tabs<T extends string>({ tabs, active, onChange }: { tabs: { key: T; label: string; count?: number }[]; active: T; onChange: (k: T) => void }) {
+  return (
+    <div className="flex gap-1 flex-wrap mb-4">
       {tabs.map((t) => (
-        <button
-          key={t.key}
-          role="tab"
-          aria-selected={active === t.key}
-          className={`tab ${active === t.key ? "active" : ""}`}
-          onClick={() => onChange(t.key)}
-        >
+        <button key={t.key} className={`tab ${active === t.key ? "active" : ""}`} onClick={() => onChange(t.key)}>
           {t.label}
-          {t.count != null && (
-            <span className="ml-1.5 text-[11px] opacity-60">{t.count}</span>
-          )}
+          {t.count != null && <span className="ml-1.5 opacity-70 font-mono text-[11px]">{t.count}</span>}
         </button>
       ))}
     </div>
   );
 }
 
-export function Modal({ open, onClose, children, wide }: any) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose?.();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+  return (
+    <label className="block mb-3">
+      <div className="text-[12px] font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>{label}</div>
+      {children}
+      {hint && <div className="text-[11px] mt-1" style={{ color: "var(--text-faint)" }}>{hint}</div>}
+    </label>
+  );
+}
+
+export function Modal({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean }) {
   if (!open) return null;
   return (
-    <div
-      className="fixed inset-0 bg-black/60 backdrop-blur-[2px] grid place-items-center p-4 z-50"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onClose}>
       <div
-        className={`card w-full ${wide ? "max-w-3xl" : "max-w-lg"} max-h-[88vh] overflow-y-auto p-6`}
-        style={{ background: "var(--bg-panel)" }}
+        className="card w-full overflow-hidden"
+        style={{ maxWidth: wide ? 860 : 560, maxHeight: "88vh", display: "flex", flexDirection: "column", padding: 0 }}
         onClick={(e) => e.stopPropagation()}
       >
-        {children}
-      </div>
-    </div>
-  );
-}
-
-export function EmptyState({ icon = "◌", title, hint, action }: {
-  icon?: string; title: string; hint?: string; action?: React.ReactNode;
-}) {
-  return (
-    <div className="py-14 text-center px-4">
-      <div className="text-3xl mb-3 font-mono" style={{ color: "var(--text-faint)" }} aria-hidden>{icon}</div>
-      <p className="font-medium">{title}</p>
-      {hint && <p className="text-[13px] mt-1" style={{ color: "var(--text-muted)" }}>{hint}</p>}
-      {action && <div className="mt-4 flex justify-center">{action}</div>}
-    </div>
-  );
-}
-
-export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  return (
-    <Card className="border-red-500/30">
-      <div className="flex items-start gap-3 py-2">
-        <span className="text-red-500 text-lg leading-none mt-0.5">⚠</span>
-        <div className="flex-1">
-          <p className="font-medium text-sm">Something went wrong</p>
-          <p className="text-[13px] mt-0.5" style={{ color: "var(--text-muted)" }}>{message}</p>
+        <div className="flex items-center justify-between px-5 py-3.5" style={{ borderBottom: "var(--seam)" }}>
+          <div className="font-semibold text-[15px]">{title}</div>
+          <button className="btn-ghost !px-2.5 !py-1 text-[13px]" onClick={onClose} aria-label="Close">✕</button>
         </div>
-        {onRetry && (
-          <button className="btn-outline shrink-0" onClick={onRetry}>Retry</button>
-        )}
+        <div className="px-5 py-4 overflow-y-auto">{children}</div>
       </div>
-    </Card>
+    </div>
   );
 }
 
-export function Skeleton({ rows = 3, height = 44 }: { rows?: number; height?: number }) {
+export function Empty({ title, hint, action }: { title: string; hint?: string; action?: ReactNode }) {
   return (
-    <div className="space-y-2.5" aria-busy="true" aria-label="Loading">
+    <div className="text-center py-10 px-4">
+      <div className="text-[15px] font-medium">{title}</div>
+      {hint && <div className="text-[13px] mt-1.5 max-w-[420px] mx-auto" style={{ color: "var(--text-muted)" }}>{hint}</div>}
+      {action && <div className="mt-4">{action}</div>}
+    </div>
+  );
+}
+
+export function Loading({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="space-y-2.5 py-2">
       {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="skeleton" style={{ height }} />
+        <div key={i} className="skeleton" style={{ height: 44 }} />
       ))}
     </div>
   );
 }
 
-export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+export function ErrorBox({ error, onRetry }: { error: string; onRetry?: () => void }) {
   return (
-    <label className="block">
-      <span className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>{label}</span>
-      {children}
-      {hint && <span className="block text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>{hint}</span>}
-    </label>
+    <Card style={{ borderColor: "var(--danger)" }}>
+      <div className="text-[13.5px] font-medium" style={{ color: "var(--danger)" }}>Couldn't load this view</div>
+      <div className="text-[12.5px] mt-1 font-mono break-words" style={{ color: "var(--text-muted)" }}>{error}</div>
+      {onRetry && <button className="btn-outline !text-xs mt-3" onClick={onRetry}>Retry</button>}
+    </Card>
   );
 }
 
-export function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label?: string }) {
-  return (
-    <button
-      role="switch"
-      aria-checked={checked}
-      aria-label={label ?? "toggle"}
-      onClick={() => onChange(!checked)}
-      className="relative w-9 h-5 rounded-full transition-colors shrink-0"
-      style={checked
-        ? { background: "var(--accent)", boxShadow: "0 0 10px -2px var(--accent-glow)" }
-        : { background: "var(--border-strong)" }}
-    >
-      <span
-        className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-4" : ""}`}
-      />
-    </button>
-  );
-}
-
-/* ---------------------------------------------------------------------------
-   Toasts
---------------------------------------------------------------------------- */
-type Toast = { id: number; kind: "success" | "error" | "info"; message: string };
-const ToastCtx = createContext<{ push: (kind: Toast["kind"], msg: string) => void }>({ push: () => {} });
-
-export function useToast() {
-  return useContext(ToastCtx);
-}
-
-export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const push = useCallback((kind: Toast["kind"], message: string) => {
-    const id = Date.now() + Math.random();
-    setToasts((t) => [...t.slice(-4), { id, kind, message }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4200);
-  }, []);
-  return (
-    <ToastCtx.Provider value={{ push }}>
-      {children}
-      <div className="fixed bottom-4 right-4 z-[100] space-y-2 max-w-sm" aria-live="polite">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className="card px-4 py-3 text-sm flex items-start gap-2.5"
-            style={{
-              background: "var(--bg-panel)",
-              borderColor: t.kind === "error" ? "var(--danger)" : t.kind === "success" ? "var(--accent)" : "var(--border-strong)",
-            }}
-          >
-            <StatusDot tone={t.kind === "error" ? "error" : t.kind === "success" ? "success" : "info"} />
-            <span>{t.message}</span>
-          </div>
-        ))}
-      </div>
-    </ToastCtx.Provider>
-  );
-}
-
-/* ---------------------------------------------------------------------------
-   Async section helper: loading / error / empty / data
---------------------------------------------------------------------------- */
-export function AsyncSection<T>({
-  data, error, loading, onRetry, empty, emptyHint, emptyAction, children,
-}: {
-  data: T | null | undefined;
-  error: string | null;
+export function Section({ data, loading, error, onRetry, empty, emptyHint, children }: {
+  data: any[] | null | undefined;
   loading: boolean;
-  onRetry?: () => void;
-  empty?: string;
+  error: string | null;
+  onRetry: () => void;
+  empty: string;
   emptyHint?: string;
-  emptyAction?: React.ReactNode;
-  children: (data: T) => React.ReactNode;
+  children: (list: any[]) => ReactNode;
 }) {
-  if (loading && !data) return <Skeleton rows={4} />;
-  if (error) return <ErrorState message={error} onRetry={onRetry} />;
-  if (!data || (Array.isArray(data) && data.length === 0)) {
-    return <EmptyState title={empty ?? "Nothing here yet"} hint={emptyHint} action={emptyAction} />;
-  }
-  return <>{children(data)}</>;
+  if (loading && !data) return <Loading />;
+  if (error && !data) return <ErrorBox error={error} onRetry={onRetry} />;
+  const list = data ?? [];
+  if (!list.length) return <Card><Empty title={empty} hint={emptyHint} action={<button className="btn-outline !text-xs" onClick={onRetry}>Refresh</button>} /></Card>;
+  return <>{children(list)}</>;
 }
 
-export function fmtNum(n: number | undefined | null): string {
-  if (n == null) return "—";
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + "k";
-  return String(n);
+export function WhyPanel({ why }: { why: any }) {
+  if (!why) return null;
+  return (
+    <div className="rounded-xl p-4 text-[13px] space-y-2.5" style={{ background: "var(--bg-inset)", border: "var(--seam)" }}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <Badge tone={why.action === "PRODUCE" ? "success" : why.action === "WAIT" ? "warning" : "muted"}>{why.action}</Badge>
+        {why.score != null && <span className="font-mono font-semibold">{Number(why.score).toFixed(0)}/100</span>}
+        {why.confidence != null && <span style={{ color: "var(--text-muted)" }}>confidence {Math.round(why.confidence * 100)}%</span>}
+      </div>
+      {(why.reasons ?? []).map((r: string, i: number) => (
+        <div key={i}>• {r}</div>
+      ))}
+      {(why.factors ?? []).length > 0 && (
+        <div className="pt-1 space-y-1">
+          {why.factors.map((f: any, i: number) => (
+            <div key={i} className="flex justify-between gap-3 font-mono text-[12px]">
+              <span style={{ color: "var(--text-muted)" }}>{f.name}</span>
+              <span>{f.value} <b style={{ color: f.contribution >= 0 ? "var(--accent)" : "var(--danger)" }}>{f.contribution >= 0 ? "+" : ""}{f.contribution}</b></span>
+            </div>
+          ))}
+        </div>
+      )}
+      {(why.evidence ?? []).map((e: string, i: number) => (
+        <div key={`e${i}`} className="text-[12px]" style={{ color: "var(--text-muted)" }}>↳ {e}</div>
+      ))}
+    </div>
+  );
 }
 
-export function fmtUsd(v: number | null | undefined): string {
-  if (v == null) return "—";
-  return `$${v.toFixed(v < 1 ? 4 : 2)}`;
-}
-
-export function fmtDate(iso: string | null | undefined, withTime = true): string {
-  if (!iso) return "—";
-  const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
-  return withTime ? d.toLocaleString() : d.toLocaleDateString();
+export function FeedList({ items, limit = 30 }: { items: { kind: string; message: string; level: string; created_at?: string }[]; limit?: number }) {
+  const levelColor = (l: string) => (l === "error" ? "var(--danger)" : l === "warning" ? "var(--warn)" : l === "success" ? "var(--accent)" : "var(--text-faint)");
+  return (
+    <div className="space-y-0 max-h-[420px] overflow-y-auto">
+      {items.slice(-limit).reverse().map((e, i) => (
+        <div key={i} className="flex gap-2.5 py-2 text-[12.5px]" style={{ borderBottom: "var(--seam)" }}>
+          <span style={{ color: levelColor(e.level) }}>●</span>
+          <div className="flex-1 min-w-0">
+            <div className="break-words">{e.message}</div>
+            <div className="font-mono text-[11px]" style={{ color: "var(--text-faint)" }}>{e.kind} · {fmtAgo(e.created_at)}</div>
+          </div>
+        </div>
+      ))}
+      {!items.length && <div className="text-[12.5px] py-4 text-center" style={{ color: "var(--text-faint)" }}>No activity yet — press START.</div>}
+    </div>
+  );
 }

@@ -930,6 +930,27 @@ def system_readiness():
     return run_readiness()
 
 
+@system_router.get("/mode")
+def system_mode():
+    """Deployment mode + mock flags (powers the frontend REAL/MOCK badge)."""
+    from app.providers.video_engine.factory import get_video_engine
+
+    try:
+        engine_name = get_video_engine().engine_name
+    except Exception:
+        engine_name = (settings.video_engine or "unknown").lower()
+    return {
+        "mode": "production" if settings.is_production else "development",
+        "video_engine": engine_name,
+        "mocks": {
+            "publishing": bool(settings.mock_publishing),
+            "analytics": bool(settings.mock_analytics),
+            "trends": bool(settings.mock_trends),
+            "video_engine": engine_name in ("mock", "simulation"),
+        },
+    }
+
+
 # ---------------------------------------------------------------------------
 # Memory (spec #25)
 # ---------------------------------------------------------------------------

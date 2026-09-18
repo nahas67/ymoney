@@ -21,6 +21,7 @@ from app.api.v1.misc import (
     jobs_router,
     logs_router,
     memory_router,
+    public_router,
     publishing_router,
     system_router,
 )
@@ -48,6 +49,7 @@ api_router.include_router(memory_router)
 api_router.include_router(agents_router)
 api_router.include_router(activity_router)
 api_router.include_router(system_router)
+api_router.include_router(public_router)
 api_router.include_router(logs_router)
 api_router.include_router(jobs_router)
 api_router.include_router(costs_router)

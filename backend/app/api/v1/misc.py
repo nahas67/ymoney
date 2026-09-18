@@ -952,6 +952,41 @@ def system_mode():
 
 
 # ---------------------------------------------------------------------------
+# Public media links (token-signed, no session auth — the token IS the auth)
+# ---------------------------------------------------------------------------
+
+public_router = APIRouter(prefix="/public", tags=["public"])
+
+
+@public_router.get("/media/{token}")
+def public_media(token: str):
+    """Serve one workspace video/image file behind a short-lived signed token.
+
+    Used to build publicly reachable video_url links for PULL-style platform
+    APIs (Instagram Graph) without requiring S3/CDN.
+    """
+    from fastapi.responses import FileResponse
+
+    from app.services.public_links import verify_media_token
+    from app.services.storage import managed_path
+
+    try:
+        workspace_id, stored_path = verify_media_token(token)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="invalid or expired media link")
+    path = managed_path(workspace_id, stored_path)
+    if not path or not path.exists():
+        raise HTTPException(status_code=404, detail="media not found")
+    suffix = path.suffix.lower()
+    media_type = "video/mp4" if suffix in (".mp4", ".mov") else (
+        "image/jpeg" if suffix in (".jpg", ".jpeg") else (
+            "image/png" if suffix == ".png" else "application/octet-stream"
+        )
+    )
+    return FileResponse(path, media_type=media_type, filename=path.name)
+
+
+# ---------------------------------------------------------------------------
 # Memory (spec #25)
 # ---------------------------------------------------------------------------
 

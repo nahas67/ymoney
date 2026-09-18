@@ -538,11 +538,18 @@ class InstagramPublisher(BasePublisher):
             ig_user_id = account.get("external_id") or _require(account, "ig_user_id")
             video_url = (meta.extra or {}).get("video_url") or account.get("video_url")
             if not video_url:
+                # Self-hosted path: mint a short-lived public link for the local
+                # file so Meta's servers can pull it. Fails closed on localhost.
+                from app.services.public_links import public_media_url
+
+                video_url = public_media_url(account.get("workspace_id", ""), video_path)
+            if not video_url:
                 return PublishResult(
                     success=False,
                     error=(
-                        "Instagram Reels needs a public video_url — connect object storage "
-                        "(P3) or publish via the Upload-Post relay"
+                        "Instagram Reels needs a public video_url — set a reachable "
+                        "YMONEY_PUBLIC_BASE_URL (or object storage) or publish via "
+                        "the Upload-Post relay"
                     ),
                     retryable=False,
                 )
@@ -554,6 +561,10 @@ class InstagramPublisher(BasePublisher):
                 "share_to_feed": "true",
             }
             cover_url = (meta.extra or {}).get("cover_url")
+            if not cover_url and meta.thumbnail_path:
+                from app.services.public_links import public_media_url as _cover_url
+
+                cover_url = _cover_url(account.get("workspace_id", ""), meta.thumbnail_path)
             if cover_url:
                 body["cover_url"] = cover_url
             create = httpx.post(

@@ -897,6 +897,13 @@ def handle_upload(ctx):
         topic = content.topic
 
     metadata = seo.run(ctx, topic=topic, script=_script_for(content_id), platforms=platforms)
+    with session_scope() as s:
+        _video = s_get(s, Video, video_id)
+        _thumb = (_video.thumbnail_path or "") if _video else ""
+    if _thumb:
+        for p in metadata:
+            if isinstance(metadata[p], dict) and not metadata[p].get("thumbnail_path"):
+                metadata[p]["thumbnail_path"] = _thumb
     scheduled_ts: float | None = None
     if ctx.payload.get("scheduled_entry_id"):
         with session_scope() as s:

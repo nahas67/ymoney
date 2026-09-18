@@ -134,7 +134,8 @@ def test_clip_status_reports_capabilities():
     from app.providers.clips import get_repurposer
 
     status = get_repurposer().status()
-    assert set(status) == {"yt_dlp", "ffmpeg", "download_supported", "cut_supported"}
+    assert {"yt_dlp", "ffmpeg", "download_supported", "cut_supported",
+            "whisper", "scene_detect", "face_track", "caption_presets"} <= set(status)
     assert isinstance(status["ffmpeg"], bool)
 
 

@@ -197,8 +197,9 @@ def register_core_capabilities() -> None:
         ToolSpec("render_video", "Render a storyboard through the selected video engine", {"type": "object"}, ("media:render",), "video", 900, True),
         ToolSpec("publish_post", "Publish through a configured official platform adapter", {"type": "object"}, ("publish:write",), "publisher", 300, True),
         ToolSpec("fetch_metrics", "Read metrics through a configured analytics adapter", {"type": "object"}, ("analytics:read",), "analytics", 60, True),
-        ToolSpec("store_memory", "Persist a scoped workflow or learning memory", {"type": "object"}, ("memory:write",), "memory", 30, False),
-        ToolSpec("retrieve_memory", "Retrieve targeted memories for a workflow", {"type": "object"}, ("memory:read",), "memory", 30, True),
+        ToolSpec("mine_moments", "Mine ranked viral moments from a long-form source transcript", {"type": "object"}, ("llm:generate",), "clips", 180, True),
+        ToolSpec("assemble_clips", "Cut ranked moments into captioned vertical shorts", {"type": "object"}, ("media:render",), "clips", 900, True),
+        ToolSpec("store_memory", "Persist a scoped workflow or learning memory", {"type": "object"}, ("memory:write",), "memory", 30, False),        ToolSpec("retrieve_memory", "Retrieve targeted memories for a workflow", {"type": "object"}, ("memory:read",), "memory", 30, True),
     ]
     for tool in core_tools:
         if tool.name not in TOOLS:
@@ -211,6 +212,8 @@ def register_core_capabilities() -> None:
         SkillSpec("video_production", "Video Production", "Turn storyboards into rendered media", required_tools=("render_video",)),
         SkillSpec("publishing", "Platform Publishing", "Deliver platform-specific packages idempotently", required_tools=("publish_post",)),
         SkillSpec("analytics_learning", "Analytics and Learning", "Measure performance and update memory", required_tools=("fetch_metrics", "store_memory", "retrieve_memory")),
+        SkillSpec("clip_mining", "Clip Mining", "Mine ranked viral moments from long-form sources", required_tools=("mine_moments",)),
+        SkillSpec("clip_assembly", "Clip Assembly", "Assemble ranked moments into captioned vertical shorts", required_tools=("assemble_clips",)),
     ]
     for skill in core_skills:
         if skill.key not in SKILLS:

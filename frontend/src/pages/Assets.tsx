@@ -15,6 +15,8 @@ export default function Assets() {
   const [genImgs, setGenImgs] = useState<string[]>([]);
   const [src, setSrc] = useState("");
   const [clips, setClips] = useState<any[]>([]);
+  const [preset, setPreset] = useState("minimal");
+  const [rank, setRank] = useState(true);
 
   const caps: any = (lib.data as any)?.capabilities;
 
@@ -49,7 +51,7 @@ export default function Assets() {
     if (!src.trim()) return;
     setBusy("clip");
     try {
-      const r = await wsApi.post("/assets/repurpose", { source: src, max_clips: 5 });
+      const r = await wsApi.post("/assets/repurpose", { source: src, max_clips: 5, rank, caption_preset: preset });
       setClips(r.clips ?? []);
       lib.reload();
     } catch (e: any) {
@@ -124,15 +126,29 @@ export default function Assets() {
           <div className="text-[12.5px] mt-1" style={{ color: "var(--text-muted)" }}>
             {(clipStatus.data as any)?.ffmpeg ? "ffmpeg ready" : "ffmpeg missing"} · {(clipStatus.data as any)?.yt_dlp ? "yt-dlp ready" : "yt-dlp missing (URLs unavailable)"}
           </div>
-          <div className="flex gap-2 mt-3">
-            <input className="input" placeholder="YouTube URL or local file path" value={src} onChange={(e) => setSrc(e.target.value)} />
+          <div className="flex gap-2 mt-3 flex-wrap">
+            <input className="input flex-1 min-w-[200px]" placeholder="YouTube URL or local file path" value={src} onChange={(e) => setSrc(e.target.value)} />
+            <select className="select !w-32" value={preset} onChange={(e) => setPreset(e.target.value)} aria-label="Caption preset">
+              {["minimal", "pop", "karaoke"].map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <label className="flex items-center gap-1.5 text-[12.5px]" style={{ color: "var(--text-muted)" }}>
+              <input type="checkbox" checked={rank} onChange={(e) => setRank(e.target.checked)} /> rank moments
+            </label>
             <button className="btn-primary !text-xs whitespace-nowrap" disabled={busy === "clip"} onClick={repurpose}>{busy === "clip" ? "Cutting…" : "Cut clips"}</button>
           </div>
           {clips.length > 0 && (
-            <div className="mt-3 space-y-1.5">
+            <div className="mt-3 space-y-2">
               {clips.map((c: any, i: number) => (
-                <div key={i} className="text-[12.5px] font-mono" style={{ color: "var(--text-muted)" }}>
-                  clip {i + 1}: {c.start?.toFixed(0)}s → {c.end?.toFixed(0)}s · {c.resolution} · {c.path}
+                <div key={i} className="rounded-lg p-2.5" style={{ background: "var(--bg-inset)", border: "var(--seam)" }}>
+                  <div className="flex gap-2 items-center flex-wrap">
+                    <b className="font-mono text-[12.5px]">🔥 {(c.score ?? 0).toFixed(0)}</b>
+                    <span className="text-[12.5px]">{c.hook || `clip ${i + 1}`}</span>
+                    {c.preset && <span className="font-mono text-[10.5px]" style={{ color: "var(--text-faint)" }}>{c.preset}</span>}
+                  </div>
+                  {c.reason && <div className="text-[11.5px]" style={{ color: "var(--text-muted)" }}>{c.reason}</div>}
+                  <div className="text-[11.5px] font-mono" style={{ color: "var(--text-faint)" }}>
+                    {c.start?.toFixed(0)}s → {c.end?.toFixed(0)}s · {c.resolution} · {c.path}
+                  </div>
                 </div>
               ))}
             </div>

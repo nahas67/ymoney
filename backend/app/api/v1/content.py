@@ -972,6 +972,9 @@ class ClipJobBody(BaseModel):
     clip_seconds: float = Field(default=45.0, ge=5, le=180)
     max_clips: int = Field(default=5, ge=1, le=10)
     vertical: bool = True
+    rank: bool = Field(default=True, description="rank viral moments before cutting (LLM w/ offline fallback)")
+    caption_preset: str = Field(default="minimal", description="minimal|pop|karaoke burned-in caption style")
+    face_track: bool = Field(default=False, description="face-centered crop (needs MediaPipe, else center crop)")
 
 
 @assets_router.get("/repurpose/status", summary="Clip repurposing availability")
@@ -992,16 +995,34 @@ def repurpose_clips(
     Download requires yt-dlp; cutting requires ffmpeg. When unavailable the
     endpoint reports the exact remediation instead of failing obscurely.
     """
-    from app.providers.clips import ClipError, get_repurposer
+    from app.providers.clips import ClipError, ViralMoment, get_repurposer
 
     repurposer = get_repurposer()
     try:
         source = repurposer.acquire(body.source, ws.id)
+        moments = []
+        if body.rank:
+            segments = repurposer.transcribe_segments(source)
+            base = segments if segments else [
+                {"start": s, "end": e, "text": f"Segment {i + 1} of {source.title}"}
+                for i, (s, e) in enumerate(repurposer.detect_scenes(source))
+            ]
+            moments = repurposer.rank_moments(base, body.max_clips, ws.id)
+        viral = [
+            ViralMoment(start=m.start, end=m.end, score=m.score, hook=m.hook,
+                        reason=m.reason, text=m.text)
+            for m in moments
+        ]
+        captions = {i + 1: (m.text or m.hook) for i, m in enumerate(viral)} or None
         clips = repurposer.cut_segments(
             source, ws.id,
+            moments=viral or None,
             clip_seconds=body.clip_seconds,
             max_clips=body.max_clips,
             vertical=body.vertical,
+            caption_preset=body.caption_preset,
+            captions=captions,
+            face_track=body.face_track,
         )
     except ClipError as exc:
         detail = str(exc)
@@ -1010,6 +1031,7 @@ def repurpose_clips(
     return {
         "source_title": source.title,
         "source_duration": source.duration,
+        "ranked": bool(viral),
         "clips": [
             {
                 "path": c.path,
@@ -1017,6 +1039,10 @@ def repurpose_clips(
                 "end": c.end,
                 "duration": c.duration,
                 "resolution": f"{c.width}x{c.height}" if c.width and c.height else None,
+                "score": c.score,
+                "hook": c.hook,
+                "reason": c.reason,
+                "preset": c.preset,
             }
             for c in clips
         ],

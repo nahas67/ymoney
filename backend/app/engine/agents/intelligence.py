@@ -148,19 +148,23 @@ class LearningAgent(BaseAgent):
                 self.step_done("ok", "fewer than 4 posts with view data")
                 return []
             self.step_done("ok", f"{len(perf)} posts with metrics")
-            views_sorted = sorted(v for _, v in [(p, m.views) for p, m in perf])
+            views_sorted = sorted(m.views for _, m in perf)
             median_views = views_sorted[len(views_sorted) // 2]
+            eng_sorted = sorted(
+                (m.likes + m.comments + m.shares) / m.views for _, m in perf
+            )
+            median_eng = eng_sorted[len(eng_sorted) // 2]
             n = len(perf)
 
             findings = []
 
             def feature_hits(fn) -> tuple[int, float]:
-                """(n_hits, avg_multiplier when hit)"""
+                """(n_hits, avg_multiplier when hit). fn receives (post, metric)."""
                 hits = 0
                 mults = []
                 for p, m in perf:
                     try:
-                        if fn(p):
+                        if fn(p, m):
                             hits += 1
                             mults.append(m.views / max(median_views, 1))
                     except Exception:
@@ -168,9 +172,11 @@ class LearningAgent(BaseAgent):
                 return hits, (sum(mults) / len(mults)) if mults else 0.0
 
             checks = [
-                ("hook_style_question", lambda p: "?" in (p.title or ""), "question-style titles"),
-                ("duration_long_form", lambda p: "#shorts" not in (p.title or "").lower(), "non-shorts formatting"),
-                ("title_with_numbers", lambda p: any(c.isdigit() for c in (p.title or "")), "titles containing numbers"),
+                ("hook_style_question", lambda p, m: "?" in (p.title or ""), "question-style titles"),
+                ("duration_long_form", lambda p, m: "#shorts" not in (p.title or "").lower(), "non-shorts formatting"),
+                ("title_with_numbers", lambda p, m: any(c.isdigit() for c in (p.title or "")), "titles containing numbers"),
+                ("high_completion", lambda p, m: (m.completion_rate or 0) >= 0.5, "completion rate ≥50%"),
+                ("high_engagement", lambda p, m: ((m.likes + m.comments + m.shares) / m.views) > median_eng * 1.5 if median_eng > 0 else False, "engagement rate 1.5× above median"),
             ]
             for key, fn, desc in checks:
                 hits, mult = feature_hits(fn)

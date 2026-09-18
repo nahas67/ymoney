@@ -63,9 +63,11 @@ def topic_similarity(a: str, b: str) -> float:
 
 # pattern_key -> topic keywords that make the pattern applicable
 _PATTERN_RELEVANCE = {
-    "hook_style_question": (),      # format patterns apply broadly
+    "hook_style_question": (),
     "duration_long_form": (),
     "title_with_numbers": (),
+    "high_completion": (),
+    "high_engagement": (),
     "commercial_intent": ("money", "income", "save", "invest", "budget", "earn", "price"),
 }
 

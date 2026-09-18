@@ -152,22 +152,19 @@ class PublisherAgent(BaseAgent):
                     extra=dict(meta_d.get("extra") or {}),
                 )
 
-                # YouTube quota guard: 1600 units/upload against the 10k daily pool.
+                # YouTube quota guard: dedicated videos.insert bucket (100/day).
                 if platform == "youtube" and account:
-                    from app.providers.publishers.platforms import (
-                        YOUTUBE_QUOTA_DAILY_LIMIT,
-                        YOUTUBE_QUOTA_UNITS_PER_UPLOAD,
-                    )
+                    from app.providers.publishers.platforms import YOUTUBE_MAX_UPLOADS_PER_DAY
 
-                    used = self._youtube_units_used_today(workspace_id)
-                    if used + YOUTUBE_QUOTA_UNITS_PER_UPLOAD > YOUTUBE_QUOTA_DAILY_LIMIT:
+                    used = self._youtube_uploads_today(workspace_id)
+                    if used >= YOUTUBE_MAX_UPLOADS_PER_DAY:
                         self.step_failed("youtube quota exhausted")
                         results.append({
                             "platform": platform,
                             "success": False,
                             "remote_post_id": "",
                             "remote_url": "",
-                            "error": "YouTube API quota exhausted for today (~6 uploads/day on default 10k pool) — retry tomorrow",
+                            "error": "YouTube upload bucket exhausted (100 videos.insert/day) — retry tomorrow",
                             "mock": False,
                             "blocked": True,
                             "retryable": True,
@@ -212,7 +209,10 @@ class PublisherAgent(BaseAgent):
                     continue
 
 
-                result: PublishResult = publisher.publish(video_path, meta, account or {})
+                result: PublishResult = publisher.publish(
+                    video_path, meta,
+                    {"platforms": [platform], **(account or {})} if actor == "relay" else (account or {}),
+                )
                 if result.success:
                     self.step_done("ok", f"via {actor}, post {result.remote_post_id[:20]}")
                 else:
@@ -274,7 +274,7 @@ class PublisherAgent(BaseAgent):
             }
 
     @staticmethod
-    def _youtube_units_used_today(workspace_id: str) -> int:
+    def _youtube_uploads_today(workspace_id: str) -> int:
         from datetime import timedelta
 
         from sqlalchemy import select as _select
@@ -282,7 +282,6 @@ class PublisherAgent(BaseAgent):
         from app.db import session_scope
         from app.models import PublishingJob
         from app.models.base import utcnow
-        from app.providers.publishers.platforms import YOUTUBE_QUOTA_UNITS_PER_UPLOAD
 
         since = utcnow() - timedelta(hours=24)
         with session_scope() as s:
@@ -294,4 +293,4 @@ class PublisherAgent(BaseAgent):
                     PublishingJob.created_at >= since,
                 )
             ).all()
-            return len(rows) * YOUTUBE_QUOTA_UNITS_PER_UPLOAD
+            return len(rows)

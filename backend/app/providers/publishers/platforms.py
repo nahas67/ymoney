@@ -48,16 +48,19 @@ def _disclosure_suffix(meta: PublishMetadata) -> str:
     return (" " + " ".join(parts)) if parts else ""
 
 
-YOUTUBE_QUOTA_UNITS_PER_UPLOAD = 1600
-YOUTUBE_QUOTA_DAILY_LIMIT = 10000
+YOUTUBE_MAX_UPLOADS_PER_DAY = 100
 _TIKTOK_CHUNK_SIZE = 10 * 1024 * 1024
 _FB_REELS_WINDOW = 30
 _FB_REELS_WINDOW_SECONDS = 24 * 3600
 
 
-def youtube_quota_exhausted(published_today: int) -> bool:
-    """True when today's YouTube uploads would exceed the default 10k quota pool."""
-    return published_today * YOUTUBE_QUOTA_UNITS_PER_UPLOAD >= YOUTUBE_QUOTA_DAILY_LIMIT
+def youtube_quota_exhausted(uploads_today: int) -> bool:
+    """True when today's uploads hit the dedicated videos.insert bucket.
+
+    Since June 2026 uploads bill to their own 100-calls/day bucket (~1 unit
+    each), separate from the 10,000-unit general pool — not 1,600 units × 6.
+    """
+    return uploads_today >= YOUTUBE_MAX_UPLOADS_PER_DAY
 
 
 class YouTubePublisher(BasePublisher):
@@ -83,14 +86,14 @@ class YouTubePublisher(BasePublisher):
         return data["access_token"]
 
     def _shorts_check(self, video_path: str) -> str:
-        """Warn when a vertical upload cannot be a Short (>60s). Non-blocking."""
+        """Warn when a vertical upload cannot be a Short (>3 min since Oct 2024)."""
         try:
             from app.services.storage import probe_metadata
 
             meta = probe_metadata(Path(video_path))
             dur = meta.get("duration_seconds")
-            if dur and dur > 62:
-                return f"video is {dur:.0f}s — YouTube Shorts require ≤60s; will upload as regular video"
+            if dur and dur > 182:
+                return f"video is {dur:.0f}s — YouTube Shorts cap at 3 minutes; will upload as regular video"
         except Exception:
             pass
         return ""
@@ -412,9 +415,18 @@ class FacebookPagePublisher(BasePublisher):
             if recent >= _FB_REELS_WINDOW:
                 return PublishResult(
                     success=False,
-                    error="Facebook Reels rate limit: 30 publishes per 24h reached — retry later",
+                    error="Facebook Reels rate limit: 30 publishes per 24h rolling window reached — retry later",
                     retryable=True,
                 )
+            duration_note = ""
+            try:
+                from app.services.storage import probe_metadata
+
+                _dur = (probe_metadata(path).get("duration_seconds") or 0)
+                if _dur and _dur > 92:
+                    duration_note = f"video is {_dur:.0f}s — Reels over ~90s may fail to publish"
+            except Exception:
+                pass
 
             start = httpx.post(
                 f"{self.GRAPH}/{page_id}/video_reels",
@@ -478,6 +490,7 @@ class FacebookPagePublisher(BasePublisher):
                 success=True,
                 remote_post_id=post_id,
                 remote_url=f"https://facebook.com/reel/{post_id}",
+                error=duration_note,
             )
         except PermissionError as exc:
             return PublishResult(success=False, error=str(exc))
@@ -498,6 +511,27 @@ class InstagramPublisher(BasePublisher):
     platform = "instagram"
     GRAPH = "https://graph.facebook.com/v21.0"
 
+    def _poll_container(self, access_token: str, creation_id: str, timeout_s: float = 300) -> str:
+        import time as _t
+
+        deadline = _t.time() + timeout_s
+        last = "IN_PROGRESS"
+        while _t.time() < deadline:
+            try:
+                resp = httpx.get(
+                    f"{self.GRAPH}/{creation_id}",
+                    params={"fields": "status_code", "access_token": access_token},
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                last = str(resp.json().get("status_code", last))
+                if last in ("FINISHED", "ERROR", "EXPIRED"):
+                    return last
+            except httpx.HTTPError as exc:
+                logger.warning(f"instagram container poll failed: {exc}")
+            _t.sleep(10)
+        return last
+
     def publish(self, video_path: str, meta: PublishMetadata, account: dict) -> PublishResult:
         try:
             access_token = _require(account, "access_token")
@@ -513,21 +547,33 @@ class InstagramPublisher(BasePublisher):
                     retryable=False,
                 )
             caption = (meta.title + "\n" + meta.description + " " + " ".join(meta.hashtags) + _disclosure_suffix(meta))[:2200]
+            body: dict = {
+                "media_type": "REELS",
+                "video_url": video_url,
+                "caption": caption,
+                "share_to_feed": "true",
+            }
+            cover_url = (meta.extra or {}).get("cover_url")
+            if cover_url:
+                body["cover_url"] = cover_url
             create = httpx.post(
                 f"{self.GRAPH}/{ig_user_id}/media",
-                params={
-                    "access_token": access_token,
-                    "media_type": "REELS",
-                    "video_url": video_url,
-                    "caption": caption,
-                    "share_to_feed": "true",
-                },
+                params={"access_token": access_token, **body},
                 timeout=120,
             )
             create.raise_for_status()
             creation_id = str(create.json().get("id") or "")
             if not creation_id:
                 return PublishResult(success=False, error="Instagram container creation failed")
+            # Containers process async (video takes minutes) — publishing before
+            # FINISHED always fails, so poll the container status first.
+            terminal = self._poll_container(access_token, creation_id)
+            if terminal != "FINISHED":
+                return PublishResult(
+                    success=False,
+                    error=f"Instagram media not ready (status {terminal})",
+                    retryable=terminal in ("IN_PROGRESS", "PUBLISHED", "UNKNOWN"),
+                )
             pub = httpx.post(
                 f"{self.GRAPH}/{ig_user_id}/media_publish",
                 params={"access_token": access_token, "creation_id": creation_id},
@@ -606,9 +652,29 @@ class UploadPostRelay(BasePublisher):
                 )
             resp.raise_for_status()
             data = resp.json()
-            post_id = str(data.get("id") or data.get("postId") or int(time.time()))
+            request_id = str(data.get("request_id") or "")
+            # Sync responses carry per-platform results; async ones only a
+            # request_id while the relay transcodes/uploads in background.
+            results = data.get("results") or {}
+            remote_id, remote_url, note = request_id, "", ""
+            for p in platforms:
+                entry = results.get(p) or {}
+                if entry.get("success") is False:
+                    return PublishResult(
+                        success=False,
+                        error=f"upload-post relay ({p}): {entry.get('error', 'failed')}",
+                        retryable=True,
+                    )
+                if entry:
+                    remote_id = str(entry.get("video_id") or entry.get("post_id") or entry.get("id") or request_id)
+                    remote_url = str(entry.get("url") or entry.get("post_url") or "")
+                    break
+            else:
+                if request_id and not results:
+                    note = "relay processing in background"
+            post_id = remote_id or str(int(time.time()))
             logger.info(f"upload-post relay published: {post_id} -> {platforms}")
-            return PublishResult(success=True, remote_post_id=post_id)
+            return PublishResult(success=True, remote_post_id=post_id, remote_url=remote_url, error=note)
         except httpx.HTTPError as exc:
             status = getattr(getattr(exc, "response", None), "status_code", None)
             detail = getattr(getattr(exc, "response", None), "text", "")[:200]

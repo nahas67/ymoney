@@ -6,7 +6,7 @@ import asyncio
 import json
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -119,6 +119,36 @@ def oauth_youtube_start(ws: Workspace = Depends(require_workspace_role("admin"))
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@publishing_router.get("/oauth/tiktok/start")
+def oauth_tiktok_start(ws: Workspace = Depends(require_workspace_role("admin"))):
+    from app.services import oauth_service
+
+    try:
+        return oauth_service.tiktok_start(ws.id)
+    except oauth_service.OAuthError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@publishing_router.get("/oauth/facebook/start")
+def oauth_facebook_start(ws: Workspace = Depends(require_workspace_role("admin"))):
+    from app.services import oauth_service
+
+    try:
+        return oauth_service.meta_start(ws.id, "facebook")
+    except oauth_service.OAuthError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@publishing_router.get("/oauth/instagram/start")
+def oauth_instagram_start(ws: Workspace = Depends(require_workspace_role("admin"))):
+    from app.services import oauth_service
+
+    try:
+        return oauth_service.meta_start(ws.id, "instagram")
+    except oauth_service.OAuthError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @publishing_router.get("/oauth/youtube/callback")
 def oauth_youtube_callback(workspace_id: str, code: str = "", state: str = "", error: str = ""):
     """Browser-facing callback. Returns a tiny HTML page that closes the popup."""
@@ -144,6 +174,60 @@ def oauth_youtube_callback(workspace_id: str, code: str = "", state: str = "", e
         <p style="color:#8b8b93">{message}</p>
         <script>setTimeout(()=>window.close(),1500);</script></div></body></html>"""
     )
+
+
+def _oauth_callback_page(ok: bool, message: str):
+    from fastapi.responses import HTMLResponse
+
+    color = "#10b981" if ok else "#ef4444"
+    title = "Connected" if ok else "Connection failed"
+    return HTMLResponse(
+        f"""<!doctype html><html><head><meta charset="utf-8"><title>YMONEY</title>
+        <style>body{{font-family:system-ui;display:grid;place-items:center;height:100vh;margin:0;background:#09090b;color:#f4f4f5}}
+        .box{{text-align:center}}.dot{{width:12px;height:12px;border-radius:50%;background:{color};display:inline-block;margin-right:8px}}</style></head>
+        <body><div class="box"><h2><span class="dot"></span>{title}</h2>
+        <p style="color:#8b8b93">{message}</p>
+        <script>setTimeout(()=>window.close(),1500);</script></div></body></html>"""
+    )
+
+
+@publishing_router.get("/oauth/tiktok/callback")
+def oauth_tiktok_callback(workspace_id: str, code: str = "", state: str = "", error: str = ""):
+    from app.services import oauth_service
+
+    if error:
+        return _oauth_callback_page(False, f"Authorization failed: {error}")
+    try:
+        oauth_service.tiktok_callback(workspace_id, code, state)
+        return _oauth_callback_page(True, "TikTok connected — you can close this window.")
+    except oauth_service.OAuthError as exc:
+        return _oauth_callback_page(False, str(exc))
+
+
+@publishing_router.get("/oauth/facebook/callback")
+def oauth_facebook_callback(workspace_id: str, code: str = "", state: str = "", error: str = ""):
+    from app.services import oauth_service
+
+    if error:
+        return _oauth_callback_page(False, f"Authorization failed: {error}")
+    try:
+        oauth_service.meta_callback(workspace_id, "facebook", code, state)
+        return _oauth_callback_page(True, "Facebook connected — you can close this window.")
+    except oauth_service.OAuthError as exc:
+        return _oauth_callback_page(False, str(exc))
+
+
+@publishing_router.get("/oauth/instagram/callback")
+def oauth_instagram_callback(workspace_id: str, code: str = "", state: str = "", error: str = ""):
+    from app.services import oauth_service
+
+    if error:
+        return _oauth_callback_page(False, f"Authorization failed: {error}")
+    try:
+        oauth_service.meta_callback(workspace_id, "instagram", code, state)
+        return _oauth_callback_page(True, "Instagram connected — you can close this window.")
+    except oauth_service.OAuthError as exc:
+        return _oauth_callback_page(False, str(exc))
 
 
 @publishing_router.get("/jobs")
@@ -665,9 +749,43 @@ def recent_activity(ws: Workspace = Depends(require_workspace_role("viewer")), d
 
 
 @activity_router.get("/stream")
-async def activity_stream(ws: Workspace = Depends(require_workspace_role("viewer"))):
-    """Server-Sent Events stream of live workspace activity."""
+async def activity_stream(
+    workspace_id: str,
+    request: Request,
+    token: str | None = None,
+    db=Depends(get_db),
+):
+    """Server-Sent Events stream of live workspace activity.
+
+    EventSource cannot send Authorization headers, so the bearer token may be
+    supplied as ?token= as an alternative to the header. Header auth still
+    takes precedence when present.
+    """
+    from sqlalchemy import select as _select
+
+    from app.core.security import decode_access_token
+    from app.models import User, WorkspaceMember
     from app.services.events import subscribe, unsubscribe
+
+    bearer_token: str | None = token
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        bearer_token = auth_header.split(" ", 1)[1].strip() or bearer_token
+    payload = decode_access_token(bearer_token) if bearer_token else None
+    user = db.get(User, payload.get("sub", "")) if payload else None
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="not authenticated")
+    ws = db.get(Workspace, workspace_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="workspace not found")
+    member = db.scalar(
+        _select(WorkspaceMember).where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == user.id,
+        )
+    )
+    if member is None and not user.is_superuser:
+        raise HTTPException(status_code=403, detail="not a workspace member")
 
     token_q = await subscribe(ws.id)
 

@@ -233,12 +233,41 @@ def _whisper_segments(audio: Path, script: str) -> list[tuple[float, float, str]
         return []
 
 
+def _bgm_allowlist() -> set[str] | None:
+    """Licensed-track allowlist basenames, or None when no allowlist file exists."""
+    import json as _json
+
+    for cand in (BGM_DIR / ".allowlist.json", BGM_DIR / "licenses.json"):
+        try:
+            if cand.exists():
+                data = _json.loads(cand.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    tracks = data.get("tracks") or data.get("allowed") or []
+                elif isinstance(data, list):
+                    tracks = data
+                else:
+                    return None
+                return {str(t).strip().lower() for t in tracks if str(t).strip()}
+        except Exception:
+            return None
+    return None
+
+
 def _pick_bgm() -> Path | None:
     if not BGM_DIR.exists():
         return None
     tracks = [p for p in BGM_DIR.iterdir()
               if p.suffix.lower() in (".mp3", ".wav", ".m4a", ".ogg") and p.is_file()]
-    return random.choice(tracks) if tracks else None
+    if not tracks:
+        return None
+    allowed = _bgm_allowlist()
+    if allowed is not None:
+        licensed = [p for p in tracks if p.name.lower() in allowed]
+        if not licensed:
+            logger.warning("[FFMPEG AVATAR] no allowlisted BGM tracks available — rendering without music")
+            return None
+        tracks = licensed
+    return random.choice(tracks)
 
 
 def _caption_style(height_label: str, position: str) -> str:
@@ -273,7 +302,8 @@ def _bgm_for(bgm_type: str, bgm_file: str) -> Path | None:
     """Resolve the background bed honoring RenderRequest.bgm_type/bgm_file.
 
     none/off/mute disables the bed; an explicit file that exists wins over the
-    random pick; anything else falls back to the bundled bed selection.
+    random pick (but must pass the license allowlist when one exists);
+    anything else falls back to the bundled bed selection.
     """
     t = (bgm_type or "").strip().lower()
     if t in ("none", "off", "mute", "no"):
@@ -281,8 +311,17 @@ def _bgm_for(bgm_type: str, bgm_file: str) -> Path | None:
     if bgm_file:
         p = Path(bgm_file)
         if p.is_file():
+            allowed = _bgm_allowlist()
+            if allowed is not None and p.name.lower() not in allowed:
+                logger.warning(f"[FFMPEG AVATAR] BGM {p.name} not in license allowlist — muted")
+                return None
             return p
     return _pick_bgm()
+
+
+def _is_finance_topic(subject: str, script: str) -> bool:
+    t = f"{subject} {script[:800]}".lower()
+    return any(k in t for k in ("money", "income", "budget", "save", "invest", "earn", "cash", "finance", "stock", "crypto", "debt", "loan"))
 
 
 class FFmpegAvatarEngine(BaseVideoEngine):
@@ -529,11 +568,26 @@ class FFmpegAvatarEngine(BaseVideoEngine):
 
             vf = ";".join(filters)
 
+            # finance disclaimer footer burn-in (fail-closed monetization gate)
+            if _is_finance_topic(req.subject, req.script) and _font_file():
+                font = _font_file()
+                filters.append(
+                    f"{last}drawtext=fontfile='{font}':text='Not financial advice':"
+                    f"fontsize=28:fontcolor=white@0.9:borderw=2:bordercolor=black@0.8:"
+                    f"x=(w-text_w)/2:y=h-140[vcap2]"
+                )
+                last = "[vcap2]"
+
+            vf = ";".join(filters)
+
             # 5) BGM bed under narration (adopted from MPT bgm.py); honors
-            #    RenderRequest.bgm_type / bgm_file / bgm_volume
+            #    RenderRequest.bgm_type / bgm_file / bgm_volume. Licensed tracks
+            #    only (allowlist); final mix gently leveled (silence-safe: no
+            #    loudnorm single-pass, which explodes on digital silence).
             bgm = _bgm_for(req.bgm_type, req.bgm_file)
             bgm_vol = _clamp_volume(req.bgm_volume)
             map_audio = f"{audio_idx}:a"
+            _master = "aresample=48000,acompressor=threshold=-20dB:ratio=3:attack=5:release=50,alimiter=limit=0.95"
             if bgm and bgm_vol > 0:
                 inputs += ["-stream_loop", "-1", "-i", str(bgm)]
                 bgm_idx = audio_idx + 1
@@ -542,9 +596,12 @@ class FFmpegAvatarEngine(BaseVideoEngine):
                     f":d=2.5[bgm]"
                 )
                 filters.append(
-                    f"[{audio_idx}:a][bgm]amix=inputs=2:duration=first:dropout_transition=3"
-                    f"[aout]"
+                    f"[{audio_idx}:a][bgm]amix=inputs=2:duration=first:dropout_transition=3,{_master}[aout]"
                 )
+                map_audio = "[aout]"
+                logger.info(f"[FFMPEG AVATAR] BGM licensed track: {bgm.name}")
+            else:
+                filters.append(f"[{audio_idx}:a]{_master}[aout]")
                 map_audio = "[aout]"
 
             encoder = pick_encoder()

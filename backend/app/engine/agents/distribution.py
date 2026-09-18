@@ -29,16 +29,28 @@ PLATFORM_META_TEMPLATES = {
 
 def _default_metadata(topic: str, script: str, platforms: list[str]) -> dict:
     base = topic if len(topic) <= 60 else topic[:57] + "..."
+    finance = _seo_finance(topic, script, "")
     out = {}
     for p in platforms:
         tpl = PLATFORM_META_TEMPLATES.get(p, PLATFORM_META_TEMPLATES["tiktok"])
         out[p] = {
             "title": base[: tpl["title_max"]],
-            "description": f"{topic} explained in seconds. {script[:80]}...",
+            "description": f"{topic} explained in seconds. {script[:80]}..." + (
+                " Not financial advice. For education only." if finance else ""
+            ),
             "hashtags": tpl["hashtags"],
             "keywords": [w for w in topic.lower().split() if len(w) > 3][:5],
+            "category_id": "27",
+            "contains_finance_advice": finance,
+            "is_ai_generated": True,
+            "altered_content": True,
         }
     return out
+
+
+def _seo_finance(topic: str, script: str, description: str) -> bool:
+    t = f"{topic} {script[:500]} {description}".lower()
+    return any(k in t for k in ("money", "income", "budget", "save", "invest", "earn", "cash", "finance", "stock", "crypto", "debt", "loan"))
 
 
 class SEOAgent(BaseAgent):
@@ -68,11 +80,20 @@ class SEOAgent(BaseAgent):
         for p, meta in (res.items() if isinstance(res, dict) else []):
             if p not in ("youtube", "tiktok", "facebook", "instagram"):
                 continue
+            title = str(meta.get("title", topic))
+            description = str(meta.get("description", ""))
+            finance = _seo_finance(topic, script, description)
+            if finance and "Not financial advice" not in description:
+                description = (description + " Not financial advice. For education only.").strip()
             clean[p] = {
-                "title": str(meta.get("title", topic))[: PLATFORM_META_TEMPLATES.get(p, {}).get("title_max", 100)],
-                "description": str(meta.get("description", ""))[:2000],
+                "title": title[: PLATFORM_META_TEMPLATES.get(p, {}).get("title_max", 100)],
+                "description": description[:2000],
                 "hashtags": [h if h.startswith("#") else f"#{h}" for h in (meta.get("hashtags") or [])][:8],
                 "keywords": [str(k) for k in (meta.get("keywords") or [])][:10],
+                "category_id": str(meta.get("category_id") or meta.get("categoryId") or "27"),
+                "contains_finance_advice": finance,
+                "is_ai_generated": True,
+                "altered_content": True,
             }
         return clean or _default_metadata(topic, script, platforms)
 
@@ -121,7 +142,37 @@ class PublisherAgent(BaseAgent):
                     hashtags=[h.lstrip("#") for h in meta_d.get("hashtags", [])],
                     keywords=meta_d.get("keywords", []),
                     privacy="public",
+                    category_id=str(meta_d.get("category_id") or meta_d.get("categoryId") or "27"),
+                    made_for_kids=bool(meta_d.get("made_for_kids", False)),
+                    is_ai_generated=bool(meta_d.get("is_ai_generated", True)),
+                    altered_content=bool(meta_d.get("altered_content", True)),
+                    contains_finance_advice=bool(meta_d.get("contains_finance_advice", False)),
+                    thumbnail_path=meta_d.get("thumbnail_path", "") or "",
+                    captions_path=meta_d.get("captions_path", "") or "",
+                    extra=dict(meta_d.get("extra") or {}),
                 )
+
+                # YouTube quota guard: 1600 units/upload against the 10k daily pool.
+                if platform == "youtube" and account:
+                    from app.providers.publishers.platforms import (
+                        YOUTUBE_QUOTA_DAILY_LIMIT,
+                        YOUTUBE_QUOTA_UNITS_PER_UPLOAD,
+                    )
+
+                    used = self._youtube_units_used_today(workspace_id)
+                    if used + YOUTUBE_QUOTA_UNITS_PER_UPLOAD > YOUTUBE_QUOTA_DAILY_LIMIT:
+                        self.step_failed("youtube quota exhausted")
+                        results.append({
+                            "platform": platform,
+                            "success": False,
+                            "remote_post_id": "",
+                            "remote_url": "",
+                            "error": "YouTube API quota exhausted for today (~6 uploads/day on default 10k pool) — retry tomorrow",
+                            "mock": False,
+                            "blocked": True,
+                            "retryable": True,
+                        })
+                        continue
 
                 # ---- resolve publisher path ----
                 publisher = None
@@ -219,4 +270,28 @@ class PublisherAgent(BaseAgent):
                 "display_name": acc.display_name,
                 "access_token": decrypt_secret(acc.access_token_enc or ""),
                 "refresh_token": decrypt_secret(acc.refresh_token_enc or ""),
+                "workspace_id": workspace_id,
             }
+
+    @staticmethod
+    def _youtube_units_used_today(workspace_id: str) -> int:
+        from datetime import timedelta
+
+        from sqlalchemy import select as _select
+
+        from app.db import session_scope
+        from app.models import PublishingJob
+        from app.models.base import utcnow
+        from app.providers.publishers.platforms import YOUTUBE_QUOTA_UNITS_PER_UPLOAD
+
+        since = utcnow() - timedelta(hours=24)
+        with session_scope() as s:
+            rows = s.scalars(
+                _select(PublishingJob).where(
+                    PublishingJob.workspace_id == workspace_id,
+                    PublishingJob.platform == "youtube",
+                    PublishingJob.status == "PUBLISHED",
+                    PublishingJob.created_at >= since,
+                )
+            ).all()
+            return len(rows) * YOUTUBE_QUOTA_UNITS_PER_UPLOAD

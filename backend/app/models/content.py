@@ -144,6 +144,7 @@ class Video(Base, PKMixin, TimestampMixin):
     status: Mapped[str] = mapped_column(
         String(20), default="RENDERING", index=True
     )  # RENDERING|READY|FAILED
+    progress: Mapped[int] = mapped_column(Integer, default=0)
     file_path: Mapped[str] = mapped_column(Text, default="")
     thumbnail_path: Mapped[str] = mapped_column(Text, default="")
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -141,5 +141,6 @@ export const wsApi = {
 };
 
 export function activityStreamUrl(): string {
-  return `${BASE}/workspaces/${workspaceId}/activity/stream`;
+  const t = accessToken ? `?token=${encodeURIComponent(accessToken)}` : "";
+  return `${BASE}/workspaces/${workspaceId}/activity/stream${t}`;
 }

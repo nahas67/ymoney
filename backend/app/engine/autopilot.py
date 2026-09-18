@@ -792,6 +792,18 @@ def handle_verify(ctx):
         )
 
     if verdict["passed"]:
+        from app.engine.decision import get_safety_settings
+        from app.models import Workspace as _WS
+
+        with session_scope() as s:
+            ws_row = s.get(_WS, ctx.workspace_id) if ctx.workspace_id else None
+            safety = get_safety_settings((ws_row.settings_json or {}) if ws_row else {})
+        if safety.get("require_approval_before_publish"):
+            with session_scope() as s:
+                content = s_get(s, ContentItem, content_id)
+                _set_content_status(s, content, ContentStatus.APPROVED.value)
+            record_event(ctx.workspace_id, "review.required", f"Approval hold: video {video_id[:8]} passed QC and awaits human approval", level="warning", source="quality", data={"video_id": video_id, "content_id": content_id})
+            return {"passed": True, "held": True, "score": verdict["overall"]}
         with session_scope() as s:
             content = s_get(s, ContentItem, content_id)
             _set_content_status(s, content, ContentStatus.APPROVED.value)
@@ -885,6 +897,17 @@ def handle_upload(ctx):
         topic = content.topic
 
     metadata = seo.run(ctx, topic=topic, script=_script_for(content_id), platforms=platforms)
+    scheduled_ts: float | None = None
+    if ctx.payload.get("scheduled_entry_id"):
+        with session_scope() as s:
+            entry = s.get(ScheduleEntry, ctx.payload["scheduled_entry_id"])
+            if entry and entry.run_at:
+                scheduled_ts = entry.run_at.replace(tzinfo=None).timestamp()
+    if scheduled_ts:
+        for p in metadata:
+            extra = dict((metadata[p] or {}).get("extra") or {})
+            extra["scheduled_publish_time"] = str(int(scheduled_ts))
+            metadata[p]["extra"] = extra
     with session_scope() as s:
         content = s_get(s, ContentItem, content_id)
         # store metadata on selected variant

@@ -164,4 +164,69 @@ class LocalStorage:
 
 def get_storage() -> LocalStorage:
     """Storage factory. S3-compatible providers plug in here later."""
+    from app.core.config import settings as _settings
+
+    if (_settings.storage_backend or "local").lower() == "s3":
+        return S3Storage()
     return LocalStorage()
+
+
+class S3Storage:
+    """S3-compatible object storage (S3/MinIO/R2). Fails closed when unconfigured.
+
+    Local files are still used as a staging area; objects are uploaded with a
+    workspace-prefixed key and the public URL (or s3:// URI) is stored.
+    """
+
+    def __init__(self):
+        from app.core.config import settings as _settings
+
+        self.bucket = _settings.s3_bucket
+        self.endpoint = _settings.s3_endpoint_url
+        self.public_base = (_settings.s3_public_base_url or "").rstrip("/")
+        if not self.bucket:
+            raise RuntimeError("S3 storage selected but S3_BUCKET is not configured")
+
+    def _client(self):
+        import boto3
+
+        from app.core.config import settings as _settings
+
+        kwargs: dict = {"region_name": _settings.s3_region or "us-east-1"}
+        if _settings.s3_endpoint_url:
+            kwargs["endpoint_url"] = _settings.s3_endpoint_url
+        if _settings.s3_access_key:
+            kwargs["aws_access_key_id"] = _settings.s3_access_key
+            kwargs["aws_secret_access_key"] = _settings.s3_secret_key
+        return boto3.client("s3", **kwargs)
+
+    def save_video(self, workspace_id: str, source_path: str | None, data: bytes | None = None,
+                   filename: str | None = None) -> StoredVideo:
+        import uuid as _uuid
+
+        name = filename or (Path(source_path).name if source_path else "video.mp4")
+        key = f"{workspace_id}/{_uuid.uuid4().hex[:8]}-{Path(name).name}"
+        body = data if data is not None else Path(source_path).read_bytes()
+        self._client().put_object(Bucket=self.bucket, Key=key, Body=body,
+                                  ContentType="video/mp4")
+        url = f"{self.public_base}/{key}" if self.public_base else f"s3://{self.bucket}/{key}"
+        return StoredVideo(path=url, size_bytes=len(body), duration_seconds=None,
+                           width=None, height=None)
+
+    def open_bytes(self, stored_path: str) -> bytes:
+        if stored_path.startswith("s3://"):
+            _, _, rest = stored_path[5:].partition("/")
+            bucket, _, key = rest.partition("/")
+            obj = self._client().get_object(Bucket=bucket or self.bucket, Key=key)
+            return obj["Body"].read()
+        return Path(stored_path).read_bytes()
+
+    def save_media(self, workspace_id: str, data: bytes, filename: str) -> str:
+        import uuid as _uuid
+
+        key = f"{workspace_id}/{_uuid.uuid4().hex[:8]}-{Path(filename).name}"
+        self._client().put_object(Bucket=self.bucket, Key=key, Body=data)
+        return f"{self.public_base}/{key}" if self.public_base else f"s3://{self.bucket}/{key}"
+
+    def extract_thumbnail(self, stored_path: str, at_seconds: float = 1.0) -> str | None:
+        return None

@@ -357,7 +357,43 @@ QUALITY_COMPONENTS = (
 SCORED_COMPONENTS = QUALITY_COMPONENTS
 
 
-def heuristic_quality(script: str, strategy: dict | None = None) -> dict:
+def _originality_score(script: str, strategy: dict | None = None, research: dict | None = None) -> tuple[float, str]:
+    """Dynamic originality replacing the old static 70.
+
+    Penalizes thin scripts, missing visual planning, absent angles, and high
+    similarity to the strategy's own prior topic signal. Workspace repetition
+    vs published history is applied upstream in scoring/decision; this covers
+    intrinsic originality of the artifact itself.
+    """
+    strategy = strategy or {}
+    research = research or {}
+    score = 72.0
+    reasons = []
+    words = len((script or "").split())
+    if words < 40:
+        score -= 14
+        reasons.append("thin script")
+    visuals = research.get("visual_keywords") or strategy.get("visual_keywords") or []
+    if not visuals:
+        score -= 10
+        reasons.append("no visual plan")
+    angles = research.get("angles") or []
+    if not angles:
+        score -= 6
+        reasons.append("single angle")
+    storyboard = (strategy.get("storyboard") or {}) if isinstance(strategy.get("storyboard"), dict) else {}
+    scenes = storyboard.get("scenes") if isinstance(storyboard.get("scenes"), list) else None
+    if scenes is not None and len(scenes) <= 1:
+        score -= 8
+        reasons.append("single scene")
+    if not (strategy.get("angle") or strategy.get("hook_type")):
+        score -= 6
+        reasons.append("generic framing")
+    score = max(5.0, min(95.0, score))
+    return round(score, 1), ("; ".join(reasons) if reasons else "specific angle with visual plan")
+
+
+def heuristic_quality(script: str, strategy: dict | None = None, research: dict | None = None) -> dict:
     """Deterministic QC baseline used in mock/dev mode."""
     strategy = strategy or {}
     words = len(script.split())
@@ -371,6 +407,7 @@ def heuristic_quality(script: str, strategy: dict | None = None) -> dict:
     avg_sentence_words = words / max(len(sentences), 1)
     readability = max(30.0, min(98.0, 110 - avg_sentence_words * 4))
     platforms = strategy.get("platforms") or ["youtube"]
+    orig, orig_reason = _originality_score(script, strategy, research)
     scores = {
         "hook": 85 if has_hook else 55,
         "story": 75 if length_ok else 55,
@@ -380,7 +417,7 @@ def heuristic_quality(script: str, strategy: dict | None = None) -> dict:
         "captions": 85,
         "caption_readability": round(readability),
         "visual_relevance": 72,
-        "originality": 70,
+        "originality": orig,
         "accuracy": 68,
         "safety": _safety_score(script),
         "brand_consistency": 78 if strategy.get("tone") else 65,
@@ -394,6 +431,8 @@ def heuristic_quality(script: str, strategy: dict | None = None) -> dict:
         notes.append("weak hook: no question/curiosity marker detected early")
     if scores["safety"] < 50:
         notes.append("possible policy-sensitive content; manual review advised")
+    if orig < 50:
+        notes.append(f"low originality ({orig:.0f}/100: {orig_reason}); requires distinct angle or new visuals")
     return {
         "overall": round(overall, 1),
         "components": scores,
@@ -442,6 +481,8 @@ def regeneration_instruction(verdict: dict) -> str:
         "pacing": "increase pacing; shorten scenes",
         "story": "clarify the narrative arc with one concrete example",
         "accuracy": "remove unverifiable claims",
+        "originality": "take a distinct contrarian angle with new visuals instead of stock repetition",
+        "safety": "remove policy-sensitive content and add disclaimers",
         "brand_consistency": "align tone with the brand voice",
         "platform_fit": "adjust format for target platforms",
     }
@@ -471,7 +512,7 @@ class QualityAgent(BaseAgent):
 
         def work():
             self.step("heuristic_baseline", "score 13 dimensions from script+strategy heuristics")
-            result = heuristic_quality(script, strategy)
+            result = heuristic_quality(script, strategy, research)
             self.step_done("ok", f"baseline {result['overall']:.0f}/100")
             # Media intelligence: inspect the finished render when one exists.
             vision_notes = ""

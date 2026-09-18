@@ -4,14 +4,15 @@
 
 ```bash
 cp .env.example .env
-# REQUIRED: set YMONEY_SECRET_KEY to a long random string.
-# Review mock flags: MOCK_PUBLISHING=true is the safe default until accounts are connected.
+# REQUIRED: set YMONEY_SECRET_KEY to a long random string (48+ chars).
+# Production refuses to boot with the default value.
+# Defaults are production-safe: VIDEO_ENGINE=ffmpeg_avatar, MOCK_*=false.
 
-docker compose build          # builds backend + MoneyPrinterTurbo engine
+docker compose build          # builds backend + video engine (+ ffmpeg)
 docker compose up -d
 ```
 
-- Web UI: http://localhost (Caddy serves `frontend/dist` and proxies `/api`)
+- Web UI: http://localhost (Caddy serves `frontend/dist` and proxies `/api` + SSE)
   - Build the frontend first: `cd frontend && npm ci && npm run build`
 - Backend API: internal-only via Caddy (`http://backend:8100` inside the network)
 - Data persists in the `ymoney-data` volume (SQLite with WAL).
@@ -19,13 +20,16 @@ docker compose up -d
 ### First production checklist
 
 1. `YMONEY_SECRET_KEY` — 48+ random chars. Rotating it invalidates all tokens AND
-   encrypted stored platform credentials (they must be reconnected).
-2. Set real provider config: `OPENAI_API_KEY`, `MOCK_LLM=false`,
-   `UPLOAD_POST_API_KEY`/`UPLOAD_POST_USERNAME` or connect OAuth accounts in-app,
-   then `MOCK_PUBLISHING=false`, `MOCK_ANALYTICS=false`.
+   encrypted stored platform credentials (they must be reconnected). The backend
+   refuses to start in production with the `change-me` default.
+2. Set real provider config: `OPENAI_API_KEY`, `UPLOAD_POST_API_KEY`/
+   `UPLOAD_POST_USERNAME` or connect OAuth accounts in-app. Mock flags default
+   to false; publishing without credentials fails closed with remediation.
 3. Keep `DAILY_BUDGET_USD` set — autopilot halts production when exhausted.
-4. Put the backend behind TLS (Caddy/traefik/nginx) if exposed beyond localhost.
-5. Back up the data volume; SQLite WAL checkpoints on clean shutdown.
+4. TLS: set `YMONEY_DOMAIN` + `YMONEY_TLS_EMAIL` in `.env` and uncomment the TLS
+   block in `deploy/Caddyfile` if exposed beyond localhost.
+5. Back up the data volume; SQLite WAL checkpoints on clean shutdown:
+   `docker run --rm -v ymoney-data:/data -v %cd%/backups:/backup alpine tar czf /backup/ymoney-data-$(date +%F).tgz -C /data .`
 
 ## Manual deployment
 

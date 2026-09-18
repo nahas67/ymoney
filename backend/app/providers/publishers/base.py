@@ -19,6 +19,14 @@ class PublishMetadata:
     hashtags: list[str] = field(default_factory=list)
     keywords: list[str] = field(default_factory=list)
     privacy: str = "public"
+    category_id: str = "27"
+    made_for_kids: bool = False
+    is_ai_generated: bool = True
+    altered_content: bool = True
+    contains_finance_advice: bool = False
+    thumbnail_path: str = ""
+    captions_path: str = ""
+    captions_language: str = "en"
     extra: dict = field(default_factory=dict)
 
 

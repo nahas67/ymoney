@@ -13,6 +13,7 @@ from __future__ import annotations
 from app.providers.publishers.base import BasePublisher, PublishMetadata, PublishResult
 from app.providers.publishers.platforms import (
     FacebookPagePublisher,
+    InstagramPublisher,
     TikTokPublisher,
     UploadPostRelay,
     YouTubePublisher,
@@ -22,6 +23,7 @@ _registry: dict[str, BasePublisher] = {
     "youtube": YouTubePublisher(),
     "tiktok": TikTokPublisher(),
     "facebook": FacebookPagePublisher(),
+    "instagram": InstagramPublisher(),
 }
 
 

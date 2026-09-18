@@ -115,6 +115,18 @@ class Settings(BaseSettings):
     job_default_max_retries: int = 3
     job_worker_count: int = 4
 
+    # ---- Storage (local default; S3-compatible optional) ----
+    storage_backend: str = "local"  # local | s3
+    s3_endpoint_url: str = ""
+    s3_bucket: str = ""
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
+    s3_region: str = "us-east-1"
+    s3_public_base_url: str = ""
+
+    # ---- Observability ----
+    sentry_dsn: str = ""
+
     # ---- Logging ----
     log_level: str = "INFO"
 

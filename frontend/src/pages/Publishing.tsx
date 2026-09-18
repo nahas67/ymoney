@@ -35,10 +35,10 @@ export default function Publishing() {
   const [connectName, setConnectName] = useState("");
 
   async function openConnect(platform: string) {
-    if (platform === "youtube") {
+    if (["youtube", "tiktok", "facebook", "instagram"].includes(platform)) {
       // Real OAuth flow via backend
       try {
-        const r = await wsApi.get("/publishing/oauth/youtube/start");
+        const r = await wsApi.get(`/publishing/oauth/${platform}/start`);
         window.open(r.authorize_url, "ymoney-oauth", "width=520,height=680");
         // poll until the account appears (callback stores it)
         const deadline = Date.now() + 120_000;
@@ -46,7 +46,7 @@ export default function Publishing() {
         while (Date.now() < deadline) {
           await new Promise((r2) => setTimeout(r2, 2500));
           const after = await wsApi.get("/publishing/accounts");
-          if ((after.items ?? []).some((a: any) => a.platform === "youtube" && !before.has("youtube"))) break;
+          if ((after.items ?? []).some((a: any) => a.platform === platform && !before.has(platform))) break;
           if (!(window as any).closed) continue;
         }
         load();

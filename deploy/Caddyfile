@@ -11,3 +11,17 @@
 		file_server
 	}
 }
+
+# Production TLS: set YMONEY_DOMAIN in .env and uncomment.
+# {$YMONEY_DOMAIN} {
+# 	encode gzip
+# 	tls {$YMONEY_TLS_EMAIL}
+# 	handle /api/* {
+# 		reverse_proxy backend:8100
+# 	}
+# 	handle {
+# 		root * /srv
+# 		try_files {path} /index.html
+# 		file_server
+# 	}
+# }

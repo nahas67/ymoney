@@ -21,16 +21,15 @@ services:
       YMONEY_ENV: ${YMONEY_ENV:-production}
       YMONEY_SECRET_KEY: ${YMONEY_SECRET_KEY:?set a strong secret}
       DATABASE_URL: sqlite:////data/ymoney.db
-      VIDEO_ENGINE: moneyprinterturbo
+      VIDEO_ENGINE: ${VIDEO_ENGINE:-ffmpeg_avatar}
       MPT_BASE_URL: http://video-engine:8080
-      MOCK_LLM: ${MOCK_LLM:-true}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
       MOCK_TRENDS: ${MOCK_TRENDS:-false}
-      MOCK_PUBLISHING: ${MOCK_PUBLISHING:-true}
+      MOCK_PUBLISHING: ${MOCK_PUBLISHING:-false}
       UPLOAD_POST_API_KEY: ${UPLOAD_POST_API_KEY:-}
       UPLOAD_POST_USERNAME: ${UPLOAD_POST_USERNAME:-}
-      MOCK_ANALYTICS: ${MOCK_ANALYTICS:-true}
+      MOCK_ANALYTICS: ${MOCK_ANALYTICS:-false}
       DAILY_BUDGET_USD: ${DAILY_BUDGET_USD:-5}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost}
     volumes:

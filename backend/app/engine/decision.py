@@ -151,6 +151,7 @@ def get_safety_settings(ws_settings: dict) -> dict:
         "max_concurrent_renders": int(s.get("max_concurrent_renders", 2)),
         "similarity_threshold": float(s.get("similarity_threshold", 0.55)),
         "require_human_review_risk_above": float(s.get("require_human_review_risk_above", 60.0)),
+        "require_approval_before_publish": bool(s.get("require_approval_before_publish", False)),
         # adjusted-score bar to commit production spend; below this but above
         # wait_floor the supervisor WAITs for stronger candidates
         "produce_score_threshold": float(s.get("produce_score_threshold", 58.0)),

@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from datetime import datetime, timezone, UTC
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 
@@ -169,7 +169,7 @@ def _serialize_content(db, c: ContentItem) -> dict:
             "engine": v.engine,
             "file_path": v.file_path,
                 "thumbnail_path": getattr(v, "thumbnail_path", "") or "",
-            "progress": getattr(v, "progress", 0) or 0,
+            "progress": v.progress or 0,
             "duration_seconds": v.duration_seconds,
             "error": (v.error or "")[:200],
             "quality": qc.overall if qc else None,
@@ -432,6 +432,28 @@ def video_thumbnail(video_id: str, ws: Workspace = Depends(require_workspace_rol
     if path and path.exists():
         return FileResponse(path, media_type="image/jpeg")
     raise HTTPException(status_code=404, detail="thumbnail not available")
+
+
+class ThumbnailBody(BaseModel):
+    at_seconds: float = Field(default=1.0, ge=0, le=600)
+
+
+@videos_router.post("/{video_id}/thumbnail", summary="Regenerate poster frame at a timestamp")
+def remake_thumbnail(video_id: str, body: ThumbnailBody, ws: Workspace = Depends(require_workspace_role("member")), db=Depends(get_db)):
+    v = db.get(Video, video_id)
+    if not v or v.workspace_id != ws.id:
+        raise HTTPException(status_code=404, detail="video not found")
+    from app.services.storage import get_storage, managed_path
+
+    src = managed_path(ws.id, v.file_path)
+    if not src or not src.exists():
+        raise HTTPException(status_code=404, detail="video file not found on disk")
+    thumb = get_storage().extract_thumbnail(str(src), at_seconds=body.at_seconds)
+    if not thumb:
+        raise HTTPException(status_code=503, detail="ffmpeg unavailable for thumbnails")
+    v.thumbnail_path = thumb
+    db.commit()
+    return {"thumbnail_path": thumb}
 
 
 @videos_router.get("/{video_id}/file", summary="Stream the rendered file (mock artifacts served as JSON)")
@@ -745,6 +767,45 @@ def cancel_schedule(entry_id: str, ws: Workspace = Depends(require_workspace_rol
     return {"cancelled": True}
 
 
+@calendar_router.get("/best-times", summary="Best publish hours from measured history")
+def best_times(ws: Workspace = Depends(require_workspace_role("viewer")), db=Depends(get_db)):
+    """Hour-of-day (workspace timezone-naive UTC) ranked by average views.
+
+    Falls back to generic evening hours when fewer than 3 measured posts exist.
+    """
+    from app.models import PostMetric, PublishedPost
+
+    posts = db.scalars(
+        select(PublishedPost).where(PublishedPost.workspace_id == ws.id)
+    ).all()
+    if not posts:
+        return {"items": [{"hour": h, "avg_views": 0, "posts": 0} for h in (18, 12, 20)],
+                "measured": False}
+    metrics = {}
+    for m in db.scalars(
+        select(PostMetric).where(PostMetric.post_id.in_([p.id for p in posts])).order_by(PostMetric.captured_at.asc())
+    ):
+        metrics[m.post_id] = m
+    buckets: dict[int, list[int]] = {}
+    for p in posts:
+        m = metrics.get(p.id)
+        if not m or not p.published_at:
+            continue
+        buckets.setdefault(p.published_at.hour, []).append(m.views)
+    ranked = sorted(
+        ((h, sum(v) / len(v), len(v)) for h, v in buckets.items()),
+        key=lambda t: t[1],
+        reverse=True,
+    )[:5]
+    if len(ranked) < 1:
+        return {"items": [{"hour": h, "avg_views": 0, "posts": 0} for h in (18, 12, 20)],
+                "measured": False}
+    return {
+        "items": [{"hour": h, "avg_views": round(avg), "posts": n} for h, avg, n in ranked],
+        "measured": sum(n for _, _, n in ranked) >= 3,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Campaign progress detail
 # ---------------------------------------------------------------------------
@@ -759,10 +820,10 @@ assets_router = APIRouter(prefix="/workspaces/{workspace_id}/assets", tags=["ass
 
 @assets_router.get("")
 def list_assets(ws: Workspace = Depends(require_workspace_role("viewer")), db=Depends(get_db)):
-    """All video artifacts this workspace has produced, plus render specs.
+    """All video artifacts this workspace has produced, plus uploaded files.
 
-    Real data only: rows come from the videos/variants tables. Uploads are not
-    supported yet and are reported as such rather than faked.
+    Real data only: rows come from the videos/variants tables plus the
+    workspace uploads directory (operator-supplied files).
     """
     from pathlib import Path as _P
 
@@ -798,13 +859,55 @@ def list_assets(ws: Workspace = Depends(require_workspace_role("viewer")), db=De
                 "created_at": video.created_at.isoformat() + "Z",
             }
         )
+    upload_dir = _P("data/videos") / ws.id / "uploads"
+    if upload_dir.exists():
+        for f in sorted(upload_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)[:100]:
+            if not f.is_file():
+                continue
+            items.append({
+                "id": f"upload:{f.name}",
+                "type": "upload",
+                "title": f.name,
+                "engine": "upload",
+                "status": "READY",
+                "size_bytes": f.stat().st_size,
+                "is_mock": False,
+                "video_id": None,
+                "created_at": "",
+            })
     return {
         "items": items,
         "capabilities": {
-            "upload": False,
-            "note": "Asset upload is not available yet; the library lists system-produced artifacts.",
+            "upload": True,
+            "note": "Operators can upload MP4/JPG/PNG assets for manual use.",
         },
     }
+
+
+@assets_router.post("/upload", summary="Upload an MP4/image asset")
+def upload_asset(
+    ws: Workspace = Depends(require_workspace_role("member")),
+    file: UploadFile = File(...),
+):
+    """Operator-supplied asset stored under the workspace boundary."""
+    import pathlib as _pl
+
+    up = file
+    if up is None:
+        raise HTTPException(status_code=400, detail="file is required (multipart 'file')")
+    data = up.file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="file is empty")
+    if len(data) > 500 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="file exceeds 500MB limit")
+    suffix = _pl.Path(up.filename or "upload").suffix.lower()
+    if suffix not in (".mp4", ".mov", ".jpg", ".jpeg", ".png", ".wav", ".mp3"):
+        raise HTTPException(status_code=400, detail=f"unsupported file type: {suffix or 'unknown'}")
+    from app.services.storage import get_storage
+
+    safe = "".join(c if (c.isalnum() or c in ("-", "_", ".")) else "_" for c in (up.filename or "upload"))[:120]
+    stored = get_storage().save_media(ws.id, data=data, filename=f"uploads/{safe}")
+    return {"path": stored, "size_bytes": len(data)}
 
 
 # ---------------------------------------------------------------------------

@@ -56,9 +56,22 @@ def _configure_file_logging() -> None:
 
 _configure_file_logging()
 
+if settings.sentry_dsn:
+    try:
+        import sentry_sdk
+
+        sentry_sdk.init(dsn=settings.sentry_dsn, traces_sample_rate=0.1)
+        logger.info("sentry error tracking enabled")
+    except Exception as exc:
+        logger.warning(f"sentry init failed: {exc}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.is_production and settings.secret_key.startswith("change-me"):
+        raise RuntimeError(
+            "YMONEY_SECRET_KEY must be set to a strong random value in production"
+        )
     Path("data").mkdir(exist_ok=True)
     with session_scope() as session:
         applied = run_migrations(session)

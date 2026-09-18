@@ -7,6 +7,7 @@ dependencies = [
     "fastapi>=0.115.6",
     "uvicorn[standard]>=0.34.0",
     "sqlalchemy>=2.0.36",
+    "psycopg[binary]>=3.2.0",
     "pydantic>=2.10.4",
     "pydantic-settings>=2.7.0",
     "httpx>=0.28.1",
@@ -15,6 +16,8 @@ dependencies = [
     "loguru>=0.7.3",
     "python-multipart>=0.0.20",
     "cryptography>=44.0.0",
+    "boto3>=1.35.0",
+    "sentry-sdk>=2.15.0",
 ]
 
 [dependency-groups]

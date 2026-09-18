@@ -33,10 +33,7 @@ class AnalyticsCollectorAgent(BaseAgent):
                 posts = s.scalars(q.order_by(PublishedPost.published_at.desc()).limit(50)).all()
                 for post in posts:
                     provider = analytics_mod.get_provider(post.platform)
-                    account = {
-                        "access_token": "",
-                        "api_key": "",
-                    }
+                    account = self._account_for(ws, post.platform)
                     try:
                         stats = provider.fetch_stats(
                             {"remote_post_id": post.remote_post_id, "platform": post.platform}, account
@@ -63,6 +60,28 @@ class AnalyticsCollectorAgent(BaseAgent):
             return {"updated": updated, "summary": f"collected metrics for {updated} post(s)"}
 
         return self.execute(ctx, "collect_metrics", input_summary="", fn=work)
+
+    @staticmethod
+    def _account_for(workspace_id: str, platform: str) -> dict:
+        from app.models import SocialAccount
+
+        lookup = "meta" if platform in ("facebook", "instagram") else platform
+        with session_scope() as s:
+            acc = s.scalar(
+                select(SocialAccount).where(
+                    SocialAccount.workspace_id == workspace_id,
+                    SocialAccount.platform.in_([platform, lookup] if lookup != platform else [platform]),
+                    SocialAccount.status == "connected",
+                )
+            )
+            if not acc:
+                return {"access_token": "", "api_key": ""}
+            from app.core.security import decrypt_secret
+
+            return {
+                "access_token": decrypt_secret(acc.access_token_enc or ""),
+                "api_key": "",
+            }
 
 
 class LearningAgent(BaseAgent):

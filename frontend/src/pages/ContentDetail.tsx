@@ -202,17 +202,7 @@ export default function ContentDetail() {
           )}
 
           {tab === "variants" && (
-            <div className="space-y-3">
-              {(c.variants ?? []).map((v: any) => (
-                <Card key={v.id} style={v.selected ? { borderColor: "var(--accent)" } : undefined}>
-                  <div className="flex gap-2 items-center flex-wrap mb-2">
-                    <Badge tone={v.selected ? "success" : "muted"}>{v.label}{v.selected ? " · selected" : ""}</Badge>
-                    {v.predicted_score != null && <span className="font-mono text-[12px]">hook {v.predicted_score}</span>}
-                  </div>
-                  <p className="text-[13.5px] whitespace-pre-wrap">{v.script}</p>
-                </Card>
-              ))}
-            </div>
+            <VariantsCompare variants={c.variants ?? []} contentId={contentId!} onChange={detail.reload} />
           )}
 
           {tab === "timeline" && (
@@ -255,6 +245,72 @@ export default function ContentDetail() {
           <div className="text-[13px]" style={{ color: "var(--text-muted)" }}>No candidates — ffmpeg may be unavailable.</div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+function estSeconds(script: string): number {
+  return Math.max(5, Math.round((script || "").split(/\s+/).filter(Boolean).length / 2.6));
+}
+
+function VariantsCompare({ variants, contentId, onChange }: { variants: any[]; contentId: string; onChange: () => void }) {
+  const [compare, setCompare] = useState<string[]>([]);
+  const [busy, setBusy] = useState("");
+
+  function toggle(id: string) {
+    setCompare((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id].slice(-2)));
+  }
+
+  async function select(id: string) {
+    setBusy(id);
+    try {
+      await wsApi.post(`/content/${contentId}/variants/${id}/select`);
+      onChange();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  const shown = compare.length === 2 ? variants.filter((v) => compare.includes(v.id)) : variants;
+  const titlesOf = (v: any) => v.metadata?.youtube?.title_variants ?? v.metadata?.tiktok?.title_variants ?? [];
+
+  return (
+    <div className="space-y-3">
+      {variants.length >= 2 && (
+        <div className="text-[12.5px]" style={{ color: "var(--text-muted)" }}>
+          Tick two variants to compare side-by-side. Switching is allowed before production starts.
+        </div>
+      )}
+      <div className={compare.length === 2 ? "grid md:grid-cols-2 gap-3" : "space-y-3"}>
+        {shown.map((v: any) => (
+          <Card key={v.id} style={v.selected ? { borderColor: "var(--accent)" } : undefined}>
+            <div className="flex gap-2 items-center flex-wrap mb-2">
+              {variants.length >= 2 && (
+                <input type="checkbox" checked={compare.includes(v.id)} onChange={() => toggle(v.id)} aria-label={`Compare ${v.label}`} />
+              )}
+              <Badge tone={v.selected ? "success" : "muted"}>{v.label}{v.selected ? " · selected" : ""}</Badge>
+              {v.predicted_score != null && <span className="font-mono text-[12px]">hook {v.predicted_score}</span>}
+              <span className="font-mono text-[12px]" style={{ color: "var(--text-faint)" }}>~{estSeconds(v.script)}s · {v.script.split(/\s+/).filter(Boolean).length}w</span>
+              {!v.selected && (
+                <button className="btn-outline !text-[11px] !py-1 ml-auto" disabled={busy === v.id} onClick={() => select(v.id)}>
+                  {busy === v.id ? "…" : "Set as selected"}
+                </button>
+              )}
+            </div>
+            <p className="text-[13.5px] whitespace-pre-wrap max-h-[220px] overflow-y-auto">{v.script}</p>
+            {titlesOf(v).length > 0 && (
+              <div className="mt-2 pt-2" style={{ borderTop: "var(--seam)" }}>
+                <div className="panel-label mb-1">Title A/B</div>
+                {titlesOf(v).map((t: string, i: number) => (
+                  <div key={i} className="text-[12.5px] py-0.5">• {t}</div>
+                ))}
+              </div>
+            )}
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

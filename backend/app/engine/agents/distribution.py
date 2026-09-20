@@ -27,14 +27,53 @@ PLATFORM_META_TEMPLATES = {
 }
 
 
+def clean_platform_meta(p: str, meta: dict, topic: str, script: str) -> dict | None:
+    """Validate + normalize one platform's LLM metadata (pure, unit-tested)."""
+    if p not in ("youtube", "tiktok", "facebook", "instagram"):
+        return None
+    title_max = PLATFORM_META_TEMPLATES.get(p, {}).get("title_max", 100)
+    title = str(meta.get("title", topic))[:title_max]
+    variants = []
+    for cand in (meta.get("title_variants") or meta.get("titles") or []):
+        text = str(cand)[:title_max].strip()
+        if text and text != title and text not in variants:
+            variants.append(text)
+        if len(variants) >= 2:
+            break
+    description = str(meta.get("description", ""))
+    finance = _seo_finance(topic, script, description)
+    if finance and "Not financial advice" not in description:
+        description = (description + " Not financial advice. For education only.").strip()
+    return {
+        "title": title,
+        "title_variants": variants,
+        "description": description[:2000],
+        "hashtags": [h if h.startswith("#") else f"#{h}" for h in (meta.get("hashtags") or [])][:8],
+        "keywords": [str(k) for k in (meta.get("keywords") or [])][:10],
+        "category_id": str(meta.get("category_id") or meta.get("categoryId") or "27"),
+        "contains_finance_advice": finance,
+        "is_ai_generated": True,
+        "altered_content": True,
+    }
+
+
 def _default_metadata(topic: str, script: str, platforms: list[str]) -> dict:
     base = topic if len(topic) <= 60 else topic[:57] + "..."
     finance = _seo_finance(topic, script, "")
     out = {}
     for p in platforms:
         tpl = PLATFORM_META_TEMPLATES.get(p, PLATFORM_META_TEMPLATES["tiktok"])
+        tmax = tpl["title_max"]
+        title = base[: tmax]
+        alts = []
+        for v in (f"{base} — explained in 60 seconds",
+                  f"What nobody tells you about {base}"):
+            t = v[:tmax].strip()
+            if t and t != title and t not in alts:
+                alts.append(t)
         out[p] = {
-            "title": base[: tpl["title_max"]],
+            "title": title,
+            "title_variants": alts[:2],
             "description": f"{topic} explained in seconds. {script[:80]}..." + (
                 " Not financial advice. For education only." if finance else ""
             ),
@@ -67,34 +106,23 @@ class SEOAgent(BaseAgent):
         res = llm.complete_json(
             system=(
                 "You generate platform-optimized short-form video metadata. For EACH platform in the "
-                "list return: title (punchy, within platform limits), description (1-2 sentences), "
+                "list return: title (punchy, within platform limits), title_variants (2 alternate "
+                "titles, same limits, different angles for A/B testing), description (1-2 sentences), "
                 "hashtags (4-8, platform conventions), keywords. JSON keyed by platform."
             ),
             user=json.dumps({"topic": topic, "platforms": platforms, "script_excerpt": script[:600]}),
             workspace_id=ctx.workspace_id or "",
             tier="cheap",
             temperature=0.7,
-            max_tokens=800,
+            max_tokens=1000,
         )
         clean = {}
         for p, meta in (res.items() if isinstance(res, dict) else []):
             if p not in ("youtube", "tiktok", "facebook", "instagram"):
                 continue
-            title = str(meta.get("title", topic))
-            description = str(meta.get("description", ""))
-            finance = _seo_finance(topic, script, description)
-            if finance and "Not financial advice" not in description:
-                description = (description + " Not financial advice. For education only.").strip()
-            clean[p] = {
-                "title": title[: PLATFORM_META_TEMPLATES.get(p, {}).get("title_max", 100)],
-                "description": description[:2000],
-                "hashtags": [h if h.startswith("#") else f"#{h}" for h in (meta.get("hashtags") or [])][:8],
-                "keywords": [str(k) for k in (meta.get("keywords") or [])][:10],
-                "category_id": str(meta.get("category_id") or meta.get("categoryId") or "27"),
-                "contains_finance_advice": finance,
-                "is_ai_generated": True,
-                "altered_content": True,
-            }
+            cleaned = clean_platform_meta(p, meta if isinstance(meta, dict) else {}, topic, script)
+            if cleaned:
+                clean[p] = cleaned
         return clean or _default_metadata(topic, script, platforms)
 
     def run(self, ctx, **kw) -> dict:

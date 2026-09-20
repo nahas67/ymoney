@@ -349,6 +349,42 @@ def content_audit(content_id: str, ws: Workspace = Depends(require_workspace_rol
     }
 
 
+@content_router.post("/{content_id}/variants/{variant_id}/select", summary="Switch selected variant (pre-render only)")
+def select_variant(content_id: str, variant_id: str,
+                   ws: Workspace = Depends(require_workspace_role("admin")),
+                   db=Depends(get_db)):
+    """Manually pick a different script variant for hook A/B decisions.
+
+    Allowed only in SCRIPT_READY with no rendered video yet — switching after
+    a render would orphan the artifact (use retry/regenerate instead).
+    """
+    c = db.get(ContentItem, content_id)
+    if not c or c.workspace_id != ws.id:
+        raise HTTPException(status_code=404, detail="content not found")
+    v = db.get(VideoVariant, variant_id)
+    if not v or v.content_item_id != content_id:
+        raise HTTPException(status_code=404, detail="variant not found")
+    if v.selected:
+        return {"selected": v.id}
+    if c.status != "SCRIPT_READY":
+        raise HTTPException(status_code=409, detail=f"cannot switch variants from status {c.status}")
+    rendered = db.scalar(
+        select(Video.id).join(VideoVariant, Video.variant_id == VideoVariant.id)
+        .where(VideoVariant.content_item_id == content_id).limit(1)
+    )
+    if rendered:
+        raise HTTPException(status_code=409, detail="a render already exists for this content")
+    for other in db.scalars(select(VideoVariant).where(VideoVariant.content_item_id == content_id)):
+        other.selected = (other.id == variant_id)
+    c.error = ""
+    db.commit()
+    from app.services.events import record_event
+
+    record_event(ws.id, "variant.selected", f"Operator selected variant {v.label}",
+                 level="info", source="studio", data={"content_id": content_id, "variant_id": v.id})
+    return {"selected": v.id}
+
+
 @content_router.post("/{content_id}/actions", summary="Human override actions")
 def content_action(
     content_id: str,

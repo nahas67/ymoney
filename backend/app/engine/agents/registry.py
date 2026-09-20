@@ -15,6 +15,7 @@ from app.engine.agents.intelligence import AnalyticsCollectorAgent, LearningAgen
 from app.engine.agents.production import QualityAgent, VideoProducerAgent
 from app.engine.agents.avatar import AvatarDirectorAgent
 from app.engine.agents.broll import BrollResearcherAgent
+from app.engine.agents.compliance import ComplianceOfficerAgent
 from app.engine.agents.dubbing import DubbingLocalizerAgent
 from app.engine.agents.motion import MotionDesignerAgent
 from app.engine.agents.voice import VoiceDesignerAgent
@@ -40,6 +41,7 @@ AGENTS: dict[str, type[BaseAgent]] = {
     "voice_designer": VoiceDesignerAgent,
     "avatar_director": AvatarDirectorAgent,
     "broll_researcher": BrollResearcherAgent,
+    "compliance": ComplianceOfficerAgent,
 }
 
 AGENT_META: dict[str, AgentMeta] = {k: v.meta for k, v in AGENTS.items()}

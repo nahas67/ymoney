@@ -137,3 +137,16 @@ export function coverFileUrl(videoId: string, index: number): string {
   const t = accessToken ? `?token=${encodeURIComponent(accessToken)}` : "";
   return `${BASE}/workspaces/${workspaceId}/videos/${videoId}/covers/${index}/file${t}`;
 }
+
+export async function downloadAudit(contentId: string): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+  const res = await fetch(`${BASE}/workspaces/${workspaceId}/content/${contentId}/audit`, { headers });
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
+  const blob = await res.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `audit-${contentId.slice(0, 8)}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}

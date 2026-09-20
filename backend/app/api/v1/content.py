@@ -283,6 +283,72 @@ def content_timeline(content_id: str, ws: Workspace = Depends(require_workspace_
     return {"items": timeline}
 
 
+@content_router.get("/{content_id}/audit", summary="Evidence bundle: WHAT/WHY/render/publish trail")
+def content_audit(content_id: str, ws: Workspace = Depends(require_workspace_role("viewer")), db=Depends(get_db)):
+    """One-click transparency export: strategy decision, research claims,
+    variants, QC checks, compliance findings, publishing jobs and posts."""
+    from app.models import EventLog, PostMetric, PublishedPost, PublishingJob, QualityCheck
+
+    c = db.get(ContentItem, content_id)
+    if not c or c.workspace_id != ws.id:
+        raise HTTPException(status_code=404, detail="content not found")
+    variants = db.scalars(select(VideoVariant).where(VideoVariant.content_item_id == content_id)).all()
+    variant_ids = [v.id for v in variants]
+    videos = (db.scalars(select(Video).where(Video.variant_id.in_(variant_ids))).all()
+              if variant_ids else [])
+    video_ids = [v.id for v in videos]
+    qcs = (db.scalars(select(QualityCheck).where(QualityCheck.video_id.in_(video_ids))).all()
+           if video_ids else [])
+    jobs = (db.scalars(select(PublishingJob).where(PublishingJob.video_id.in_(video_ids))).all()
+            if video_ids else [])
+    posts = (db.scalars(select(PublishedPost).where(PublishedPost.video_id.in_(video_ids))).all()
+             if video_ids else [])
+    metrics = {}
+    if posts:
+        for m in db.scalars(select(PostMetric).where(
+                PostMetric.post_id.in_([p.id for p in posts])).order_by(PostMetric.captured_at.asc())):
+            metrics[m.post_id] = {"views": m.views, "likes": m.likes, "comments": m.comments,
+                                  "shares": m.shares, "completion_rate": m.completion_rate,
+                                  "captured_at": m.captured_at.isoformat() + "Z" if m.captured_at else None}
+    decision = None
+    if c.cycle_id:
+        cy = db.get(Cycle, c.cycle_id)
+        if cy:
+            decision = (cy.summary_json or {}).get("select", {}).get("why")
+    events = db.scalars(
+        select(EventLog).where(EventLog.workspace_id == ws.id)
+        .order_by(EventLog.created_at.desc()).limit(400)
+    ).all()
+    trail = [{"at": e.created_at.isoformat() + "Z", "kind": e.kind, "level": e.level,
+              "message": e.message}
+             for e in events if (e.data_json or {}).get("content_id") == content_id]
+    return {
+        "content": {"id": c.id, "topic": c.topic, "status": c.status,
+                    "error": c.error, "created_at": c.created_at.isoformat() + "Z"},
+        "decision_why": decision,
+        "strategy": c.strategy_json or {},
+        "research": c.research_json or {},
+        "variants": [{"id": v.id, "label": v.label, "hook": v.hook[:200],
+                      "script": v.script[:2000], "predicted_score": v.predicted_score,
+                      "selected": v.selected, "metadata": v.metadata_json or {}} for v in variants],
+        "videos": [{"id": v.id, "engine": v.engine, "status": v.status,
+                    "aspect_ratio": v.aspect_ratio, "resolution": v.resolution,
+                    "duration_seconds": v.duration_seconds,
+                    "params": v.params_json or {}, "error": v.error} for v in videos],
+        "quality_checks": [{"overall": q.overall, "passed": q.passed, "notes": q.notes,
+                            "components": q.components_json or {},
+                            "created_at": q.created_at.isoformat() + "Z"} for q in qcs],
+        "publishing_jobs": [{"platform": j.platform, "status": j.status, "attempt": j.attempt,
+                             "remote_post_id": j.remote_post_id, "remote_url": j.remote_url,
+                             "error": (j.error or "")[:300],
+                             "compliance": (j.metadata_json or {}).get("compliance")} for j in jobs],
+        "published_posts": [{"platform": p.platform, "remote_post_id": p.remote_post_id,
+                             "remote_url": p.remote_url, "title": p.title, "is_mock": p.is_mock,
+                             "metrics": metrics.get(p.id)} for p in posts],
+        "event_trail": trail,
+    }
+
+
 @content_router.post("/{content_id}/actions", summary="Human override actions")
 def content_action(
     content_id: str,
@@ -306,7 +372,31 @@ def content_action(
     if body.action == "retry":
         c.error = ""
     db.commit()
-    return {"status": c.status}
+    queued_upload = False
+    if body.action == "approve" and target == "APPROVED":
+        # Approval-hold / compliance-hold release: a human just approved a
+        # video that never reached the network. Enqueue the upload stage
+        # (idempotent: handler skips already-published platforms, and the job
+        # key dedupes double-clicks).
+        from app.services import jobs as _jobs
+
+        variant = db.scalar(
+            select(VideoVariant).where(VideoVariant.content_item_id == content_id,
+                                       VideoVariant.selected.is_(True))
+        )
+        video = (db.scalar(select(Video).where(Video.variant_id == variant.id,
+                                               Video.status == "READY"))
+                 if variant else None)
+        if video is not None:
+            job_id = _jobs.enqueue(
+                "cycle.upload",
+                {"cycle_id": None, "content_id": content_id, "video_id": video.id},
+                workspace_id=ws.id,
+                priority=20,
+                idempotency_key=f"approve-{content_id}-{video.id}",
+            )
+            queued_upload = job_id is not None
+    return {"status": c.status, "queued_upload": queued_upload}
 
 
 # ---------------------------------------------------------------------------

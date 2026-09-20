@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { wsApi, videoFileUrl, videoThumbUrl, coverFileUrl } from "../lib/api";
+import { wsApi, videoFileUrl, videoThumbUrl, coverFileUrl, downloadAudit } from "../lib/api";
 import { useFetch } from "../hooks/hooks";
 import { Badge, Card, Modal, PageHeader, ScoreBar, Tabs, WhyPanel } from "../components/ui";
 import { fmtDate } from "../lib/format";
@@ -97,6 +97,7 @@ export default function ContentDetail() {
       <PageHeader title={c?.topic ?? "Content"} subtitle={c ? `${c.status} · ${fmtDate(c.created_at)}` : undefined}
         actions={<>
           <button className="btn-ghost !text-xs" onClick={() => nav("/studio")}>← Library</button>
+          <button className="btn-outline !text-xs" onClick={() => contentId && downloadAudit(contentId).catch((e: any) => alert(e.message))}>Export audit</button>
           {c && ["QC", "APPROVED", "SCHEDULED"].includes(c.status) && (
             <>
               <button className="btn-primary !text-xs" disabled={busy === "approve"} onClick={() => action("approve")}>Approve</button>

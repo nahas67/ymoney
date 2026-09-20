@@ -922,6 +922,72 @@ def handle_upload(ctx):
         if variant:
             variant.metadata_json = metadata
 
+    # ---- compliance gate (E5): spec preflight + reused-content risk ----
+    from app.engine.agents.compliance import ComplianceOfficerAgent
+
+    with session_scope() as s:
+        _research = dict((s_get(s, ContentItem, content_id).research_json) or {})
+    comp = ComplianceOfficerAgent().review(
+        ctx, video_path=local_path, platforms=platforms, topic=topic,
+        script=_script_for(content_id), metadata_by_platform=metadata,
+        visual_keywords=_research.get("visual_keywords", []),
+    )
+    for p in platforms:
+        if isinstance(metadata.get(p), dict):
+            metadata[p] = {**metadata[p], "compliance": {
+                "passed": p not in comp["spec_failed"],
+                "risk_score": comp["risk_score"],
+                "require_human": comp["require_human"],
+            }}
+    with session_scope() as s:
+        variant = s.query(VideoVariant).filter(VideoVariant.content_item_id == content_id, VideoVariant.selected.is_(True)).first()
+        if variant:
+            variant.metadata_json = metadata
+    if comp["spec_failed"]:
+        with session_scope() as s:
+            for p in comp["spec_failed"]:
+                reason = next((f["message"] for f in comp["findings"]
+                               if f.get("platform") == p and f.get("severity") == "fail"),
+                              "spec preflight failed")
+                job = s.query(PublishingJob).filter(
+                    PublishingJob.video_id == video_id, PublishingJob.platform == p).first()
+                if job is None:
+                    job = PublishingJob(workspace_id=ws, video_id=video_id, platform=p,
+                                        metadata_json=metadata.get(p) or {})
+                    s.add(job)
+                    s.flush()
+                job.status = "FAILED"
+                job.error = f"compliance: {reason}"[:2000]
+        record_event(ws, "compliance.blocked",
+                     f"Spec preflight blocked: {', '.join(comp['spec_failed'])}",
+                     level="warning", source="compliance", data={"video_id": video_id})
+        platforms = [p for p in platforms if p not in comp["spec_failed"]]
+    if comp["require_human"]:
+        with session_scope() as s:
+            content = s_get(s, ContentItem, content_id)
+            if can_transition(content.status, ContentStatus.APPROVED.value):
+                _set_content_status(s, content, ContentStatus.APPROVED.value)
+            content.error = f"compliance hold: {comp['summary']}"
+        record_event(ws, "review.required",
+                     f"Compliance hold — human review required: {comp['summary']}",
+                     level="warning", source="compliance",
+                     data={"video_id": video_id, "content_id": content_id,
+                           "risk_score": comp["risk_score"]})
+        scheduled_entry_id = ctx.payload.get("scheduled_entry_id")
+        if scheduled_entry_id:
+            with session_scope() as s:
+                entry = s.get(ScheduleEntry, scheduled_entry_id)
+                if entry and entry.workspace_id == ws and entry.status in ("DISPATCHING", "QUEUED"):
+                    entry.status = "FAILED"
+        if cycle_id:
+            _after_cycle_terminal(ctx, ws, success=True)
+            return {"published": 0, "held": True}
+        return {"published": 0, "held": True, "scheduled": True}
+    if not platforms:
+        if cycle_id:
+            _after_cycle_terminal(ctx, ws, success=True)
+        return {"published": 0, "blocked": sorted(comp["spec_failed"])}
+
     # ---- idempotency: never publish the same video to a platform twice ----
     with session_scope() as s:
         already_published = {

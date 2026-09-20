@@ -270,7 +270,7 @@ function TrendsTab() {
       </div>
       <div className="flex gap-2 mt-4 flex-wrap">
         <select className="select !w-48" value={kind} onChange={(e) => setKind(e.target.value)}>
-          {["google_trends", "reddit", "hacker_news", "newsdata", "coingecko", "devto"].map((k) => <option key={k} value={k}>{k}</option>)}
+          {["google_trends", "reddit", "hacker_news", "newsdata", "coingecko", "devto", "youtube_trending", "youtube_channel"].map((k) => <option key={k} value={k}>{k}</option>)}
         </select>
         <input className="input !w-52" placeholder="Display name (optional)" value={name} onChange={(e) => setName(e.target.value)} />
         <button className="btn-primary !text-xs" onClick={add}>Add source</button>

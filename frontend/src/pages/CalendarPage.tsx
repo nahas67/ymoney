@@ -22,6 +22,7 @@ export default function CalendarPage() {
   const sched = useFetch(() => wsApi.get("/calendar"), []);
   const best = useFetch(() => wsApi.get("/calendar/best-times"), []);
   const [cancelId, setCancelId] = useState("");
+  const [planning, setPlanning] = useState(false);
 
   const items: any[] = (sched.data as any)?.items ?? [];
   const byDay = useMemo(() => {
@@ -33,6 +34,19 @@ export default function CalendarPage() {
     }
     return map;
   }, [items]);
+
+  async function autoFill() {
+    setPlanning(true);
+    try {
+      const r = await wsApi.post("/calendar/plan", { days: 7 });
+      alert(r.summary ?? `Scheduled ${(r.created ?? []).length} publish(es)`);
+      sched.reload();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setPlanning(false);
+    }
+  }
 
   async function cancel(id: string) {
     setCancelId(id);
@@ -54,6 +68,9 @@ export default function CalendarPage() {
       <PageHeader title="Calendar" subtitle="Scheduled publishes. The sweep dispatches due entries with platform-native scheduling."
         actions={
           <>
+            <button className="btn-primary !text-xs" disabled={planning} onClick={autoFill}>
+              {planning ? "Planning…" : "✨ Auto-fill week"}
+            </button>
             <button className="btn-outline !text-xs" onClick={() => setYm({ y: ym.m === 0 ? ym.y - 1 : ym.y, m: (ym.m + 11) % 12 })}>←</button>
             <b className="text-[14px]">{new Date(ym.y, ym.m).toLocaleString(undefined, { month: "long", year: "numeric" })}</b>
             <button className="btn-outline !text-xs" onClick={() => setYm({ y: ym.m === 11 ? ym.y + 1 : ym.y, m: (ym.m + 1) % 12 })}>→</button>

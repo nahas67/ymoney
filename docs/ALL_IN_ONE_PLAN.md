@@ -136,7 +136,7 @@ out), SEO (first-comment/pinned/title variants), Learning (retention curves).
 3. **E3 avatar**: SadTalker lane + Avatar Director; `VIDEO_ENGINE=avatar` option.
 4. **E4 AI B-roll**: Wan 2.1-1.3B lane + B-roll Researcher; B-roll override UI.
 5. **E5 trust** (built): Compliance Officer (agent #20) + spec preflight + reused-content score; audit export; approval-hold release loop closed.
-6. **E6 brains**: Competitor Analyst + TT-Creative/YT-Trending sources + retention curves + Scheduler.
+6. **E6 brains** (built — agents #21–22): Competitor Analyst + YT trending/channel sources + retention interactions + fatigue decay + Scheduler auto-fill.
 7. **E7 scale**: Redis/Celery + Postgres E2E + GPU worker lane; brand kits + hook A/B UI.
 
 Every slice: workspace-isolation test + idempotency test + simulation E2E + suite green +

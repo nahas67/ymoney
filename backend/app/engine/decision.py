@@ -74,10 +74,15 @@ _PATTERN_RELEVANCE = {
 
 def _pattern_relevant(pattern, topic_lower: str) -> bool:
     """A pattern informs a decision only when its domain applies to the topic.
-    Format patterns (hooks/duration/title style) apply broadly; domain patterns
-    require topical keyword overlap."""
+    Format patterns (hooks/duration/title style/retention) apply broadly;
+    topic_hot_<word> patterns apply when the word appears in the topic; domain
+    patterns require topical keyword overlap."""
+    key = getattr(pattern, "pattern_key", "")
+    if key.startswith("topic_hot_"):
+        word = key[len("topic_hot_"):]
+        return bool(word) and word in topic_lower
     keywords = _PATTERN_RELEVANCE.get(
-        getattr(pattern, "pattern_key", ""),
+        key,
         _PATTERN_RELEVANCE["commercial_intent"],  # unknown keys: conservative
     )
     if not keywords:  # broad format pattern

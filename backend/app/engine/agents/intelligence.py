@@ -10,6 +10,48 @@ from app.models import LearningPattern, MemoryRecord, PostMetric, PublishedPost
 from app.models.base import utcnow
 from app.providers import analytics as analytics_mod
 
+_STOPWORDS = {
+    "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with",
+    "is", "are", "was", "were", "be", "been", "this", "that", "it", "its",
+    "at", "by", "from", "as", "vs", "your", "you", "we", "my", "how",
+    "what", "why", "when", "get", "got", "new", "best", "top", "video",
+}
+
+
+def _safe_hit(fn, post, metric, aux) -> bool:
+    try:
+        return bool(fn(post, metric, aux))
+    except Exception:
+        return False
+
+
+def _hot_topic_words(perf: list, median_views: float, top_n: int = 3) -> list[str]:
+    """Frequent words inside outperforming titles (hook×topic interactions)."""
+    import re as _re
+
+    freq: dict[str, int] = {}
+    for p, m in perf:
+        if m.views < median_views * 1.2:
+            continue
+        for w in _re.findall(r"[a-z0-9]+", (p.title or "").lower()):
+            if len(w) > 3 and w not in _STOPWORDS:
+                freq[w] = freq.get(w, 0) + 1
+    ranked = sorted(freq.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [w for w, c in ranked if c >= 2][:top_n]
+
+
+def _static_feature_fns() -> dict:
+    return {
+        "hook_style_question": lambda p, m, a: "?" in (p.title or ""),
+        "duration_long_form": lambda p, m, a: "#shorts" not in (p.title or "").lower(),
+        "title_with_numbers": lambda p, m, a: any(c.isdigit() for c in (p.title or "")),
+        "high_completion": lambda p, m, a: (m.completion_rate or 0) >= 0.5,
+        "high_engagement": lambda p, m, a: ((m.likes + m.comments + m.shares) / m.views) > a.get("median_eng", 0) * 1.5 if a.get("median_eng", 0) > 0 else False,
+    }
+
+
+_FEATURE_FNS = _static_feature_fns()
+
 
 class AnalyticsCollectorAgent(BaseAgent):
     meta = AgentMeta(
@@ -107,7 +149,9 @@ class LearningAgent(BaseAgent):
                 # decision/research contexts can retrieve it by topic scope.
                 self._remember_pattern(ws, f)
                 stored += 1
-            return {"stored": stored, "summary": f"updated {stored} pattern(s) from recent performance"}
+            decayed = self._apply_fatigue(ws)
+            return {"stored": stored, "decayed": decayed,
+                    "summary": f"updated {stored} pattern(s), decayed {decayed} stale one(s)"}
 
         return self.execute(ctx, "learn", input_summary="", fn=work)
 
@@ -158,26 +202,35 @@ class LearningAgent(BaseAgent):
 
             findings = []
 
-            def feature_hits(fn) -> tuple[int, float]:
-                """(n_hits, avg_multiplier when hit). fn receives (post, metric)."""
+            def feature_hits(fn, rows=None) -> tuple[int, float]:
+                """(n_hits, avg_multiplier when hit). fn receives (post, metric, aux)."""
+                rows = perf if rows is None else rows
                 hits = 0
                 mults = []
-                for p, m in perf:
+                for p, m in rows:
                     try:
-                        if fn(p, m):
+                        if fn(p, m, aux):
                             hits += 1
                             mults.append(m.views / max(median_views, 1))
                     except Exception:
                         continue
                 return hits, (sum(mults) / len(mults)) if mults else 0.0
 
+            aux = {"median_views": median_views, "median_eng": median_eng}
             checks = [
-                ("hook_style_question", lambda p, m: "?" in (p.title or ""), "question-style titles"),
-                ("duration_long_form", lambda p, m: "#shorts" not in (p.title or "").lower(), "non-shorts formatting"),
-                ("title_with_numbers", lambda p, m: any(c.isdigit() for c in (p.title or "")), "titles containing numbers"),
-                ("high_completion", lambda p, m: (m.completion_rate or 0) >= 0.5, "completion rate ≥50%"),
-                ("high_engagement", lambda p, m: ((m.likes + m.comments + m.shares) / m.views) > median_eng * 1.5 if median_eng > 0 else False, "engagement rate 1.5× above median"),
+                ("hook_style_question", lambda p, m, a: "?" in (p.title or ""), "question-style titles"),
+                ("duration_long_form", lambda p, m, a: "#shorts" not in (p.title or "").lower(), "non-shorts formatting"),
+                ("title_with_numbers", lambda p, m, a: any(c.isdigit() for c in (p.title or "")), "titles containing numbers"),
+                ("high_completion", lambda p, m, a: (m.completion_rate or 0) >= 0.5, "completion rate ≥50%"),
+                ("high_engagement", lambda p, m, a: ((m.likes + m.comments + m.shares) / m.views) > a["median_eng"] * 1.5 if a["median_eng"] > 0 else False, "engagement rate 1.5× above median"),
             ]
+            # hook×topic interactions: hot words inside outperforming titles
+            for word in _hot_topic_words(perf, median_views):
+                checks.append(
+                    (f"topic_hot_{word}",
+                     lambda p, m, a, w=word: w in (p.title or "").lower(),
+                     f"hot topic word '{word}'"),
+                )
             for key, fn, desc in checks:
                 hits, mult = feature_hits(fn)
                 if hits >= 2 and mult > 1.05:
@@ -196,6 +249,59 @@ class LearningAgent(BaseAgent):
             self.step("correlate_features", f"tested {len(checks)} observable features vs median")
             self.step_done("ok", f"{len(findings)} pattern(s) found")
             return findings
+
+    def _apply_fatigue(self, workspace_id: str, window: int = 10) -> int:
+        """Decay active patterns that stopped working on recent posts.
+
+        Compares each active pattern's hits inside the latest `window` posts
+        against the channel median; a <0.95× multiplier decays the recorded
+        improvement 30%, and patterns decaying below +2% deactivate. Returns
+        the number of patterns touched.
+        """
+        from app.models import LearningPattern
+
+        self.step("fatigue_check", "re-test active patterns on recent posts")
+        touched = 0
+        with session_scope() as s:
+            posts = s.scalars(
+                select(PublishedPost).where(PublishedPost.workspace_id == workspace_id)
+                .order_by(PublishedPost.published_at.desc()).limit(200)
+            ).all()
+            latest = self._latest_metrics(s, [p.id for p in posts])
+            perf = [(p, m) for p in posts if (m := latest.get(p.id)) and m.views > 0]
+            if len(perf) < 4:
+                self.step_done("ok", "not enough measured posts for fatigue check")
+                return 0
+            views_sorted = sorted(m.views for _, m in perf)
+            median_views = views_sorted[len(views_sorted) // 2]
+            recent = perf[:window]
+            active = s.scalars(
+                select(LearningPattern).where(LearningPattern.workspace_id == workspace_id,
+                                              LearningPattern.active.is_(True))
+            ).all()
+            for pat in active:
+                fn = _FEATURE_FNS.get(pat.pattern_key)
+                if fn is None and pat.pattern_key.startswith("topic_hot_"):
+                    word = pat.pattern_key[len("topic_hot_"):]
+                    fn = lambda p, m, a, w=word: w in (p.title or "").lower()
+                if fn is None:
+                    continue
+                aux = {"median_views": median_views, "median_eng": 0}
+                hits = [(p, m) for p, m in recent if _safe_hit(fn, p, m, aux)]
+                if len(hits) < 2:
+                    continue
+                mult = sum(m.views / max(median_views, 1) for _, m in hits) / len(hits)
+                if mult < 0.95:
+                    pat.observed_improvement_pct = round(pat.observed_improvement_pct * 0.7, 2)
+                    ev = dict(pat.evidence_json or {})
+                    ev["fatigue"] = {"recent_multiplier": round(mult, 2), "window": len(recent)}
+                    pat.evidence_json = ev
+                    if pat.observed_improvement_pct < 2.0:
+                        pat.active = False
+                    touched += 1
+            s.flush()
+        self.step_done("ok", f"{touched} stale pattern(s) decayed")
+        return touched
 
     def _remember_pattern(self, workspace_id: str, finding: dict) -> None:
         """Store a learned pattern as a semantic memory with a topic scope."""

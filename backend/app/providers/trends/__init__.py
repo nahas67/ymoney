@@ -563,6 +563,148 @@ class DevToTrendSource(BaseTrendSource):
         return out
 
 
+# ---------------------------------------------------------------------------
+# YouTube Trending — Data API mostPopular (key-based, ~1 unit/call)
+# ---------------------------------------------------------------------------
+
+
+class YouTubeTrendingSource(BaseTrendSource):
+    """YouTube trending videos via videos.list chart=mostPopular.
+
+    Needs a YouTube Data API key (Settings → Connections, youtube.api_key).
+    Velocity comes from chart rank (top = fastest-moving); volume from views.
+    """
+
+    kind = "youtube_trending"
+    name = "YouTube Trending"
+
+    def __init__(self, api_key: str = "", region: str = "US", category: str = ""):
+        self.api_key = (api_key or "").strip()
+        self.region = (region or "US").strip() or "US"
+        self.category = (category or "").strip()
+
+    def fetch(self, niche: str, limit: int) -> list[TrendCandidate]:
+        if not self.api_key:
+            raise TrendSourceError(
+                "youtube_trending: no API key — add youtube.api_key under Settings → Connections"
+            )
+        try:
+            params: dict = {"part": "snippet,statistics", "chart": "mostPopular",
+                            "regionCode": self.region, "maxResults": str(max(1, min(limit, 50))),
+                            "key": self.api_key}
+            if self.category:
+                params["videoCategoryId"] = self.category
+            resp = httpx.get("https://www.googleapis.com/youtube/v3/videos",
+                             params=params, timeout=20)
+            resp.raise_for_status()
+            items = resp.json().get("items", [])
+        except Exception as exc:
+            logger.warning(f"youtube trending fetch failed: {exc}")
+            raise TrendSourceError(f"YouTube Trending unavailable: {exc}") from exc
+        out: list[TrendCandidate] = []
+        for rank, item in enumerate(items):
+            snippet = item.get("snippet") or {}
+            title = (snippet.get("title") or "").strip()
+            if not title:
+                continue
+            stats = item.get("statistics") or {}
+            try:
+                views = int(stats.get("viewCount") or 0)
+            except (TypeError, ValueError):
+                views = 0
+            vid = item.get("id", "")
+            out.append(TrendCandidate(
+                topic=title[:300],
+                source=self.kind,
+                external_ref=f"https://youtube.com/watch?v={vid}" if vid else "",
+                raw={"video_id": vid, "channel": snippet.get("channelTitle", ""),
+                     "views": views, "chart_rank": rank + 1, "region": self.region},
+                velocity_hint=max(0.0, min(1.0, 1.0 - rank / max(len(items), 1))),
+                volume_hint=min(views / 5_000_000.0, 1.0) if views else None,
+            ))
+        if not out:
+            raise TrendSourceError("YouTube Trending returned no usable videos")
+        return out[:limit]
+
+
+# ---------------------------------------------------------------------------
+# YouTube Channel — keyless RSS tracking for competitor watchlists
+# ---------------------------------------------------------------------------
+
+
+class YouTubeChannelSource(BaseTrendSource):
+    """Competitor watchlist via public channel RSS feeds (keyless, official).
+
+    Config: channel_id (required) or username/handle resolution is NOT done
+    here — use the raw channel ID (youtube.com/channel/UC...). Velocity comes
+    from publish recency; volume from upload cadence.
+    """
+
+    kind = "youtube_channel"
+    name = "YouTube Channel"
+
+    FEED_URL = "https://www.youtube.com/feeds/videos.xml?channel_id={cid}"
+
+    def __init__(self, channel_id: str = "", days: int = 30):
+        self.channel_id = (channel_id or "").strip()
+        self.days = max(1, min(int(days or 30), 90))
+
+    def fetch(self, niche: str, limit: int) -> list[TrendCandidate]:
+        import time as _t
+
+        if not self.channel_id:
+            raise TrendSourceError("youtube_channel: channel_id is required in the source config")
+        try:
+            resp = httpx.get(self.FEED_URL.format(cid=self.channel_id), timeout=20,
+                             headers={"User-Agent": "ymoney-trend-reader/1.0"})
+            resp.raise_for_status()
+            root = ET.fromstring(resp.text)
+        except Exception as exc:
+            logger.warning(f"youtube channel fetch failed: {exc}")
+            raise TrendSourceError(f"YouTube channel unavailable: {exc}") from exc
+        ns = {"yt": "http://www.youtube.com/xml/schemas/2015",
+              "atom": "http://www.w3.org/2005/Atom"}
+        author = ""
+        name_el = root.find("atom:author/atom:name", ns)
+        if name_el is not None and name_el.text:
+            author = name_el.text.strip()
+        now = _t.time()
+        out: list[TrendCandidate] = []
+        for entry in root.findall("atom:entry", ns)[:limit * 2]:
+            title_el = entry.find("atom:title", ns)
+            id_el = entry.find("yt:videoId", ns)
+            pub_el = entry.find("atom:published", ns)
+            if title_el is None or not title_el.text:
+                continue
+            vid = id_el.text.strip() if id_el is not None and id_el.text else ""
+            age_h = self.days * 24.0
+            if pub_el is not None and pub_el.text:
+                try:
+                    from datetime import datetime, timezone
+
+                    pub_ts = datetime.fromisoformat(pub_el.text.replace("Z", "+00:00")).timestamp()
+                    age_h = max((now - pub_ts) / 3600.0, 0.5)
+                except ValueError:
+                    pass
+            if age_h > self.days * 24.0:
+                continue
+            out.append(TrendCandidate(
+                topic=title_el.text.strip()[:300],
+                source=self.kind,
+                external_ref=f"https://youtube.com/watch?v={vid}" if vid else "",
+                raw={"video_id": vid, "channel": author, "channel_id": self.channel_id,
+                     "age_hours": round(age_h, 1)},
+                velocity_hint=max(0.0, min(1.0, 1.0 - age_h / (self.days * 24.0))),
+                volume_hint=None,
+            ))
+            if len(out) >= limit:
+                break
+        if not out:
+            raise TrendSourceError("YouTube channel returned no recent videos")
+        out.sort(key=lambda c: (c.velocity_hint or 0), reverse=True)
+        return out
+
+
 REGISTRY: dict[str, type[BaseTrendSource]] = {
     GoogleTrendsSource.kind: GoogleTrendsSource,
     RedditTrendSource.kind: RedditTrendSource,
@@ -570,6 +712,8 @@ REGISTRY: dict[str, type[BaseTrendSource]] = {
     NewsDataSource.kind: NewsDataSource,
     CoinGeckoTrendSource.kind: CoinGeckoTrendSource,
     DevToTrendSource.kind: DevToTrendSource,
+    YouTubeTrendingSource.kind: YouTubeTrendingSource,
+    YouTubeChannelSource.kind: YouTubeChannelSource,
 }
 
 
@@ -616,5 +760,23 @@ def create_source(kind: str, config: dict | None = None) -> BaseTrendSource:
             tag=str(cfg.get("tag", "")),
             days=int(cfg.get("days", 7)),
             per_page=int(cfg.get("per_page", 30)),
+        )
+    if cls is YouTubeTrendingSource:
+        from app.services.provider_settings import get_credential
+
+        yt_key, _yt = get_credential("youtube.api_key")
+        if not yt_key:
+            from app.core.config import settings as _cfg
+
+            yt_key = _cfg.youtube_api_key
+        return YouTubeTrendingSource(
+            api_key=yt_key or "",
+            region=str(cfg.get("region", "US")),
+            category=str(cfg.get("category", "")),
+        )
+    if cls is YouTubeChannelSource:
+        return YouTubeChannelSource(
+            channel_id=str(cfg.get("channel_id", "")),
+            days=int(cfg.get("days", 30)),
         )
     raise TrendSourceError(f"source kind '{kind}' has no factory")

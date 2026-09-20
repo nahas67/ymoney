@@ -924,6 +924,31 @@ def cancel_schedule(entry_id: str, ws: Workspace = Depends(require_workspace_rol
     return {"cancelled": True}
 
 
+class PlanCalendarBody(BaseModel):
+    days: int = Field(default=7, ge=1, le=30)
+    platforms: list[str] = Field(default_factory=lambda: ["youtube", "tiktok"])
+
+
+@calendar_router.post("/plan", summary="Auto-fill the calendar at best hours within caps")
+def plan_calendar(body: PlanCalendarBody, ws: Workspace = Depends(require_workspace_role("admin"))):
+    """Run the Scheduler planner: APPROVED + render-ready content fills the
+    coming days at best measured hours. Idempotent — re-running changes nothing."""
+    from app.engine.agents.scheduler import SchedulerAgent
+    from app.services.jobs import JobContext
+
+    allowed = {"youtube", "tiktok", "facebook", "instagram"}
+    platforms = [p for p in body.platforms if p in allowed]
+    if not platforms:
+        raise HTTPException(status_code=400, detail="no supported platforms requested")
+    ctx = JobContext(job_id=f"api-plan-{ws.id[:8]}", type="manual.schedule_plan",
+                     workspace_id=ws.id, cycle_id=None, payload={},
+                     attempt=1, cancelled=lambda: False)
+    try:
+        return SchedulerAgent().plan(ctx, days=body.days, platforms=platforms)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @calendar_router.get("/best-times", summary="Best publish hours from measured history")
 def best_times(ws: Workspace = Depends(require_workspace_role("viewer")), db=Depends(get_db)):
     """Hour-of-day (workspace timezone-naive UTC) ranked by average views.

@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     mock_publishing: bool = False
     upload_post_api_key: str = ""
     upload_post_username: str = ""
+    youtube_api_key: str = ""            # Data API key (trending + analytics reads, ~1 unit/call)
 
     # ---- TTS / Images ----
     tts_provider: str = "edge"           # edge | kokoro | chatterbox | qwen3 | mock

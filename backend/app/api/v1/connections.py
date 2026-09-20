@@ -27,6 +27,7 @@ _MANAGEABLE = {
     "meta.app_secret": ps.REGISTRY["meta.app_secret"],
     "upload_post.api_key": ps.REGISTRY["upload_post.api_key"],
     "upload_post.username": ps.REGISTRY["upload_post.username"],
+    "youtube.api_key": ps.REGISTRY["youtube.api_key"],
     "newsdata.api_key": ps.REGISTRY["newsdata.api_key"],
     "coingecko.api_key": ps.REGISTRY["coingecko.api_key"],
     "pexels.api_key": ps.REGISTRY["pexels.api_key"],

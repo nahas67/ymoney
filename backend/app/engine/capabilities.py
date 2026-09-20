@@ -205,6 +205,7 @@ def register_core_capabilities() -> None:
         ToolSpec("render_avatar", "Render a talking-head clip from a presenter photo + audio", {"type": "object"}, ("media:render",), "avatar", 3600, True),
         ToolSpec("fetch_broll", "Search, fetch and generate B-roll scene clips", {"type": "object"}, ("media:render",), "broll", 600, True),
         ToolSpec("review_compliance", "Pre-publish spec, disclosure and originality review", {"type": "object"}, ("compliance:review",), "compliance", 120, False),
+        ToolSpec("plan_schedule", "Fill the publishing calendar at best hours within caps", {"type": "object"}, ("schedule:write",), "scheduler", 60, False),
         ToolSpec("store_memory", "Persist a scoped workflow or learning memory", {"type": "object"}, ("memory:write",), "memory", 30, False),        ToolSpec("retrieve_memory", "Retrieve targeted memories for a workflow", {"type": "object"}, ("memory:read",), "memory", 30, True),
     ]
     for tool in core_tools:
@@ -226,6 +227,7 @@ def register_core_capabilities() -> None:
         SkillSpec("avatar_direction", "Avatar Direction", "Direct talking-head presenter clips", required_tools=("render_avatar",)),
         SkillSpec("broll_research", "B-roll Research", "Source per-scene visuals from stock and AI lanes", required_tools=("fetch_broll",)),
         SkillSpec("compliance_review", "Compliance Review", "Gate publishes on specs, disclosures and originality", required_tools=("review_compliance",)),
+        SkillSpec("schedule_planning", "Schedule Planning", "Fill the calendar at best hours within caps", required_tools=("plan_schedule",)),
     ]
     for skill in core_skills:
         if skill.key not in SKILLS:

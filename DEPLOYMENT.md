@@ -5,7 +5,6 @@
 ```bash
 cp .env.example .env
 # REQUIRED: set YMONEY_SECRET_KEY to a long random string (48+ chars).
-# Production refuses to boot with the default value.
 # Defaults are production-safe: VIDEO_ENGINE=ffmpeg_avatar, MOCK_*=false.
 
 docker compose build          # builds backend + video engine (+ ffmpeg)
@@ -16,6 +15,27 @@ docker compose up -d
   - Build the frontend first: `cd frontend && npm ci && npm run build`
 - Backend API: internal-only via Caddy (`http://backend:8100` inside the network)
 - Data persists in the `ymoney-data` volume (SQLite with WAL).
+
+## Production (Postgres + Redis)
+
+```bash
+cp .env.example .env
+# REQUIRED: YMONEY_SECRET_KEY, POSTGRES_PASSWORD, CORS_ALLOWED_ORIGINS=https://<domain>
+docker compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml up -d
+```
+
+- Postgres 16 holds all durable state (jobs, cycles, idempotency keys); the
+  claim path uses `SELECT … FOR UPDATE SKIP LOCKED` so replicas never block.
+- Redis accelerates dispatch (LPUSH/BRPOP); any outage degrades to DB polling
+  automatically — Redis is never a dependency. Check `GET /system/health` →
+  `queue.redis`.
+- Backups: `docker exec ymoney-prod-postgres-1 pg_dump -U ymoney ymoney | gzip > backup.sql.gz`
+  plus the `redisdata` volume (AOF) for in-flight dispatch signals.
+- GPU lane: on a CUDA host, run `GPU_WORKER=true docker compose -f
+  docker-compose.prod.yml up -d backend` (image needs torch + enabled lanes);
+  GPU-native engines (`gpu_engines`, default `wan,ltx`) requeue with backpressure
+  until a GPU worker claims them. `queue.gpu_worker` / `queue.gpu_cuda` in health.
 
 ### First production checklist
 

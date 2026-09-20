@@ -843,6 +843,16 @@ def health():
         tts_status = tts_provider_status()
     except Exception:
         tts_status = {"provider": "unknown", "healthy": False}
+    queue_status: dict = {"backend": getattr(settings, "job_queue", "local")}
+    try:
+        from app.services import jobs as _jobs
+        from app.services import queue_redis as _qr
+
+        queue_status["gpu_worker"] = _jobs._gpu_enabled()
+        queue_status["gpu_cuda"] = _qr.cuda_present()
+        queue_status["redis"] = _qr.ping()
+    except Exception:
+        queue_status["error"] = "queue probe failed"
     return {
         "status": "healthy" if (db_ok and engine_ok) else "degraded",
         "database": db_ok,
@@ -852,6 +862,7 @@ def health():
         "llm_provider": llm_ok,
         "tts": tts_status,
         "publishers": _publisher_status(),
+        "queue": queue_status,
         "mocks": {
             "llm": bool(settings.mock_llm),
             "trends": bool(settings.mock_trends),

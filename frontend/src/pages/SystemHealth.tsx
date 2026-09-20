@@ -100,6 +100,7 @@ export default function SystemHealth() {
               <Row k={`Video engine (${h?.video_engine_name ?? "?"})`} v={h?.video_engine ? `● ok${h?.video_engine_version ? ` · ${h.video_engine_version}` : ""}` : "● down"} ok={h?.video_engine} />
               <Row k="LLM" v={h?.llm_provider ? "● ok" : "● down"} ok={h?.llm_provider} />
               <Row k={`TTS (${(h?.tts as any)?.provider ?? "?"})`} v={(h?.tts as any)?.healthy ? "● ok" : "● down"} ok={(h?.tts as any)?.healthy} />
+              <Row k={`Queue (${h?.queue?.backend ?? "local"})`} v={h?.queue?.redis === false ? "● redis down (DB fallback)" : `● ok${h?.queue?.gpu_worker ? " · GPU worker" : ""}`} ok={h?.queue?.redis !== false} />
             </div>
             <div className="mt-3">
               <div className="panel-label mb-1.5">Publishers</div>

@@ -581,6 +581,26 @@ def _max_render_attempts(ws: str) -> int:
         return get_safety_settings((row.settings_json or {}) if row else {})["max_render_attempts"]
 
 
+def _engine_needs_gpu() -> bool:
+    """True when the configured video engine is GPU-native (wan/ltx by default)."""
+    from app.core.config import settings as _settings
+
+    try:
+        from app.providers.video_engine.factory import get_video_engine
+
+        name = (get_video_engine().engine_name or "").lower()
+    except Exception:
+        name = (getattr(_settings, "video_engine", "") or "").lower()
+    wanted = {e.strip().lower() for e in str(getattr(_settings, "gpu_engines", "") or "").split(",") if e.strip()}
+    return bool(name and name in wanted)
+
+
+def _gpu_ready() -> bool:
+    from app.services import jobs as _jobs
+
+    return _jobs._gpu_enabled()
+
+
 @jobs_service.handler("cycle.build")
 def handle_build(ctx):
     """Strategy → script variations → hook ranking → render selected variant."""
@@ -588,6 +608,13 @@ def handle_build(ctx):
     cycle_id = ctx.payload["cycle_id"]
     content_id = ctx.payload["content_id"]
     ws = ctx.workspace_id
+
+    # GPU lane: GPU-native engines wait for a GPU worker instead of OOMing here.
+    if _engine_needs_gpu() and not _gpu_ready():
+        jobs_service.enqueue(ctx.type, ctx.payload, workspace_id=ctx.workspace_id,
+                             cycle_id=ctx.cycle_id, priority=20, delay_seconds=60)
+        raise jobs_service._Backpressure(
+            "GPU-native engine selected but no GPU worker; job requeued")
 
     # Idempotency: if the CURRENTLY SELECTED variant already has a rendered
     # video, skip re-render (a QC regeneration flips selection to the next

@@ -127,6 +127,10 @@ class Settings(BaseSettings):
     job_poll_interval_seconds: float = 1.0
     job_default_max_retries: int = 3
     job_worker_count: int = 4
+    job_queue: str = "local"             # local | redis (redis dispatch, DB fallback)
+    redis_url: str = "redis://localhost:6379/0"
+    gpu_worker: bool = False             # this process claims GPU-gated jobs
+    gpu_engines: str = "wan,ltx"         # engine names treated as GPU-native
 
     # ---- Storage (local default; S3-compatible optional) ----
     storage_backend: str = "local"  # local | s3

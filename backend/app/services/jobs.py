@@ -93,7 +93,15 @@ def enqueue(
         )
         s.add(job)
         s.flush()
-        return job.id
+        job_id = job.id
+    # Redis dispatch signal (best-effort; DB row is the source of truth).
+    try:
+        from app.services import queue_redis as _qr
+
+        _qr.push(job_id)
+    except Exception:
+        pass
+    return job_id
 
 
 def _to_dict(job: Job) -> dict:
@@ -205,7 +213,7 @@ class _Backpressure(Exception):
 async def _worker_loop(worker_idx: int) -> None:
     logger.info(f"job worker #{worker_idx} started")
     while not _shutdown.is_set():
-        job_ctx = await _claim_next()
+        job_ctx = await _claim_next_redis()
         if not job_ctx:
             try:
                 await asyncio.wait_for(_shutdown.wait(), timeout=settings.job_poll_interval_seconds)
@@ -216,17 +224,36 @@ async def _worker_loop(worker_idx: int) -> None:
     logger.info(f"job worker #{worker_idx} stopped")
 
 
+def _gpu_enabled() -> bool:
+    """This process may run GPU-gated jobs (operator-asserted lane)."""
+    return bool(settings.gpu_worker)
+
+
+def _for_update(query, session):
+    """Row-level lock for the claim SELECT on Postgres; plain read elsewhere."""
+    try:
+        if session.get_bind().dialect.name == "postgresql":
+            return query.with_for_update(skip_locked=True)
+    except Exception:
+        pass
+    return query
+
+
 async def _claim_next() -> JobContext | None:
     """Atomically claim the highest-priority due job.
 
     Uses a single UPDATE whose target id comes from a correlated subquery;
     SQLite/Postgres serialize the statement, so two workers can never claim
-    the same row (the loser's outer status check yields rowcount 0).
+    the same row (the loser's outer status check yields rowcount 0). On
+    Postgres the SELECT takes SKIP LOCKED so replicas never block each other.
+    GPU-gated jobs are deferred (requeued +60s) unless this is a GPU worker.
     """
     def claim():
+        from datetime import timedelta as _td
+
         now = utcnow()
         with session_scope() as s:
-            cid = s.scalar(
+            q = (
                 select(Job.id)
                 .where(
                     Job.status.in_([JobStatus.QUEUED.value, JobStatus.RETRYING.value]),
@@ -235,6 +262,7 @@ async def _claim_next() -> JobContext | None:
                 .order_by(Job.priority.asc(), Job.next_run_at.asc())
                 .limit(1)
             )
+            cid = s.scalar(_for_update(q, s))
             if not cid:
                 return None
             # Conditional update = atomic claim. Concurrent workers serialize
@@ -247,6 +275,11 @@ async def _claim_next() -> JobContext | None:
             if res.rowcount != 1:
                 return None
             job = s.get(Job, cid)
+            if (job.payload or {}).get("requires_gpu") and not _gpu_enabled():
+                job.status = JobStatus.QUEUED.value
+                job.next_run_at = now + _td(seconds=60)
+                logger.info(f"job {job.type}({job.id}) needs a GPU worker; deferred 60s")
+                return None
             ctx = JobContext(
                 job_id=job.id,
                 type=job.type,
@@ -259,6 +292,53 @@ async def _claim_next() -> JobContext | None:
             return ctx
 
     return await asyncio.to_thread(claim)
+
+
+async def _claim_by_id(job_id: str) -> JobContext | None:
+    """Claim one specific job (Redis-dispatched ids). Same atomicity as above."""
+
+    def claim():
+        now = utcnow()
+        with session_scope() as s:
+            res = s.execute(
+                update(Job)
+                .where(Job.id == job_id,
+                       Job.status.in_([JobStatus.QUEUED.value, JobStatus.RETRYING.value]),
+                       Job.next_run_at <= now)
+                .values(status=JobStatus.RUNNING.value, started_at=now)
+            )
+            if res.rowcount != 1:
+                return None
+            job = s.get(Job, job_id)
+            ctx = JobContext(
+                job_id=job.id,
+                type=job.type,
+                workspace_id=job.workspace_id,
+                cycle_id=job.cycle_id,
+                payload=dict(job.payload or {}),
+                attempt=job.retry_count + 1,
+                cancelled=lambda jid=job.id: _is_cancelled(jid),
+            )
+            return ctx
+
+    return await asyncio.to_thread(claim)
+
+
+async def _claim_next_redis() -> JobContext | None:
+    """BRPOP one dispatched id (blocking, shutdown-aware), then claim it."""
+    from app.services import queue_redis as _qr
+
+    if not _qr.configured():
+        return await _claim_next()
+    rid = await asyncio.to_thread(_qr.pop, settings.job_poll_interval_seconds)
+    if _shutdown.is_set():
+        return None
+    if rid:
+        claimed = await _claim_by_id(rid)
+        if claimed:
+            return claimed
+        # id already handled/expired — fall through to a normal poll
+    return await _claim_next()
 
 
 async def _execute(ctx: JobContext) -> None:

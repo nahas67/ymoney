@@ -1,0 +1,89 @@
+name: ymoney-prod
+
+# Production overlay: Postgres + Redis + backend + web.
+# Usage:
+#   cp .env.example .env   # then set YMONEY_SECRET_KEY, OPENAI_API_KEY, ...
+#   docker compose -f docker-compose.prod.yml build
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# GPU lane: run one backend replica with GPU_WORKER=true on a CUDA host
+# (image must include torch + the model lanes you enable).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ymoney}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a db password}
+      POSTGRES_DB: ${POSTGRES_DB:-ymoney}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ymoney}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    restart: unless-stopped
+    environment:
+      YMONEY_ENV: production
+      YMONEY_SECRET_KEY: ${YMONEY_SECRET_KEY:?set a strong secret}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ymoney}:${POSTGRES_PASSWORD:?set a db password}@postgres:5432/${POSTGRES_DB:-ymoney}
+      JOB_QUEUE: ${JOB_QUEUE:-redis}
+      REDIS_URL: redis://redis:6379/0
+      GPU_WORKER: ${GPU_WORKER:-false}
+      VIDEO_ENGINE: ${VIDEO_ENGINE:-ffmpeg_avatar}
+      MPT_BASE_URL: http://video-engine:8080
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      MOCK_TRENDS: ${MOCK_TRENDS:-false}
+      MOCK_PUBLISHING: ${MOCK_PUBLISHING:-false}
+      MOCK_ANALYTICS: ${MOCK_ANALYTICS:-false}
+      UPLOAD_POST_API_KEY: ${UPLOAD_POST_API_KEY:-}
+      UPLOAD_POST_USERNAME: ${UPLOAD_POST_USERNAME:-}
+      DAILY_BUDGET_USD: ${DAILY_BUDGET_USD:-5}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?set your domain}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./frontend/dist:/srv:ro
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  redisdata:

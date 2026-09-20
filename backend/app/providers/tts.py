@@ -56,7 +56,10 @@ class BaseTTSProvider(abc.ABC):
 
     @abc.abstractmethod
     def synthesize(self, text: str, *, voice: str = "", rate: float = 1.0,
-                   volume: float = 1.0, language: str = "") -> TTSResult:
+                   volume: float = 1.0, language: str = "",
+                   exaggeration: float = 0.5, clone_from: str = "") -> TTSResult:
+        """Narrate text. exaggeration/clone_from are honored only by providers
+        that support them (Chatterbox); others ignore them."""
         ...
 
     @abc.abstractmethod
@@ -111,7 +114,8 @@ class EdgeTTSProvider(BaseTTSProvider):
         return f"+{pct}%" if pct >= 0 else f"{pct}%"
 
     def synthesize(self, text: str, *, voice: str = "", rate: float = 1.0,
-                   volume: float = 1.0, language: str = "") -> TTSResult:
+                   volume: float = 1.0, language: str = "",
+                   exaggeration: float = 0.5, clone_from: str = "") -> TTSResult:
         text = (text or "").strip()
         if not text:
             raise TTSError("text is empty")
@@ -182,7 +186,8 @@ class KokoroTTSProvider(BaseTTSProvider):
             return ""
 
     def synthesize(self, text: str, *, voice: str = "", rate: float = 1.0,
-                   volume: float = 1.0, language: str = "") -> TTSResult:
+                   volume: float = 1.0, language: str = "",
+                   exaggeration: float = 0.5, clone_from: str = "") -> TTSResult:
         import httpx
 
         text = (text or "").strip()
@@ -256,7 +261,8 @@ class MockTTSProvider(BaseTTSProvider):
     WORDS_PER_SECOND = 2.6
 
     def synthesize(self, text: str, *, voice: str = "", rate: float = 1.0,
-                   volume: float = 1.0, language: str = "") -> TTSResult:
+                   volume: float = 1.0, language: str = "",
+                   exaggeration: float = 0.5, clone_from: str = "") -> TTSResult:
         words = len((text or "").strip().split())
         if not words:
             raise TTSError("text is empty")
@@ -277,28 +283,281 @@ class MockTTSProvider(BaseTTSProvider):
 
 
 # ---------------------------------------------------------------------------
+# shared OpenAI-compatible /audio/speech transport
+# ---------------------------------------------------------------------------
+
+
+def _speech_post(base_url: str, api_key: str, payload: dict, timeout: int = 180) -> bytes:
+    import httpx
+
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    try:
+        resp = httpx.post(f"{base_url.rstrip('/')}/audio/speech", json=payload,
+                          headers=headers, timeout=timeout)
+    except httpx.HTTPError as exc:
+        raise TTSError(f"tts server unreachable at {base_url}: {type(exc).__name__}") from exc
+    if resp.status_code != 200:
+        raise TTSError(f"tts server returned HTTP {resp.status_code}: {resp.text[:200]}")
+    return resp.content
+
+
+def _speech_voices(base_url: str, timeout: int = 15) -> list[dict] | None:
+    import httpx
+
+    try:
+        resp = httpx.get(f"{base_url.rstrip('/')}/audio/voices", timeout=timeout)
+        if resp.status_code != 200:
+            return None
+        return resp.json()
+    except (httpx.HTTPError, ValueError):
+        return None
+
+
+# ---------------------------------------------------------------------------
+# chatterbox — MIT zero-shot clone voice (native package or compat server)
+# ---------------------------------------------------------------------------
+
+
+class ChatterboxTTSProvider(BaseTTSProvider):
+    """Resemble Chatterbox-Turbo: MIT-licensed, cloning from ~5s of audio,
+    emotion exaggeration + paralinguistic tags ([laugh], [cough]) in text.
+
+    Two backends, checked in order:
+      1. native `chatterbox-tts` package (GPU recommended),
+      2. OpenAI-compatible server at the chatterbox base URL (CPU-friendly).
+    Clone references must live inside the workspace boundary.
+    """
+
+    name = "chatterbox"
+
+    DEFAULT_VOICE = "default"
+
+    def __init__(self, base_url: str = ""):
+        self.base_url = (base_url or "").rstrip("/")
+
+    @staticmethod
+    def _native_available() -> bool:
+        try:
+            import importlib.util as _u
+
+            return _u.find_spec("chatterbox") is not None
+        except (ImportError, ValueError):
+            return False
+
+    def synthesize(self, text: str, *, voice: str = "", rate: float = 1.0,
+                   volume: float = 1.0, language: str = "",
+                   exaggeration: float = 0.5, clone_from: str = "") -> TTSResult:
+        text = (text or "").strip()
+        if not text:
+            raise TTSError("text is empty")
+        ex = max(0.0, min(1.0, float(exaggeration if exaggeration is not None else 0.5)))
+        if self.base_url:
+            if clone_from:
+                raise TTSError("clone references need the native chatterbox package — "
+                               "clear clone_from or install chatterbox-tts")
+            payload = {
+                "model": "chatterbox-turbo",
+                "input": text,
+                "voice": voice or self.DEFAULT_VOICE,
+                "response_format": "mp3",
+                "speed": max(0.25, min(4.0, float(rate or 1.0))),
+                "exaggeration": ex,
+            }
+            audio = _speech_post(self.base_url, "", payload)
+            return TTSResult(audio_bytes=audio, format="mp3", provider=self.name)
+        if not self._native_available():
+            raise TTSError(
+                "chatterbox selected but neither the native package nor a server URL "
+                "is available — pip install chatterbox-tts (GPU) or set "
+                "tts.chatterbox_base_url under Settings → Connections"
+            )
+        return self._native_synth(text, voice or self.DEFAULT_VOICE, ex, clone_from)
+
+    def _native_synth(self, text: str, voice: str, exaggeration: float, clone_from: str) -> TTSResult:
+        try:
+            import io as _io
+            import torch
+            from chatterbox.tts import ChatterboxTurbo
+
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            model = ChatterboxTurbo.from_pretrained(device=device)
+            kwargs: dict = {"exaggeration": exaggeration}
+            if clone_from:
+                from pathlib import Path as _P
+
+                ref = _P(clone_from)
+                if not ref.is_file():
+                    raise TTSError(f"clone reference not found: {clone_from}")
+                kwargs["audio_prompt_path"] = str(ref)
+            elif voice and voice != self.DEFAULT_VOICE:
+                kwargs["audio_prompt_path"] = voice
+            wav = model.generate(text, **kwargs)
+            sr = int(getattr(model, "sr", 24000))
+            buf = _io.BytesIO()
+            try:
+                import soundfile as _sf
+
+                _sf.write(buf, wav.squeeze(0).cpu().numpy(), sr, format="WAV")
+            except ImportError:
+                import torchaudio as _ta
+
+                _ta.save(buf, wav.cpu(), sr, format="wav")
+            return TTSResult(audio_bytes=buf.getvalue(), format="wav", provider=self.name,
+                             sample_rate=sr)
+        except TTSError:
+            raise
+        except Exception as exc:
+            raise TTSError(f"chatterbox native synthesis failed: {type(exc).__name__}: {exc}") from exc
+
+    def voices(self, language: str = "") -> list[dict]:
+        if self.base_url:
+            raw = _speech_voices(self.base_url)
+            if raw is None:
+                return [{"id": self.DEFAULT_VOICE, "gender": "", "locale": language or "en"}]
+            out = []
+            for v in raw or []:
+                if isinstance(v, str):
+                    out.append({"id": v, "gender": "", "locale": ""})
+                elif isinstance(v, dict) and v.get("id"):
+                    out.append({"id": v["id"], "gender": v.get("gender", ""),
+                                "locale": v.get("locale", "")})
+            return out or [{"id": self.DEFAULT_VOICE, "gender": "", "locale": language or "en"}]
+        return [{"id": self.DEFAULT_VOICE, "gender": "", "locale": language or "en"}]
+
+    def health(self) -> bool:
+        if self.base_url:
+            return _speech_voices(self.base_url, timeout=5) is not None
+        return self._native_available()
+
+
+# ---------------------------------------------------------------------------
+# qwen3-tts — Apache-2.0 multilingual cloner behind an OpenAI-compat server
+# ---------------------------------------------------------------------------
+
+
+class QwenTTSProvider(BaseTTSProvider):
+    """Qwen3-TTS via a vLLM-Omni (or compatible) /audio/speech server.
+
+    Server-only: the model needs a serving stack. Supports voice cloning from
+    ~3s of audio plus natural-language delivery direction (`instruct`,
+    e.g. 'speak cheerfully'). Configure the base URL (and optional default
+    instruction) under Settings → Connections.
+    """
+
+    name = "qwen3"
+
+    DEFAULT_VOICE = "default"
+
+    def __init__(self, base_url: str, instruct: str = ""):
+        if not base_url:
+            raise TTSError("qwen3 TTS selected but no server URL configured — set "
+                           "tts.qwen_base_url under Settings → Connections")
+        self.base_url = base_url.rstrip("/")
+        self.instruct = (instruct or "").strip()
+
+    def synthesize(self, text: str, *, voice: str = "", rate: float = 1.0,
+                   volume: float = 1.0, language: str = "",
+                   exaggeration: float = 0.5, clone_from: str = "") -> TTSResult:
+        text = (text or "").strip()
+        if not text:
+            raise TTSError("text is empty")
+        payload: dict = {
+            "model": "qwen3-tts",
+            "input": text,
+            "voice": voice or self.DEFAULT_VOICE,
+            "response_format": "mp3",
+            "speed": max(0.25, min(4.0, float(rate or 1.0))),
+        }
+        if language:
+            payload["language"] = language
+        if self.instruct:
+            payload["instruct"] = self.instruct
+        if clone_from:
+            payload["clone_from"] = clone_from
+        audio = _speech_post(self.base_url, self._key(), payload)
+        return TTSResult(audio_bytes=audio, format="mp3", provider=self.name)
+
+    def _key(self) -> str:
+        try:
+            from app.services.provider_settings import get_credential
+
+            val, _src = get_credential("tts.qwen_api_key")
+            return val or ""
+        except Exception:
+            return ""
+
+    def voices(self, language: str = "") -> list[dict]:
+        raw = _speech_voices(self.base_url)
+        if raw is None:
+            return [{"id": self.DEFAULT_VOICE, "gender": "", "locale": language or ""}]
+        out = []
+        for v in raw or []:
+            if isinstance(v, str):
+                out.append({"id": v, "gender": "", "locale": ""})
+            elif isinstance(v, dict) and v.get("id"):
+                out.append({"id": v["id"], "gender": v.get("gender", ""),
+                            "locale": v.get("locale", "")})
+        return out or [{"id": self.DEFAULT_VOICE, "gender": "", "locale": language or ""}]
+
+    def health(self) -> bool:
+        return _speech_voices(self.base_url, timeout=5) is not None
+
+
+# ---------------------------------------------------------------------------
 # factory
 # ---------------------------------------------------------------------------
 
 
-def _kokoro_base_url() -> str:
+def _cred(key: str, env_attr: str = "") -> str:
     from app.core.config import settings
 
     try:
         from app.services.provider_settings import get_credential
 
-        val, _src = get_credential("tts.kokoro_base_url")
+        val, _src = get_credential(key)
         if val:
             return val
     except Exception:
         pass
-    return getattr(settings, "kokoro_base_url", "") or ""
+    return getattr(settings, env_attr, "") or "" if env_attr else ""
+
+
+def _kokoro_base_url() -> str:
+    return _cred("tts.kokoro_base_url", "kokoro_base_url")
+
+
+def _chatterbox_base_url() -> str:
+    return _cred("tts.chatterbox_base_url", "chatterbox_base_url")
+
+
+def _qwen_base_url() -> str:
+    return _cred("tts.qwen_base_url", "qwen_base_url")
+
+
+def _qwen_instruct() -> str:
+    return _cred("tts.qwen_instruct", "qwen_tts_instruct")
+
+
+def _effective_provider_name(name: str = "") -> str:
+    from app.core.config import settings
+
+    if name:
+        return name.lower()
+    try:
+        from app.services.provider_settings import get_credential
+
+        val, _src = get_credential("tts.provider")
+        if val:
+            return val.lower()
+    except Exception:
+        pass
+    return (getattr(settings, "tts_provider", "") or "edge").lower()
 
 
 def get_tts_provider(name: str = "") -> BaseTTSProvider:
-    from app.core.config import settings
-
-    chosen = (name or getattr(settings, "tts_provider", "") or "edge").lower()
+    chosen = _effective_provider_name(name)
     if chosen == "mock":
         return MockTTSProvider()
     if chosen in ("kokoro", "local"):
@@ -309,16 +568,25 @@ def get_tts_provider(name: str = "") -> BaseTTSProvider:
                 "or add tts.kokoro_base_url under Settings → Connections"
             )
         return KokoroTTSProvider(base)
+    if chosen in ("chatterbox", "chatterbox-turbo"):
+        base = _chatterbox_base_url()
+        if not base and not ChatterboxTTSProvider._native_available():
+            raise TTSError(
+                "chatterbox TTS selected but neither the native package nor a server "
+                "URL is configured — pip install chatterbox-tts (GPU) or add "
+                "tts.chatterbox_base_url under Settings → Connections"
+            )
+        return ChatterboxTTSProvider(base)
+    if chosen in ("qwen3", "qwen", "qwen-tts"):
+        return QwenTTSProvider(_qwen_base_url(), instruct=_qwen_instruct())
     if chosen in ("edge", ""):
         return EdgeTTSProvider()
-    raise TTSError(f"unknown TTS provider '{chosen}' (edge|kokoro|mock)")
+    raise TTSError(f"unknown TTS provider '{chosen}' (edge|kokoro|chatterbox|qwen3|mock)")
 
 
 def tts_provider_status() -> dict:
     """Diagnostics for the health endpoint."""
-    from app.core.config import settings
-
-    chosen = (getattr(settings, "tts_provider", "") or "edge").lower()
+    chosen = _effective_provider_name()
     out: dict = {"provider": chosen}
     try:
         provider = get_tts_provider(chosen)
@@ -329,6 +597,11 @@ def tts_provider_status() -> dict:
         out["error"] = str(exc)
     if chosen in ("kokoro", "local"):
         out["base_url"] = _kokoro_base_url()
+    if chosen in ("chatterbox", "chatterbox-turbo"):
+        out["base_url"] = _chatterbox_base_url()
+        out["native"] = ChatterboxTTSProvider._native_available()
+    if chosen in ("qwen3", "qwen", "qwen-tts"):
+        out["base_url"] = _qwen_base_url()
     return out
 
 
@@ -351,9 +624,11 @@ def wav_duration_seconds(audio_bytes: bytes, sample_rate: int = 16_000) -> float
 
 __all__ = [
     "BaseTTSProvider",
+    "ChatterboxTTSProvider",
     "EdgeTTSProvider",
     "KokoroTTSProvider",
     "MockTTSProvider",
+    "QwenTTSProvider",
     "TTSError",
     "TTSResult",
     "get_tts_provider",

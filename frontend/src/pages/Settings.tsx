@@ -8,7 +8,7 @@ const CONN_GROUPS: { title: string; keys: string[] }[] = [
   { title: "Publishing — OAuth apps", keys: ["google.client_id", "google.client_secret", "tiktok.client_key", "tiktok.client_secret", "meta.app_id", "meta.app_secret"] },
   { title: "Publishing — relay", keys: ["upload_post.api_key", "upload_post.username"] },
   { title: "Trend sources", keys: ["newsdata.api_key", "coingecko.api_key", "pexels.api_key"] },
-  { title: "Voices & images", keys: ["tts.kokoro_base_url", "tts.kokoro_api_key", "image.openai_base_url", "image.openai_api_key", "image.openai_model"] },
+  { title: "Voices & images", keys: ["tts.provider", "tts.kokoro_base_url", "tts.kokoro_api_key", "tts.chatterbox_base_url", "tts.qwen_base_url", "tts.qwen_instruct", "tts.qwen_api_key", "image.openai_base_url", "image.openai_api_key", "image.openai_model"] },
   { title: "Telegram", keys: ["telegram.bot_token"] },
 ];
 

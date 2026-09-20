@@ -1129,6 +1129,47 @@ class DubBody(BaseModel):
     srt: str = Field(default="", max_length=60000, description="optional subtitle track (skips transcription)")
 
 
+class VoicePreviewBody(BaseModel):
+    text: str = Field(min_length=1, max_length=600)
+    voice: str = Field(default="", max_length=120)
+    provider: str = Field(default="", max_length=30, description="edge|kokoro|chatterbox|qwen3|mock (blank = workspace default)")
+    exaggeration: float = Field(default=0.5, ge=0.0, le=1.0)
+    language: str = Field(default="", max_length=12)
+    rate: float = Field(default=1.0, ge=0.5, le=2.0)
+
+
+@assets_router.post("/voice/preview", summary="Preview any voice-stack provider with extras")
+def voice_preview(body: VoicePreviewBody, ws: Workspace = Depends(require_workspace_role("member"))):
+    """Narrate a sample through a chosen provider (clone/emotion aware).
+
+    Uses the workspace default provider when blank. Returns raw audio bytes
+    with provider headers — the manual surface of the Voice Designer.
+    """
+    from fastapi.responses import Response
+
+    from app.providers.tts import TTSError, get_tts_provider
+    from app.services import provider_settings as _ps
+
+    try:
+        with _ps.workspace_scope(ws.id):
+            provider = get_tts_provider(body.provider) if body.provider else get_tts_provider()
+            result = provider.synthesize(
+                body.text, voice=body.voice, rate=body.rate,
+                language=body.language, exaggeration=body.exaggeration,
+            )
+    except TTSError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    media = "audio/wav" if result.format == "wav" else "audio/mpeg"
+    return Response(
+        content=result.audio_bytes,
+        media_type=media,
+        headers={
+            "X-TTS-Provider": result.provider,
+            "X-TTS-Mock": "1" if result.is_mock else "0",
+        },
+    )
+
+
 @assets_router.get("/dub/status", summary="Dubbing pipeline availability")
 def dub_status(ws: Workspace = Depends(require_workspace_role("viewer"))):
     from app.providers.dubbing import dub_status as _status

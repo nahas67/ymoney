@@ -16,6 +16,9 @@ export default function SystemHealth() {
   const costs = useFetch(() => wsApi.get("/costs"), [tab]);
   const [ttsText, setTtsText] = useState("YMONEY narration test.");
   const [ttsBusy, setTtsBusy] = useState(false);
+  const [labProvider, setLabProvider] = useState("");
+  const [labVoice, setLabVoice] = useState("");
+  const [labEx, setLabEx] = useState("0.5");
   const [imgPrompt, setImgPrompt] = useState("");
   const [imgBusy, setImgBusy] = useState(false);
   const [imgResult, setImgResult] = useState("");
@@ -29,6 +32,27 @@ export default function SystemHealth() {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("ym_token")}` },
         body: JSON.stringify({ text: ttsText }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const blob = await r.blob();
+      new Audio(URL.createObjectURL(blob)).play();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setTtsBusy(false);
+    }
+  }
+
+  async function playLab() {
+    setTtsBusy(true);
+    try {
+      const r = await fetch(`/api/v1/workspaces/${localStorage.getItem("ym_ws")}/assets/voice/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("ym_token")}` },
+        body: JSON.stringify({
+          text: ttsText, voice: labVoice, provider: labProvider,
+          exaggeration: parseFloat(labEx) || 0.5,
+        }),
       });
       if (!r.ok) throw new Error(await r.text());
       const blob = await r.blob();
@@ -120,6 +144,21 @@ export default function SystemHealth() {
               <div className="text-[12px] mt-1.5 font-mono" style={{ color: "var(--text-faint)" }}>
                 {(tts.data as any)?.voices?.length ?? 0} voices {(tts.data as any)?.error ? `· ${(tts.data as any).error}` : ""}
               </div>
+            </div>
+            <div className="mt-4 pt-3" style={{ borderTop: "var(--seam)" }}>
+              <b className="text-[13px]">Voice lab (any provider + emotion)</b>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <select className="select" value={labProvider} onChange={(e) => setLabProvider(e.target.value)} aria-label="Provider">
+                  <option value="">workspace default</option>
+                  {["edge", "kokoro", "chatterbox", "qwen3", "mock"].map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+                <input className="input" placeholder="voice id (blank = default)" value={labVoice} onChange={(e) => setLabVoice(e.target.value)} aria-label="Voice" />
+              </div>
+              <div className="flex gap-2 mt-2 items-center">
+                <input className="input" type="number" min={0} max={1} step={0.1} value={labEx} onChange={(e) => setLabEx(e.target.value)} aria-label="Exaggeration" />
+                <button className="btn-primary !text-xs whitespace-nowrap" disabled={ttsBusy} onClick={playLab}>{ttsBusy ? "…" : "▶ Preview voice"}</button>
+              </div>
+              <p className="text-[11.5px] mt-1.5" style={{ color: "var(--text-faint)" }}>Exaggeration + [laugh]/[cough] tags work on Chatterbox; ignored elsewhere. Clone from an uploaded asset via the agent.</p>
             </div>
           </Card>
           <Card>

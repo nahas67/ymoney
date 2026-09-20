@@ -30,6 +30,16 @@ _MANAGEABLE = {
     "newsdata.api_key": ps.REGISTRY["newsdata.api_key"],
     "coingecko.api_key": ps.REGISTRY["coingecko.api_key"],
     "pexels.api_key": ps.REGISTRY["pexels.api_key"],
+    "tts.provider": ps.REGISTRY["tts.provider"],
+    "tts.kokoro_base_url": ps.REGISTRY["tts.kokoro_base_url"],
+    "tts.kokoro_api_key": ps.REGISTRY["tts.kokoro_api_key"],
+    "tts.chatterbox_base_url": ps.REGISTRY["tts.chatterbox_base_url"],
+    "tts.qwen_base_url": ps.REGISTRY["tts.qwen_base_url"],
+    "tts.qwen_instruct": ps.REGISTRY["tts.qwen_instruct"],
+    "tts.qwen_api_key": ps.REGISTRY["tts.qwen_api_key"],
+    "image.openai_base_url": ps.REGISTRY["image.openai_base_url"],
+    "image.openai_api_key": ps.REGISTRY["image.openai_api_key"],
+    "image.openai_model": ps.REGISTRY["image.openai_model"],
 }
 
 

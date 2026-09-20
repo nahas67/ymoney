@@ -83,12 +83,15 @@ class Settings(BaseSettings):
     upload_post_username: str = ""
 
     # ---- TTS / Images ----
-    tts_provider: str = "edge"           # edge | kokoro | mock
+    tts_provider: str = "edge"           # edge | kokoro | chatterbox | qwen3 | mock
     image_provider: str = "pexels"       # pexels | xkiro | pollinations | openai_compat | mock
     pexels_api_key: str = ""             # Pexels stock-photo API key (api.pexels.com)
     # avatar_image: static presenter image for the ffmpeg_avatar engine (path or URL)
     avatar_image: str = ""
     kokoro_base_url: str = ""            # e.g. http://127.0.0.1:8880/v1
+    chatterbox_base_url: str = ""        # OpenAI-compat server for Chatterbox-Turbo (else native pip package)
+    qwen_base_url: str = ""              # vLLM-Omni (or compat) server for Qwen3-TTS
+    qwen_tts_instruct: str = ""          # default delivery direction, e.g. "speak cheerfully"
 
     # ---- Analytics ----
     mock_analytics: bool = False

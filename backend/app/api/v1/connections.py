@@ -45,6 +45,7 @@ _MANAGEABLE = {
     "avatar.base_url": ps.REGISTRY["avatar.base_url"],
     "avatar.sadtalker_dir": ps.REGISTRY["avatar.sadtalker_dir"],
     "avatar.wavlip_dir": ps.REGISTRY["avatar.wavlip_dir"],
+    "telegram.bot_token": ps.REGISTRY["telegram.bot_token"],
 }
 
 
@@ -63,6 +64,7 @@ def list_connections(ws=Depends(require_workspace_role("admin"))):
                 "key": key,
                 "label": spec["label"],
                 "secret": spec["secret"],
+                "hint": spec.get("hint", ""),
                 "configured": bool(value),
                 "source": source,
                 "masked": ps.mask(value) if (spec["secret"] and value) else value,

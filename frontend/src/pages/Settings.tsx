@@ -7,7 +7,7 @@ const CONN_GROUPS: { title: string; keys: string[] }[] = [
   { title: "LLM (scripts, research, QC)", keys: ["llm.api_key", "llm.base_url", "llm.model", "llm.model_cheap", "llm.model_reasoning", "llm.model_verification"] },
   { title: "Publishing — OAuth apps", keys: ["google.client_id", "google.client_secret", "tiktok.client_key", "tiktok.client_secret", "meta.app_id", "meta.app_secret"] },
   { title: "Publishing — relay", keys: ["upload_post.api_key", "upload_post.username"] },
-  { title: "Trend sources", keys: ["newsdata.api_key", "coingecko.api_key", "pexels.api_key"] },
+  { title: "Trend sources", keys: ["youtube.api_key", "newsdata.api_key", "coingecko.api_key", "pexels.api_key"] },
   { title: "Voices & images", keys: ["tts.provider", "tts.kokoro_base_url", "tts.kokoro_api_key", "tts.chatterbox_base_url", "tts.qwen_base_url", "tts.qwen_instruct", "tts.qwen_api_key", "image.openai_base_url", "image.openai_api_key", "image.openai_model"] },
   { title: "Telegram", keys: ["telegram.bot_token"] },
   { title: "Avatar", keys: ["avatar.backend", "avatar.base_url", "avatar.sadtalker_dir", "avatar.wavlip_dir"] },
@@ -127,6 +127,7 @@ function ConnectionsTab() {
                 <div key={k} className="grid md:grid-cols-[220px_1fr_auto] gap-2 items-center">
                   <div>
                     <div className="text-[12.5px] font-medium">{meta.label}</div>
+                    {meta.hint && <div className="font-mono text-[11px]" style={{ color: "var(--text-faint)" }}>{meta.hint}</div>}
                     <div className="font-mono text-[11px]" style={{ color: "var(--text-faint)" }}>
                       {meta.configured ? `● set (${meta.source}) ${meta.masked ?? ""}` : "○ not set"}
                     </div>

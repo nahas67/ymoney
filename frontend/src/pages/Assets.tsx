@@ -5,7 +5,7 @@ import { Badge, Card, Modal, PageHeader, Section, Tabs, statusTone } from "../co
 import { fmtAgo } from "../lib/format";
 
 export default function Assets() {
-  const [tab, setTab] = useState<"library" | "images" | "repurpose" | "motion" | "templates" | "dub">("library");
+  const [tab, setTab] = useState<"library" | "images" | "repurpose" | "motion" | "templates" | "dub" | "avatar">("library");
   const lib = useFetch(() => wsApi.get("/assets"), [tab]);
   const imgStatus = useFetch(() => wsApi.get("/assets/images/status"), [tab]);
   const clipStatus = useFetch(() => wsApi.get("/repurpose/status"), [tab]);
@@ -26,6 +26,10 @@ export default function Assets() {
   const [dubLang, setDubLang] = useState("es");
   const [dubResult, setDubResult] = useState<any>(null);
   const dubStat = useFetch(() => wsApi.get("/assets/dub/status"), [tab]);
+  const [avImg, setAvImg] = useState("");
+  const [avText, setAvText] = useState("");
+  const [avResult, setAvResult] = useState<any>(null);
+  const avStat = useFetch(() => wsApi.get("/assets/avatar/status"), [tab]);
 
   const caps: any = (lib.data as any)?.capabilities;
 
@@ -98,11 +102,25 @@ export default function Assets() {
     }
   }
 
+  async function runAvatar() {
+    if (!avImg.trim() || !avText.trim()) return;
+    setBusy("avatar");
+    try {
+      const r = await wsApi.post("/assets/avatar", { image: avImg, text: avText });
+      setAvResult(r);
+      lib.reload();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
   return (
     <div className="space-y-4">
       <PageHeader title="Assets" subtitle="System renders, operator uploads, AI scene images and long-form repurposing."
         actions={caps && <Badge tone={caps.upload ? "success" : "muted"}>{caps.upload ? "uploads on" : caps.note}</Badge>} />
-      <Tabs tabs={[{ key: "library", label: "Library" }, { key: "images", label: "Generate images" }, { key: "repurpose", label: "Repurpose" }, { key: "motion", label: "Motion cards" }, { key: "templates", label: "Templates" }, { key: "dub", label: "Dub" }]}
+      <Tabs tabs={[{ key: "library", label: "Library" }, { key: "images", label: "Generate images" }, { key: "repurpose", label: "Repurpose" }, { key: "motion", label: "Motion cards" }, { key: "templates", label: "Templates" }, { key: "dub", label: "Dub" }, { key: "avatar", label: "Avatar" }]}
         active={tab} onChange={setTab} />
 
       {tab === "library" && (
@@ -236,6 +254,29 @@ export default function Assets() {
           {dubResult && (
             <div className="text-[12.5px] mt-2 font-mono break-words" style={{ color: "var(--accent)" }}>
               {dubResult.cues} cues → {dubResult.voice} · {dubResult.video_path}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {tab === "avatar" && (
+        <Card>
+          <b className="text-[13.5px]">Talking-head presenter</b>
+          <div className="text-[12.5px] mt-1" style={{ color: "var(--text-muted)" }}>
+            {(avStat.data as any)?.ready
+              ? `ready · backend ${(avStat.data as any)?.backend} · photo + voiced script → lip-synced clip`
+              : `not ready — ${(avStat.data as any)?.detail ?? "checking…"}. Configure server/SadTalker under Settings → Avatar.`}
+          </div>
+          <div className="grid md:grid-cols-2 gap-2 mt-3">
+            <input className="input font-mono !text-xs" placeholder="Presenter photo path (workspace asset)" value={avImg} onChange={(e) => setAvImg(e.target.value)} />
+            <input className="input" placeholder="Script to voice for the presenter" value={avText} onChange={(e) => setAvText(e.target.value)} />
+          </div>
+          <button className="btn-primary !text-xs mt-2" disabled={busy === "avatar" || !avImg.trim() || !avText.trim()} onClick={runAvatar}>
+            {busy === "avatar" ? "Directing…" : "Direct presenter clip"}
+          </button>
+          {avResult && (
+            <div className="text-[12.5px] mt-2 font-mono break-words" style={{ color: "var(--accent)" }}>
+              {avResult.backend} · {Number(avResult.duration).toFixed(1)}s · {avResult.video_path}
             </div>
           )}
         </Card>

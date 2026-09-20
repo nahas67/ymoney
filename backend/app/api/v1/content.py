@@ -1137,7 +1137,6 @@ class VoicePreviewBody(BaseModel):
     language: str = Field(default="", max_length=12)
     rate: float = Field(default=1.0, ge=0.5, le=2.0)
 
-
 @assets_router.post("/voice/preview", summary="Preview any voice-stack provider with extras")
 def voice_preview(body: VoicePreviewBody, ws: Workspace = Depends(require_workspace_role("member"))):
     """Narrate a sample through a chosen provider (clone/emotion aware).
@@ -1230,6 +1229,57 @@ def dub_video(body: DubBody, ws: Workspace = Depends(require_workspace_role("mem
         status = 503 if ("ffmpeg" in detail or "unavailable" in detail) else 400
         raise HTTPException(status_code=status, detail=detail)
     return {**built, "target_lang": lang, "voice": voice, "cues": len(cues)}
+
+
+class AvatarBody(BaseModel):
+    image: str = Field(min_length=1, max_length=2000, description="workspace asset path of the presenter photo")
+    audio: str = Field(default="", max_length=2000, description="workspace asset path of driving audio (one of audio/text)")
+    text: str = Field(default="", max_length=2000, description="script to voice first (one of audio/text)")
+    voice: str = Field(default="", max_length=120)
+    provider: str = Field(default="", max_length=30)
+
+
+@assets_router.get("/avatar/status", summary="Talking-avatar pipeline availability")
+def avatar_status(ws: Workspace = Depends(require_workspace_role("viewer"))):
+    from app.providers.avatar import avatar_status as _status
+
+    return _status()
+
+
+@assets_router.post("/avatar", summary="Render a talking-head presenter clip")
+def render_avatar_clip(body: AvatarBody, ws: Workspace = Depends(require_workspace_role("member"))):
+    """Photo + (audio | voiced text) → lip-synced MP4 via the avatar stack.
+
+    Requires image + exactly one of audio/text; fails closed with remediation
+    when no backend is ready.
+    """
+    from app.providers.avatar import AvatarError, render_avatar
+    from app.providers.tts import TTSError, get_tts_provider
+    from app.services.storage import get_storage
+
+    if bool(body.audio) == bool(body.text.strip()):
+        raise HTTPException(status_code=400, detail="provide exactly one of audio or text")
+    try:
+        driving = body.audio
+        if body.text.strip():
+            import time as _t
+
+            try:
+                prov = get_tts_provider(body.provider) if body.provider else get_tts_provider()
+                res = prov.synthesize(body.text, voice=body.voice)
+            except TTSError as exc:
+                raise AvatarError(f"voice step failed: {exc}") from exc
+            ext = "wav" if res.format == "wav" else "mp3"
+            driving = get_storage().save_media(
+                ws.id, data=res.audio_bytes, filename=f"avatar_voice_{int(_t.time())}.{ext}")
+        clip = render_avatar(body.image, driving, ws.id)
+    except AvatarError as exc:
+        detail = str(exc)
+        status = 503 if ("not configured" in detail or "not ready" in detail
+                          or "unreachable" in detail or "ffmpeg" in detail) else 400
+        raise HTTPException(status_code=status, detail=detail)
+    return {"video_path": clip.path, "backend": clip.backend,
+            "duration": clip.duration, "is_mock": clip.is_mock}
 
 
 @assets_router.post("/repurpose", summary="Cut a long-form source into vertical shorts")

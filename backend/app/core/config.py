@@ -93,6 +93,11 @@ class Settings(BaseSettings):
     qwen_base_url: str = ""              # vLLM-Omni (or compat) server for Qwen3-TTS
     qwen_tts_instruct: str = ""          # default delivery direction, e.g. "speak cheerfully"
 
+    # ---- Avatar (talking-head clips) ----
+    avatar_backend: str = "server"       # server | sadtalker | mock
+    avatar_base_url: str = ""            # generic renderer: multipart image+audio → mp4
+    sadtalker_dir: str = ""              # local OpenTalker/SadTalker checkout with checkpoints
+
     # ---- Analytics ----
     mock_analytics: bool = False
 

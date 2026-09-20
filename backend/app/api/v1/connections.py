@@ -40,6 +40,9 @@ _MANAGEABLE = {
     "image.openai_base_url": ps.REGISTRY["image.openai_base_url"],
     "image.openai_api_key": ps.REGISTRY["image.openai_api_key"],
     "image.openai_model": ps.REGISTRY["image.openai_model"],
+    "avatar.backend": ps.REGISTRY["avatar.backend"],
+    "avatar.base_url": ps.REGISTRY["avatar.base_url"],
+    "avatar.sadtalker_dir": ps.REGISTRY["avatar.sadtalker_dir"],
 }
 
 

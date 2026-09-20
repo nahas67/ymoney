@@ -202,6 +202,7 @@ def register_core_capabilities() -> None:
         ToolSpec("render_motion", "Render a HyperFrames motion-graphics card (title/stat/CTA/lower-third)", {"type": "object"}, ("media:render",), "motion", 600, True),
         ToolSpec("dub_video", "Translate, voice and reassemble a video in another language", {"type": "object"}, ("media:render",), "dubbing", 1200, True),
         ToolSpec("synthesize_speech", "Narrate text with the workspace voice stack (clone/emotion aware)", {"type": "object"}, ("tts:synthesize",), "tts", 180, True),
+        ToolSpec("render_avatar", "Render a talking-head clip from a presenter photo + audio", {"type": "object"}, ("media:render",), "avatar", 3600, True),
         ToolSpec("store_memory", "Persist a scoped workflow or learning memory", {"type": "object"}, ("memory:write",), "memory", 30, False),        ToolSpec("retrieve_memory", "Retrieve targeted memories for a workflow", {"type": "object"}, ("memory:read",), "memory", 30, True),
     ]
     for tool in core_tools:
@@ -220,6 +221,7 @@ def register_core_capabilities() -> None:
         SkillSpec("motion_graphics", "Motion Graphics", "Render designed motion cards via HyperFrames", required_tools=("render_motion",)),
         SkillSpec("dubbing_localization", "Dubbing & Localization", "Translate and re-voice videos into other languages", required_tools=("dub_video",)),
         SkillSpec("voice_design", "Voice Design", "Cast, clone and direct narration voices per scene", required_tools=("synthesize_speech",)),
+        SkillSpec("avatar_direction", "Avatar Direction", "Direct talking-head presenter clips", required_tools=("render_avatar",)),
     ]
     for skill in core_skills:
         if skill.key not in SKILLS:

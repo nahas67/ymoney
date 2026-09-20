@@ -113,7 +113,7 @@ def test_voice_design_skill_and_agent_registered():
     assert get_skill("voice_design").required_tools == ("synthesize_speech",)
     assert "tts:synthesize" in get_tool("synthesize_speech").permissions
     assert AGENTS["voice_designer"].meta.title == "Voice Designer"
-    assert len(AGENTS) == 17
+    assert len(AGENTS) == 18
 
 
 def test_voice_designer_design_with_mock(tmp_path, monkeypatch):

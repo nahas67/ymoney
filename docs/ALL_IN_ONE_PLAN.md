@@ -24,10 +24,10 @@ cover remake · word-timed captions · BGM bed · Safety Center · SSE activity 
 | AI B-roll | **Wan 2.1 1.3B** (T2V) | Apache-2.0 | ~8 GB VRAM | custom scene clips |
 | AI B-roll (fast) | **LTX-Video 0.9.5** | LTX license | ~16 GB | fastest image-to-video |
 | AI B-roll (quality) | **Wan 2.2 / HunyuanVideo** | Apache-2.0 / Tencent | 24 GB+ | quality tier (later) |
-| Avatar presenter | **SadTalker** (photo+audio) | open | ~8 GB | talking-head default |
-| Avatar (quality) | **MuseTalk** (real-time latent) | open | 16 GB+ | quality tier |
-| Avatar (fast) | **Wav2Lip** | open | low | quick lip-sync fixes |
-| Programmatic motion | **HyperFrames** (adopted — `providers/motion.py`, agent #15) | Apache-2.0 | CPU + Node 22 + Chrome | motion-card lane live; full-composition mode later |
+| Avatar presenter | **SadTalker native + generic server lane** (built — `providers/avatar.py`, agent #18) | open | ~8 GB / CPU-server | talking-head default |
+| Avatar (quality) | **MuseTalk** (real-time latent) | open | 16 GB+ | quality tier — via server lane today, native later |
+| Avatar (fast) | **Wav2Lip** | open | low | quick lip-sync fixes (later) |
+| Programmatic motion | **HyperFrames** motion lane + template registry (built) | Apache-2.0 | CPU + Node 22 + Chrome | motion cards live; full-composition mode later |
 
 Avoid for server use: AGPL-3.0 code (ViralMint) unless process-isolated; CC-BY-NC weights
 (Fish Speech, F5-TTS) — non-commercial, skip.

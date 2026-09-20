@@ -28,11 +28,12 @@ class AvatarDirectorAgent(BaseAgent):
 
     def direct(self, ctx, *, image: str, audio: str = "", text: str = "",
                voice: str = "", provider: str = "",
-               exaggeration: float = 0.5) -> dict:
+               exaggeration: float = 0.5, backend: str = "") -> dict:
         """Render one presenter clip.
 
         Provide exactly one of `audio` (workspace asset) or `text` (voiced
-        with the workspace voice stack first).
+        with the workspace voice stack first). `backend` optionally overrides
+        the configured avatar lane for this call.
         """
 
         def work():
@@ -59,7 +60,7 @@ class AvatarDirectorAgent(BaseAgent):
                 self.step_done("ok", f"voiced via {res.provider}")
             self.step("render_avatar", "lip-sync render")
             try:
-                clip = render_avatar(image, driving, ws)
+                clip = render_avatar(image, driving, ws, backend=(backend or "").lower())
             except AvatarError as exc:
                 self.step_failed(str(exc)[:150])
                 raise

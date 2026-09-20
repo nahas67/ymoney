@@ -1434,6 +1434,7 @@ class AvatarBody(BaseModel):
     text: str = Field(default="", max_length=2000, description="script to voice first (one of audio/text)")
     voice: str = Field(default="", max_length=120)
     provider: str = Field(default="", max_length=30)
+    backend: str = Field(default="", max_length=20, description="lane override: server|sadtalker|wavlip|mock")
 
 
 @assets_router.get("/avatar/status", summary="Talking-avatar pipeline availability")
@@ -1469,7 +1470,10 @@ def render_avatar_clip(body: AvatarBody, ws: Workspace = Depends(require_workspa
             ext = "wav" if res.format == "wav" else "mp3"
             driving = get_storage().save_media(
                 ws.id, data=res.audio_bytes, filename=f"avatar_voice_{int(_t.time())}.{ext}")
-        clip = render_avatar(body.image, driving, ws.id)
+        lane = (body.backend or "").lower()
+        if lane and lane not in ("server", "sadtalker", "wavlip", "mock"):
+            raise HTTPException(status_code=400, detail=f"unknown avatar backend '{body.backend}'")
+        clip = render_avatar(body.image, driving, ws.id, backend=lane)
     except AvatarError as exc:
         detail = str(exc)
         status = 503 if ("not configured" in detail or "not ready" in detail

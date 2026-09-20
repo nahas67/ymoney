@@ -125,6 +125,74 @@ def test_avatar_skill_agent_registered():
     assert len(AGENTS) == 22
 
 
+def test_status_lists_lanes_and_license():
+    status = avatar_status()
+    assert set(status["lanes"]) == {"server", "sadtalker", "wavlip", "mock"}
+    assert "LRS2" in status["license_notes"]["wavlip"] or "non-commercial" in status["license_notes"]["wavlip"].lower()
+
+
+def test_wavlip_needs_checkout_and_checkpoints(tmp_path, monkeypatch):
+    from app.core import config as config_mod
+
+    monkeypatch.chdir(tmp_path)
+    img, aud = _ws_files(tmp_path)
+    monkeypatch.setattr(config_mod.settings, "avatar_backend", "wavlip")
+    monkeypatch.setattr(config_mod.settings, "wavlip_dir", "")
+    with pytest.raises(AvatarError, match="WAVLIP_DIR"):
+        avatar_mod.render_avatar(img, aud, "ws-av")
+    empty = tmp_path / "wlip"
+    (empty / "checkpoints").mkdir(parents=True)
+    (empty / "inference.py").write_text("# fake")
+    monkeypatch.setattr(config_mod.settings, "wavlip_dir", str(empty))
+    with pytest.raises(AvatarError, match="checkpoint"):
+        avatar_mod.render_avatar(img, aud, "ws-av")
+
+
+@pytest.mark.skipif(not _has_ffmpeg(), reason="ffmpeg not installed")
+def test_wavlip_success_with_mocked_subprocess(tmp_path, monkeypatch):
+    from app.core import config as config_mod
+
+    monkeypatch.chdir(tmp_path)
+    img, aud = _ws_files(tmp_path)
+    wlip = tmp_path / "wlip"
+    (wlip / "checkpoints").mkdir(parents=True)
+    (wlip / "inference.py").write_text("# fake")
+    (wlip / "checkpoints" / "wav2lip_gan.pth").write_bytes(b"fake-weights")
+
+    seen: dict = {"cmds": []}
+
+    def fake_run(cmd, **kw):
+        from types import SimpleNamespace
+
+        if "--checkpoint_path" in cmd:
+            seen["cmds"].append(" ".join(cmd))
+            assert "--face" in cmd
+            assert "--audio" in cmd and "--outfile" in cmd
+            Path(cmd[cmd.index("--outfile") + 1]).write_bytes(b"mp4bytes")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        return SimpleNamespace(returncode=0, stdout='{"format": {"duration": "2.5"}}', stderr="")
+
+    monkeypatch.setattr(config_mod.settings, "wavlip_dir", str(wlip))
+    monkeypatch.setattr(avatar_mod.subprocess, "run", fake_run)
+    clip = avatar_mod.render_avatar(img, aud, "ws-av", backend="wavlip")
+    assert clip.backend == "wavlip" and Path(clip.path).exists()
+    assert any("wav2lip_gan.pth" in c for c in seen["cmds"])
+
+
+def test_backend_override_and_unknown(tmp_path, monkeypatch):
+    from app.core import config as config_mod
+
+    monkeypatch.chdir(tmp_path)
+    img, aud = _ws_files(tmp_path)
+    monkeypatch.setattr(config_mod.settings, "avatar_backend", "server")
+    monkeypatch.setattr(config_mod.settings, "avatar_base_url", "")
+    if _has_ffmpeg():
+        clip = avatar_mod.render_avatar(img, aud, "ws-av", backend="mock")
+        assert clip.is_mock is True
+    with pytest.raises(AvatarError, match="unknown avatar backend"):
+        avatar_mod.render_avatar(img, aud, "ws-av", backend="nope")
+
+
 def test_avatar_api_validation():
     import os
 

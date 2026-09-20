@@ -58,6 +58,14 @@ def sadtalker_dir() -> str:
     return _cred("avatar.sadtalker_dir", "sadtalker_dir")
 
 
+def wavlip_dir() -> str:
+    return _cred("avatar.wavlip_dir", "wavlip_dir")
+
+
+WAVLIP_LICENSE_NOTE = ("Wav2Lip weights are LRS2-trained: research/academic/personal "
+                       "use only, no commercial use — set WAVLIP_DIR only where that applies.")
+
+
 def ffmpeg_present() -> bool:
     return bool(shutil.which("ffmpeg"))
 
@@ -71,21 +79,56 @@ def _sadtalker_ready() -> tuple[bool, str]:
     return True, "checkout + inference script present"
 
 
+def _wavlip_ready() -> tuple[bool, str]:
+    d = wavlip_dir()
+    if not d:
+        return False, "WAVLIP_DIR not configured"
+    base = Path(d)
+    if not (base / "inference.py").exists():
+        return False, f"inference.py not found under {d}"
+    ckpts = sorted((base / "checkpoints").glob("wav2lip*.pth")) if (base / "checkpoints").exists() else []
+    if not ckpts:
+        return False, f"no wav2lip*.pth checkpoint under {d}/checkpoints"
+    return True, f"checkout + {ckpts[0].name} present"
+
+
+def _lane_ready(name: str) -> bool:
+    if name == "server":
+        return bool(avatar_base_url())
+    if name == "sadtalker":
+        return _sadtalker_ready()[0]
+    if name == "wavlip":
+        return _wavlip_ready()[0]
+    if name == "mock":
+        return True
+    return False
+
+
 def avatar_status() -> dict:
     backend = avatar_backend()
+    lanes = {name: _lane_ready(name) for name in ("server", "sadtalker", "wavlip", "mock")}
     if backend == "mock":
         return {"backend": backend, "ready": True, "detail": "labeled simulation clips",
-                "ffmpeg": ffmpeg_present()}
+                "ffmpeg": ffmpeg_present(), "lanes": lanes,
+                "license_notes": {"wavlip": WAVLIP_LICENSE_NOTE}}
     if backend == "sadtalker":
         ok, detail = _sadtalker_ready()
         ready = bool(ok and ffmpeg_present())
         return {"backend": backend, "ready": ready, "detail": detail,
-                "ffmpeg": ffmpeg_present()}
+                "ffmpeg": ffmpeg_present(), "lanes": lanes,
+                "license_notes": {"wavlip": WAVLIP_LICENSE_NOTE}}
+    if backend == "wavlip":
+        ok, detail = _wavlip_ready()
+        ready = bool(ok and ffmpeg_present())
+        return {"backend": backend, "ready": ready, "detail": detail,
+                "ffmpeg": ffmpeg_present(), "lanes": lanes,
+                "license_notes": {"wavlip": WAVLIP_LICENSE_NOTE}}
     base = avatar_base_url()
     ready = bool(base and ffmpeg_present())
     return {"backend": "server", "ready": ready,
             "detail": "renderer URL configured" if base else "avatar.base_url not configured",
-            "ffmpeg": ffmpeg_present()}
+            "ffmpeg": ffmpeg_present(), "lanes": lanes,
+            "license_notes": {"wavlip": WAVLIP_LICENSE_NOTE}}
 
 
 @dataclass
@@ -108,18 +151,26 @@ def _workspace_file(workspace_id: str, ref: str, what: str) -> Path:
 
 
 def render_avatar(image_ref: str, audio_ref: str, workspace_id: str,
-                  filename: str | None = None) -> AvatarClip:
-    """Render one talking-head clip from workspace-bound image + audio."""
+                  filename: str | None = None, backend: str = "") -> AvatarClip:
+    """Render one talking-head clip from workspace-bound image + audio.
+
+    `backend` optionally overrides the configured lane for this call
+    (server|sadtalker|wavlip|mock).
+    """
     image = _workspace_file(workspace_id, image_ref, "presenter image")
     audio = _workspace_file(workspace_id, audio_ref, "driving audio")
     if not ffmpeg_present():
         raise AvatarError("ffmpeg not found — install it to render avatars")
-    backend = avatar_backend()
+    backend = (backend or avatar_backend()).lower()
     if backend == "mock":
         return _mock_clip(workspace_id, filename)
     if backend == "sadtalker":
         return _sadtalker_render(image, audio, workspace_id, filename)
-    return _server_render(image, audio, workspace_id, filename)
+    if backend == "wavlip":
+        return _wavlip_render(image, audio, workspace_id, filename)
+    if backend == "server":
+        return _server_render(image, audio, workspace_id, filename)
+    raise AvatarError(f"unknown avatar backend '{backend}' (server|sadtalker|wavlip|mock)")
 
 
 def _store(workspace_id: str, src: Path, filename: str | None) -> str:
@@ -226,6 +277,44 @@ def _sadtalker_render(image: Path, audio: Path, workspace_id: str,
                       duration=dur)
 
 
+def _wavlip_render(image: Path, audio: Path, workspace_id: str,
+                   filename: str | None) -> AvatarClip:
+    """Fast lip-sync fix on existing footage (Wav2Lip native checkout).
+
+    Interface verified against Rudrabha/Wav2Lip: inference.py
+    --checkpoint_path/--face/--audio/--outfile. Best on footage where a face
+    is present in all frames; ideal after dubbing (new audio, same video).
+    """
+    ok, detail = _wavlip_ready()
+    if not ok:
+        raise AvatarError(f"wavlip backend not ready: {detail} — see Settings → Connections (Avatar)")
+    base = Path(wavlip_dir())
+    ckpts = sorted((base / "checkpoints").glob("wav2lip*.pth"))
+    ckpt = next((c for c in ckpts if "gan" in c.name.lower()), ckpts[0])
+    out = WORK_DIR / workspace_id / "wavlip_out.mp4"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if out.exists():
+        out.unlink()
+    cmd = ["python", str(base / "inference.py"),
+           "--checkpoint_path", str(ckpt),
+           "--face", str(image),
+           "--audio", str(audio),
+           "--outfile", str(out)]
+    # NOTE: --face accepts a video file (lip-sync fix on footage) or a still
+    # image; image input works best with a frontal portrait.
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=3600,
+                              cwd=str(base))
+    except subprocess.TimeoutExpired as exc:
+        raise AvatarError("wavlip render timed out after 60 minutes") from exc
+    if proc.returncode != 0 or not out.exists():
+        tail = ((proc.stderr or proc.stdout) or "")[-500:]
+        raise AvatarError(f"wavlip render failed: {tail[:300]}")
+    dur = _probe_duration(out)
+    return AvatarClip(path=_store(workspace_id, out, filename), backend="wavlip",
+                      duration=dur)
+
+
 def _probe_duration(path: Path) -> float:
     try:
         out = subprocess.run(
@@ -243,10 +332,12 @@ def _probe_duration(path: Path) -> float:
 __all__ = [
     "AvatarClip",
     "AvatarError",
+    "WAVLIP_LICENSE_NOTE",
     "avatar_backend",
     "avatar_base_url",
     "avatar_status",
     "ffmpeg_present",
     "render_avatar",
     "sadtalker_dir",
+    "wavlip_dir",
 ]

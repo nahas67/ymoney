@@ -44,6 +44,7 @@ _MANAGEABLE = {
     "avatar.backend": ps.REGISTRY["avatar.backend"],
     "avatar.base_url": ps.REGISTRY["avatar.base_url"],
     "avatar.sadtalker_dir": ps.REGISTRY["avatar.sadtalker_dir"],
+    "avatar.wavlip_dir": ps.REGISTRY["avatar.wavlip_dir"],
 }
 
 

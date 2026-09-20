@@ -29,6 +29,7 @@ export default function Assets() {
   const [avImg, setAvImg] = useState("");
   const [avText, setAvText] = useState("");
   const [avResult, setAvResult] = useState<any>(null);
+  const [avLane, setAvLane] = useState("");
   const avStat = useFetch(() => wsApi.get("/assets/avatar/status"), [tab]);
   const [bQuery, setBQuery] = useState("");
   const [bResults, setBResults] = useState<any[]>([]);
@@ -112,7 +113,7 @@ export default function Assets() {
     if (!avImg.trim() || !avText.trim()) return;
     setBusy("avatar");
     try {
-      const r = await wsApi.post("/assets/avatar", { image: avImg, text: avText });
+      const r = await wsApi.post("/assets/avatar", { image: avImg, text: avText, backend: avLane });
       setAvResult(r);
       lib.reload();
     } catch (e: any) {
@@ -324,15 +325,22 @@ export default function Assets() {
           <div className="text-[12.5px] mt-1" style={{ color: "var(--text-muted)" }}>
             {(avStat.data as any)?.ready
               ? `ready · backend ${(avStat.data as any)?.backend} · photo + voiced script → lip-synced clip`
-              : `not ready — ${(avStat.data as any)?.detail ?? "checking…"}. Configure server/SadTalker under Settings → Avatar.`}
+              : `not ready — ${(avStat.data as any)?.detail ?? "checking…"}. Configure server/SadTalker/Wav2Lip under Settings → Avatar.`}
+            {(avStat.data as any)?.license_notes?.wavlip && (
+              <div className="mt-1">⚠️ Wav2Lip lane is non-commercial (LRS2 weights) — research/personal use only.</div>
+            )}
           </div>
-          <div className="grid md:grid-cols-2 gap-2 mt-3">
+          <div className="grid md:grid-cols-[140px_1fr_1fr_auto] gap-2 mt-3">
+            <select className="select" value={avLane} onChange={(e) => setAvLane(e.target.value)} aria-label="Avatar lane">
+              <option value="">auto (configured)</option>
+              {["server", "sadtalker", "wavlip", "mock"].map((b) => <option key={b} value={b}>{b}</option>)}
+            </select>
             <input className="input font-mono !text-xs" placeholder="Presenter photo path (workspace asset)" value={avImg} onChange={(e) => setAvImg(e.target.value)} />
             <input className="input" placeholder="Script to voice for the presenter" value={avText} onChange={(e) => setAvText(e.target.value)} />
+            <button className="btn-primary !text-xs whitespace-nowrap" disabled={busy === "avatar" || !avImg.trim() || !avText.trim()} onClick={runAvatar}>
+              {busy === "avatar" ? "Directing…" : "Direct clip"}
+            </button>
           </div>
-          <button className="btn-primary !text-xs mt-2" disabled={busy === "avatar" || !avImg.trim() || !avText.trim()} onClick={runAvatar}>
-            {busy === "avatar" ? "Directing…" : "Direct presenter clip"}
-          </button>
           {avResult && (
             <div className="text-[12.5px] mt-2 font-mono break-words" style={{ color: "var(--accent)" }}>
               {avResult.backend} · {Number(avResult.duration).toFixed(1)}s · {avResult.video_path}

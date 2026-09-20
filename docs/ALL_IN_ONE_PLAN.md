@@ -26,7 +26,7 @@ cover remake · word-timed captions · BGM bed · Safety Center · SSE activity 
 | AI B-roll (quality) | **Wan 2.2 / HunyuanVideo** | Apache-2.0 / Tencent | 24 GB+ | quality tier (later) |
 | Avatar presenter | **SadTalker native + generic server lane** (built — `providers/avatar.py`, agent #18) | open | ~8 GB / CPU-server | talking-head default |
 | Avatar (quality) | **MuseTalk** (real-time latent) | open | 16 GB+ | quality tier — via server lane today, native later |
-| Avatar (fast) | **Wav2Lip** | open | low | quick lip-sync fixes (later) |
+| Avatar (fast) | **Wav2Lip** native lane (built — fast lip-sync fixes, non-commercial LRS2 weights) | open-ish | CPU/GPU | per-call lane override in API/agent/UI |
 | Programmatic motion | **HyperFrames** motion lane + template registry (built) | Apache-2.0 | CPU + Node 22 + Chrome | motion cards live; full-composition mode later |
 
 Avoid for server use: AGPL-3.0 code (ViralMint) unless process-isolated; CC-BY-NC weights

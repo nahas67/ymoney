@@ -95,9 +95,10 @@ class Settings(BaseSettings):
     qwen_tts_instruct: str = ""          # default delivery direction, e.g. "speak cheerfully"
 
     # ---- Avatar (talking-head clips) ----
-    avatar_backend: str = "server"       # server | sadtalker | mock
+    avatar_backend: str = "server"       # server | sadtalker | wavlip | mock
     avatar_base_url: str = ""            # generic renderer: multipart image+audio → mp4
     sadtalker_dir: str = ""              # local OpenTalker/SadTalker checkout with checkpoints
+    wavlip_dir: str = ""                 # local Wav2Lip checkout (non-commercial LRS2 weights!)
 
     # ---- B-roll (stock + AI scene clips) ----
     broll_ai_backend: str = "server"     # server | wan | ltx | synth

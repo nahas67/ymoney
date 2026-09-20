@@ -13,6 +13,7 @@ from app.engine.agents.discovery import TrendAnalystAgent, TrendHunterAgent
 from app.engine.agents.distribution import PublisherAgent, SEOAgent
 from app.engine.agents.intelligence import AnalyticsCollectorAgent, LearningAgent
 from app.engine.agents.production import QualityAgent, VideoProducerAgent
+from app.engine.agents.motion import MotionDesignerAgent
 from app.engine.agents.repurpose import LinkMinerAgent, RepurposeEditorAgent
 
 AGENTS: dict[str, type[BaseAgent]] = {
@@ -30,6 +31,7 @@ AGENTS: dict[str, type[BaseAgent]] = {
     "learning": LearningAgent,
     "link_miner": LinkMinerAgent,
     "repurpose_editor": RepurposeEditorAgent,
+    "motion_designer": MotionDesignerAgent,
 }
 
 AGENT_META: dict[str, AgentMeta] = {k: v.meta for k, v in AGENTS.items()}

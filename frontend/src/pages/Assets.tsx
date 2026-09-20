@@ -5,10 +5,11 @@ import { Badge, Card, PageHeader, Section, Tabs, statusTone } from "../component
 import { fmtAgo } from "../lib/format";
 
 export default function Assets() {
-  const [tab, setTab] = useState<"library" | "images" | "repurpose">("library");
+  const [tab, setTab] = useState<"library" | "images" | "repurpose" | "motion">("library");
   const lib = useFetch(() => wsApi.get("/assets"), [tab]);
   const imgStatus = useFetch(() => wsApi.get("/assets/images/status"), [tab]);
   const clipStatus = useFetch(() => wsApi.get("/repurpose/status"), [tab]);
+  const motionStatus = useFetch(() => wsApi.get("/assets/motion/status"), [tab]);
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -17,6 +18,10 @@ export default function Assets() {
   const [clips, setClips] = useState<any[]>([]);
   const [preset, setPreset] = useState("minimal");
   const [rank, setRank] = useState(true);
+  const [mKind, setMKind] = useState("hook");
+  const [mTitle, setMTitle] = useState("");
+  const [mSub, setMSub] = useState("");
+  const [mPath, setMPath] = useState("");
 
   const caps: any = (lib.data as any)?.capabilities;
 
@@ -61,11 +66,25 @@ export default function Assets() {
     }
   }
 
+  async function renderMotion() {
+    if (!mTitle.trim()) return;
+    setBusy("motion");
+    try {
+      const r = await wsApi.post("/assets/motion", { kind: mKind, title: mTitle, subtitle: mSub });
+      setMPath(r.path ?? "");
+      lib.reload();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
   return (
     <div className="space-y-4">
       <PageHeader title="Assets" subtitle="System renders, operator uploads, AI scene images and long-form repurposing."
         actions={caps && <Badge tone={caps.upload ? "success" : "muted"}>{caps.upload ? "uploads on" : caps.note}</Badge>} />
-      <Tabs tabs={[{ key: "library", label: "Library" }, { key: "images", label: "Generate images" }, { key: "repurpose", label: "Repurpose" }]}
+      <Tabs tabs={[{ key: "library", label: "Library" }, { key: "images", label: "Generate images" }, { key: "repurpose", label: "Repurpose" }, { key: "motion", label: "Motion cards" }]}
         active={tab} onChange={setTab} />
 
       {tab === "library" && (
@@ -153,6 +172,27 @@ export default function Assets() {
               ))}
             </div>
           )}
+        </Card>
+      )}
+      {tab === "motion" && (
+        <Card>
+          <b className="text-[13.5px]">Kinetic motion card (HyperFrames)</b>
+          <div className="text-[12.5px] mt-1" style={{ color: "var(--text-muted)" }}>
+            {(motionStatus.data as any)?.ready
+              ? `ready · ${(motionStatus.data as any)?.version ?? ""} · hook/stat/CTA/lower-third in 9:16`
+              : "not ready here — needs HyperFrames CLI + working Chrome + ffmpeg. Renders fail closed with remediation."}
+          </div>
+          <div className="grid md:grid-cols-[140px_1fr_1fr_auto] gap-2 mt-3">
+            <select className="select" value={mKind} onChange={(e) => setMKind(e.target.value)} aria-label="Card kind">
+              {["hook", "stat", "cta", "lower"].map((k) => <option key={k} value={k}>{k}</option>)}
+            </select>
+            <input className="input" placeholder="Title (e.g. Stop losing money)" value={mTitle} onChange={(e) => setMTitle(e.target.value)} />
+            <input className="input" placeholder="Subtitle (optional)" value={mSub} onChange={(e) => setMSub(e.target.value)} />
+            <button className="btn-primary !text-xs whitespace-nowrap" disabled={busy === "motion" || !mTitle.trim()} onClick={renderMotion}>
+              {busy === "motion" ? "Rendering…" : "Render card"}
+            </button>
+          </div>
+          {mPath && <div className="text-[12.5px] mt-2 font-mono break-words" style={{ color: "var(--accent)" }}>Rendered: {mPath}</div>}
         </Card>
       )}
     </div>

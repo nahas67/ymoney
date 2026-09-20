@@ -984,6 +984,44 @@ def clip_status(ws: Workspace = Depends(require_workspace_role("viewer"))):
     return get_repurposer().status()
 
 
+class MotionCardBody(BaseModel):
+    kind: str = Field(default="hook", description="hook|stat|cta|lower")
+    title: str = Field(min_length=1, max_length=200)
+    subtitle: str = Field(default="", max_length=300)
+    accent: str = Field(default="#22c55e", max_length=9)
+    duration: float = Field(default=3.0, ge=1, le=10)
+
+
+@assets_router.get("/motion/status", summary="Motion-graphics (HyperFrames) availability")
+def motion_status(ws: Workspace = Depends(require_workspace_role("viewer"))):
+    from app.providers.motion import motion_status as _status
+
+    return _status()
+
+
+@assets_router.post("/motion", summary="Render a kinetic motion-graphics card")
+def render_motion_card(
+    body: MotionCardBody,
+    ws: Workspace = Depends(require_workspace_role("member")),
+):
+    """Render a hook/stat/CTA/lower-third card via HyperFrames.
+
+    Requires the HyperFrames CLI + a working Chrome + ffmpeg; otherwise fails
+    closed with remediation (503) instead of faking output.
+    """
+    from app.providers.motion import MotionError, render_card
+
+    try:
+        card = render_card(body.kind, body.title, ws.id, subtitle=body.subtitle,
+                           accent=body.accent, duration=body.duration)
+    except MotionError as exc:
+        detail = str(exc)
+        status = 503 if ("not installed" in detail or "not found" in detail
+                          or "no working Chrome" in detail) else 400
+        raise HTTPException(status_code=status, detail=detail)
+    return {"path": card.path, "kind": card.kind, "duration": card.duration}
+
+
 @assets_router.post("/repurpose", summary="Cut a long-form source into vertical shorts")
 def repurpose_clips(
     body: ClipJobBody,

@@ -27,7 +27,7 @@ cover remake · word-timed captions · BGM bed · Safety Center · SSE activity 
 | Avatar presenter | **SadTalker** (photo+audio) | open | ~8 GB | talking-head default |
 | Avatar (quality) | **MuseTalk** (real-time latent) | open | 16 GB+ | quality tier |
 | Avatar (fast) | **Wav2Lip** | open | low | quick lip-sync fixes |
-| Programmatic motion | **Remotion / MotionCanvas** | OSS (license-check) | CPU/Node | LATER: template motion graphics |
+| Programmatic motion | **HyperFrames** (adopted — `providers/motion.py`, agent #15) | Apache-2.0 | CPU + Node 22 + Chrome | motion-card lane live; full-composition mode later |
 
 Avoid for server use: AGPL-3.0 code (ViralMint) unless process-isolated; CC-BY-NC weights
 (Fish Speech, F5-TTS) — non-commercial, skip.

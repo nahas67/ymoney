@@ -199,6 +199,7 @@ def register_core_capabilities() -> None:
         ToolSpec("fetch_metrics", "Read metrics through a configured analytics adapter", {"type": "object"}, ("analytics:read",), "analytics", 60, True),
         ToolSpec("mine_moments", "Mine ranked viral moments from a long-form source transcript", {"type": "object"}, ("llm:generate",), "clips", 180, True),
         ToolSpec("assemble_clips", "Cut ranked moments into captioned vertical shorts", {"type": "object"}, ("media:render",), "clips", 900, True),
+        ToolSpec("render_motion", "Render a HyperFrames motion-graphics card (title/stat/CTA/lower-third)", {"type": "object"}, ("media:render",), "motion", 600, True),
         ToolSpec("store_memory", "Persist a scoped workflow or learning memory", {"type": "object"}, ("memory:write",), "memory", 30, False),        ToolSpec("retrieve_memory", "Retrieve targeted memories for a workflow", {"type": "object"}, ("memory:read",), "memory", 30, True),
     ]
     for tool in core_tools:
@@ -214,6 +215,7 @@ def register_core_capabilities() -> None:
         SkillSpec("analytics_learning", "Analytics and Learning", "Measure performance and update memory", required_tools=("fetch_metrics", "store_memory", "retrieve_memory")),
         SkillSpec("clip_mining", "Clip Mining", "Mine ranked viral moments from long-form sources", required_tools=("mine_moments",)),
         SkillSpec("clip_assembly", "Clip Assembly", "Assemble ranked moments into captioned vertical shorts", required_tools=("assemble_clips",)),
+        SkillSpec("motion_graphics", "Motion Graphics", "Render designed motion cards via HyperFrames", required_tools=("render_motion",)),
     ]
     for skill in core_skills:
         if skill.key not in SKILLS:

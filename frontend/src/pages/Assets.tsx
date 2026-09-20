@@ -5,7 +5,7 @@ import { Badge, Card, Modal, PageHeader, Section, Tabs, statusTone } from "../co
 import { fmtAgo } from "../lib/format";
 
 export default function Assets() {
-  const [tab, setTab] = useState<"library" | "images" | "repurpose" | "motion" | "templates">("library");
+  const [tab, setTab] = useState<"library" | "images" | "repurpose" | "motion" | "templates" | "dub">("library");
   const lib = useFetch(() => wsApi.get("/assets"), [tab]);
   const imgStatus = useFetch(() => wsApi.get("/assets/images/status"), [tab]);
   const clipStatus = useFetch(() => wsApi.get("/repurpose/status"), [tab]);
@@ -22,6 +22,10 @@ export default function Assets() {
   const [mTitle, setMTitle] = useState("");
   const [mSub, setMSub] = useState("");
   const [mPath, setMPath] = useState("");
+  const [dubSrc, setDubSrc] = useState("");
+  const [dubLang, setDubLang] = useState("es");
+  const [dubResult, setDubResult] = useState<any>(null);
+  const dubStat = useFetch(() => wsApi.get("/assets/dub/status"), [tab]);
 
   const caps: any = (lib.data as any)?.capabilities;
 
@@ -80,11 +84,25 @@ export default function Assets() {
     }
   }
 
+  async function runDub() {
+    if (!dubSrc.trim()) return;
+    setBusy("dub");
+    try {
+      const r = await wsApi.post("/assets/dub", { source: dubSrc, target_lang: dubLang });
+      setDubResult(r);
+      lib.reload();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
   return (
     <div className="space-y-4">
       <PageHeader title="Assets" subtitle="System renders, operator uploads, AI scene images and long-form repurposing."
         actions={caps && <Badge tone={caps.upload ? "success" : "muted"}>{caps.upload ? "uploads on" : caps.note}</Badge>} />
-      <Tabs tabs={[{ key: "library", label: "Library" }, { key: "images", label: "Generate images" }, { key: "repurpose", label: "Repurpose" }, { key: "motion", label: "Motion cards" }, { key: "templates", label: "Templates" }]}
+      <Tabs tabs={[{ key: "library", label: "Library" }, { key: "images", label: "Generate images" }, { key: "repurpose", label: "Repurpose" }, { key: "motion", label: "Motion cards" }, { key: "templates", label: "Templates" }, { key: "dub", label: "Dub" }]}
         active={tab} onChange={setTab} />
 
       {tab === "library" && (
@@ -197,6 +215,31 @@ export default function Assets() {
       )}
 
       {tab === "templates" && <TemplatesTab />}
+
+      {tab === "dub" && (
+        <Card>
+          <b className="text-[13.5px]">Dub into another language</b>
+          <div className="text-[12.5px] mt-1" style={{ color: "var(--text-muted)" }}>
+            {(dubStat.data as any)?.ready
+              ? `ready · TTS ${(dubStat.data as any)?.tts_provider ?? ""} · bilingual subs + portrait assembly`
+              : "needs LLM key + target-language voice + ffmpeg. Fails closed with remediation."}
+          </div>
+          <div className="grid md:grid-cols-[1fr_140px_auto] gap-2 mt-3">
+            <input className="input" placeholder="YouTube URL or local file path" value={dubSrc} onChange={(e) => setDubSrc(e.target.value)} />
+            <select className="select" value={dubLang} onChange={(e) => setDubLang(e.target.value)} aria-label="Target language">
+              {((dubStat.data as any)?.languages ?? ["es", "fr", "de", "pt", "hi", "ar"]).map((l: string) => <option key={l} value={l}>{l}</option>)}
+            </select>
+            <button className="btn-primary !text-xs whitespace-nowrap" disabled={busy === "dub" || !dubSrc.trim()} onClick={runDub}>
+              {busy === "dub" ? "Dubbing…" : "Dub video"}
+            </button>
+          </div>
+          {dubResult && (
+            <div className="text-[12.5px] mt-2 font-mono break-words" style={{ color: "var(--accent)" }}>
+              {dubResult.cues} cues → {dubResult.voice} · {dubResult.video_path}
+            </div>
+          )}
+        </Card>
+      )}
     </div>
   );
 }

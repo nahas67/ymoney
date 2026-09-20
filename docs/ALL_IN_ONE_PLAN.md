@@ -123,7 +123,7 @@ silence-strip + hook-first reorder (NEW).
 | 19 | **Compliance Officer** (governance) | disclosures, spec preflight, risk score → HUMAN_REVIEW | policy engine |
 | 20 | **Competitor Analyst** (intelligence) | channel tracking, trend-jack alerts | new trend ports |
 | 21 | **Scheduler** (distribution) | best-time calendar fill within caps | sweep + best-times |
-| 22 | **Dubb­ing Localizer** (later) | multilingual voice + caption tracks | SeamlessM4T-class |
+| 22 | **Dubb­ing Localizer** (later) | multilingual voice + caption tracks (built — dubbing pipeline + Assets Dub tab) | edge-TTS locale match |
 
 Existing agents gain: Producer (new engine lanes), QC (holds line while Compliance splits
 out), SEO (first-comment/pinned/title variants), Learning (retention curves).
@@ -149,3 +149,4 @@ frontend typecheck/build (per YMONEY_V2_ARCHITECTURE verification gates).
 - **16 GB+**: LTX B-roll speed, MuseTalk quality, Qwen3 multilingual.
 - Engines report `health()`/`version()`/`capabilities()`; UI shows per-engine readiness
   exactly like the video-engine page does now.
+

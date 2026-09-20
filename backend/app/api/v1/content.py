@@ -1120,6 +1120,77 @@ def template_detail(module: str, tid: str, ws: Workspace = Depends(require_works
     return {**resolved, "versions": versions_of(module, tid)}
 
 
+class DubBody(BaseModel):
+    source: str = Field(min_length=1, max_length=2000, description="https URL or local file path")
+    target_lang: str = Field(min_length=2, max_length=8, description="ISO-639-1 code: es, fr, de, hi, ...")
+    voice: str = Field(default="", max_length=120, description="explicit TTS voice or empty for auto-match")
+    bilingual: bool = True
+    portrait: bool = True
+    srt: str = Field(default="", max_length=60000, description="optional subtitle track (skips transcription)")
+
+
+@assets_router.get("/dub/status", summary="Dubbing pipeline availability")
+def dub_status(ws: Workspace = Depends(require_workspace_role("viewer"))):
+    from app.providers.dubbing import dub_status as _status
+
+    return _status()
+
+
+@assets_router.post("/dub", summary="Translate and re-voice a video into another language")
+def dub_video(body: DubBody, ws: Workspace = Depends(require_workspace_role("member"))):
+    """Synchronous dub: transcribe/parse → LLM translate → TTS → assemble.
+
+    Requires LLM key + target-language TTS voice + ffmpeg; otherwise fails
+    closed with remediation (400/503).
+    """
+    from pathlib import Path as _Path
+
+    from app.providers.clips import ClipError, get_repurposer
+    from app.providers.dubbing import (
+        DubError,
+        assemble_dubbed,
+        format_srt,
+        parse_srt,
+        pick_voice,
+        synthesize_segments,
+        to_bilingual,
+        translate_segments,
+    )
+    from app.providers.dubbing import SrtCue as _SrtCue
+    from app.services.storage import STORAGE_ROOT
+
+    lang = body.target_lang.lower().strip()
+    try:
+        rep = get_repurposer()
+        info = rep.acquire(body.source, ws.id)
+        if body.srt.strip():
+            cues = parse_srt(body.srt)
+        else:
+            segs = rep.transcribe_segments(info)
+            cues = [_SrtCue(index=i + 1, start=s.start, end=s.end, text=s.text)
+                    for i, s in enumerate(segs)]
+        if not cues:
+            raise DubError("no transcript available — install faster-whisper or supply an SRT track")
+        translated = translate_segments([c.text for c in cues], lang, ws.id)
+        voice = pick_voice(lang, body.voice)
+        work_dir = STORAGE_ROOT / "_clipwork" / ws.id / "dub"
+        dub_files = [(_Path(p) if p else _Path(""))
+                     for p in synthesize_segments(translated, voice, work_dir)]
+        bilingual = to_bilingual(cues, translated) if body.bilingual else None
+        srt_path = None
+        if bilingual:
+            srt_path = work_dir / "bilingual.srt"
+            srt_path.write_text(format_srt(bilingual), encoding="utf-8")
+        built = assemble_dubbed(info.local_path, cues, dub_files, ws.id, srt_path, body.portrait)
+    except ClipError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except DubError as exc:
+        detail = str(exc)
+        status = 503 if ("ffmpeg" in detail or "unavailable" in detail) else 400
+        raise HTTPException(status_code=status, detail=detail)
+    return {**built, "target_lang": lang, "voice": voice, "cues": len(cues)}
+
+
 @assets_router.post("/repurpose", summary="Cut a long-form source into vertical shorts")
 def repurpose_clips(
     body: ClipJobBody,

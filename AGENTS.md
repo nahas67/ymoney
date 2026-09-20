@@ -24,6 +24,16 @@ Users never operate agents manually; they observe and can disable/re-enable them
 | **Publisher Agent** | Publishes via provider layer to connected accounts; falls back to labeled mock publishing when `MOCK_PUBLISHING=true` or no account is connected. |
 | **Analytics Agent** | Collects metric snapshots for published posts; a single platform outage never breaks the cycle. |
 | **Learning Agent** | Extracts performance patterns vs channel median with confidence + sample size; updates existing patterns via exponential moving average. |
+| **Link Miner** | Mines ranked viral moments (score + hook + reason) from long-form URLs/files via transcript + scene + LLM/heuristic rank. |
+| **Repurpose Editor** | Assembles ranked moments into captioned vertical shorts (face-tracked reframe, caption presets). |
+| **Motion Designer** | Renders kinetic HyperFrames cards (hook/stat/CTA/lower-third); fails closed without CLI + Chrome. |
+| **Dubbing Localizer** | Translates + re-voices videos (SRT → TTS → time-fit → bilingual portrait assembly). |
+| **Voice Designer** | Casts/clones/directs narration voices, multi-voice dialogue assembly, emotion control. |
+| **Avatar Director** | Directs talking-head clips (photo + audio, or script voiced first) via server/SadTalker lanes. |
+| **B-roll Researcher** | Plans per-scene visuals and fetches stock / generates AI B-roll clips. |
+| **Compliance Officer** | Pre-publish gate: spec preflight, disclosure presence, reused-content risk → HUMAN_REVIEW. |
+| **Competitor Analyst** | Scans the channel watchlist; persists rival videos and raises trend-jack alerts. |
+| **Scheduler** | Auto-fills the calendar at best measured hours within daily caps; idempotent. |
 
 ## Orchestration
 

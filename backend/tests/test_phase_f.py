@@ -91,7 +91,7 @@ def test_sweep_dispatches_due_entry_with_content(db):
     db.commit()
     db.refresh(variant)
     video = Video(workspace_id=ws, variant_id=variant.id,
-                  file_path="data/videos/x.mp4", engine="mock", status="READY")
+                  file_path="mock:sched-test/final-1.mp4", engine="mock", status="READY")
     db.add(video)
     db.commit()
     db.refresh(video)
@@ -160,7 +160,7 @@ def test_sweep_releases_claim_when_queue_insert_fails(db, monkeypatch):
     db.add(variant)
     db.flush()
     video = Video(
-        workspace_id=ws, variant_id=variant.id, file_path="data/videos/x.mp4",
+        workspace_id=ws, variant_id=variant.id, file_path="mock:sched-test/final-1.mp4",
         engine="mock", status="READY",
     )
     db.add(video)
@@ -232,7 +232,7 @@ def test_transient_publisher_exception_stays_retryable(db):
     variant = VideoVariant(content_item_id=content.id, selected=True, script="s")
     db.add(variant)
     db.flush()
-    video = Video(workspace_id=ws, variant_id=variant.id, file_path="data/videos/x.mp4",
+    video = Video(workspace_id=ws, variant_id=variant.id, file_path="mock:sched-test/final-1.mp4",
                   engine="mock", status="READY")
     db.add(video)
     db.commit()

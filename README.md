@@ -40,7 +40,7 @@ Navigation (desktop-first, responsive, light/dark):
 | **Inbox** | Honest capability surface — lights up when read-API providers connect |
 | **Analytics** | Overview / platforms / content performance / cost efficiency |
 | **Intelligence** | Learned patterns, decision log, strategy recommendations |
-| **Agents** | 12-agent crew: stats, enable/disable, per-agent run logs |
+| **Agents** | 22-agent crew: stats, enable/disable, per-agent run logs |
 | **Campaigns / Brand / Assets / System Health / Settings** | Full management surfaces |
 
 Every autonomous decision is explainable in-product (WHY panels). Mock/simulation
@@ -119,7 +119,7 @@ velocity). Configure per-workspace via the trend-sources API (`q`, `language`,
 ### Live Monitor (real-time graphs + agent work graph)
 
 **Live Monitor** (`/live`) shows the system's pulse in real time — per-minute agent
-activity and error charts (last 60 min), plus the **agent work graph**: the 12-agent
+activity and error charts (last 60 min), plus the **agent work graph**: the 22-agent
 FIND→…→LEARN pipeline rendered as a live DAG where each node reflects its agent's
 actual state (busy / idle / error / disabled), run counts, failure rates and average
 duration, polled every 4 seconds with a freeze toggle.

@@ -24,7 +24,7 @@ export default function LiveMonitor() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Live Monitor" subtitle="Per-minute system pulse and the live 12-agent work graph."
+      <PageHeader title="Live Monitor" subtitle="Per-minute system pulse and the live 22-agent work graph."
         actions={<button className={`!text-xs ${frozen ? "btn-primary" : "btn-outline"}`} onClick={() => setFrozen(!frozen)}>{frozen ? "▶ Resume" : "⏸ Freeze"}</button>} />
       <div className="grid md:grid-cols-2 gap-4">
         <Card>

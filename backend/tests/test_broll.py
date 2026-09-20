@@ -168,7 +168,7 @@ def test_broll_skill_agent_registered():
     assert get_skill("broll_research").required_tools == ("fetch_broll",)
     assert "media:render" in get_tool("fetch_broll").permissions
     assert AGENTS["broll_researcher"].meta.title == "B-roll Researcher"
-    assert len(AGENTS) == 19
+    assert len(AGENTS) == 22
 
 
 def test_broll_api_status_and_validation(monkeypatch):

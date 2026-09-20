@@ -138,7 +138,7 @@ def live_metrics(ws: Workspace = Depends(require_workspace_role("viewer")), db=D
 
 @router.get("/agents/graph", summary="Agent pipeline as a live DAG with per-node stats")
 def agent_graph(ws: Workspace = Depends(require_workspace_role("viewer")), db=Depends(get_db)):
-    """Returns the 12-agent pipeline in execution order with live state.
+    """Returns the agent pipeline in execution order with live state.
 
     The frontend renders this as a horizontal DAG; each node shows live status
     (busy/idle/disabled/error), run counts, failure rate and average duration.

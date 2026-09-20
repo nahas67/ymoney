@@ -234,3 +234,17 @@ but nothing should write there; point writers at `backend/data/`).
 
 *This checkpoint is a living document — re-scan after each batch and move verified fixes
 from §2 into §1.*
+---
+
+## Checkpoint 2026-09-20 - all-in-one plan complete (E1-E7 + extras)
+
+Crew grew 12 -> 22 agents (link_miner, repurpose_editor, motion_designer,
+dubbing_localizer, voice_designer, avatar_director, broll_researcher,
+compliance, competitor_analyst, scheduler). New lanes, all probe-gated and
+fail-closed: link-to-shorts (viral rank, caption presets, face reframe),
+HyperFrames motion cards, dubbing pipeline, Chatterbox/Qwen3 voices,
+SadTalker/server avatars, stock+AI B-roll, template registry (12 built-ins +
+workspace overrides), cover compare, compliance gate + audit export,
+YT trending/channel sources, retention interactions + fatigue decay,
+calendar auto-fill, Redis dispatch, Postgres SKIP LOCKED, GPU lane,
+prod compose. Docs synced (AGENTS.md catalog, README, plan).

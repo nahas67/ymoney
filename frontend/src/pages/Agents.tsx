@@ -13,7 +13,7 @@ export default function Agents() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Agents" subtitle="The 12-agent crew: live status, per-agent config, run history with step traces, and the tool-call audit trail."
+      <PageHeader title="Agents" subtitle="The 22-agent crew: live status, per-agent config, run history with step traces, and the tool-call audit trail."
         actions={
           <div className="flex gap-1.5">
             <button className={`tab ${view === "fleet" ? "active" : ""}`} onClick={() => setView("fleet")}>Fleet</button>

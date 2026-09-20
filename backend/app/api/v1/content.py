@@ -1231,6 +1231,88 @@ def dub_video(body: DubBody, ws: Workspace = Depends(require_workspace_role("mem
     return {**built, "target_lang": lang, "voice": voice, "cues": len(cues)}
 
 
+class BrollSearchBody(BaseModel):
+    query: str = Field(min_length=1, max_length=120)
+    per_page: int = Field(default=6, ge=1, le=12)
+    orientation: str = Field(default="portrait")
+
+
+class BrollFetchBody(BaseModel):
+    video_id: str = Field(min_length=1, max_length=64)
+    aspect: str = Field(default="9:16")
+
+
+class BrollGenerateBody(BaseModel):
+    prompt: str = Field(min_length=1, max_length=500)
+    seconds: float = Field(default=4.0, ge=1, le=10)
+    aspect: str = Field(default="9:16")
+
+
+class BrollPlanBody(BaseModel):
+    topic: str = Field(min_length=1, max_length=300)
+    keywords: list[str] = Field(default_factory=list)
+    n_scenes: int = Field(default=4, ge=1, le=8)
+
+
+@assets_router.get("/broll/status", summary="B-roll lane availability")
+def broll_status(ws: Workspace = Depends(require_workspace_role("viewer"))):
+    from app.providers.broll import broll_status as _status
+
+    return _status()
+
+
+@assets_router.post("/broll/search", summary="Search stock video catalog")
+def broll_search(body: BrollSearchBody, ws: Workspace = Depends(require_workspace_role("member"))):
+    from app.providers.broll import BrollError, search_stock
+
+    try:
+        found = search_stock(body.query, body.per_page, body.orientation)
+    except BrollError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"items": [
+        {"video_id": c.video_id, "preview": c.preview, "duration": c.duration,
+         "author": c.author, "page_url": c.page_url}
+        for c in found
+    ]}
+
+
+@assets_router.post("/broll/fetch", summary="Download one stock clip by Pexels id")
+def broll_fetch(body: BrollFetchBody, ws: Workspace = Depends(require_workspace_role("member"))):
+    from app.providers.broll import BrollError, fetch_stock_clip
+
+    try:
+        path = fetch_stock_clip(body.video_id, ws.id, body.aspect)
+    except BrollError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"path": path, "source": "stock"}
+
+
+@assets_router.post("/broll/generate", summary="AI-generate one B-roll clip")
+def broll_generate(body: BrollGenerateBody, ws: Workspace = Depends(require_workspace_role("member"))):
+    from app.providers.broll import BrollError, generate_clip
+
+    try:
+        path = generate_clip(body.prompt, ws.id, body.seconds, body.aspect)
+    except BrollError as exc:
+        detail = str(exc)
+        status = 503 if ("unreachable" in detail or "not installed" in detail
+                          or "not configured" in detail) else 400
+        raise HTTPException(status_code=status, detail=detail)
+    return {"path": path, "source": "ai"}
+
+
+@assets_router.post("/broll/plan", summary="Per-scene visual plan for a topic")
+def broll_plan(body: BrollPlanBody, ws: Workspace = Depends(require_workspace_role("member"))):
+    from app.providers.broll import plan_scenes
+
+    plan = plan_scenes(body.topic, body.keywords, body.n_scenes, ws.id)
+    return {"scenes": [
+        {"index": s.index, "query": s.query, "prompt": s.prompt,
+         "source": s.source, "license": s.license}
+        for s in plan
+    ]}
+
+
 class AvatarBody(BaseModel):
     image: str = Field(min_length=1, max_length=2000, description="workspace asset path of the presenter photo")
     audio: str = Field(default="", max_length=2000, description="workspace asset path of driving audio (one of audio/text)")

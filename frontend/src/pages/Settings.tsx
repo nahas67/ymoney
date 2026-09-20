@@ -11,6 +11,7 @@ const CONN_GROUPS: { title: string; keys: string[] }[] = [
   { title: "Voices & images", keys: ["tts.provider", "tts.kokoro_base_url", "tts.kokoro_api_key", "tts.chatterbox_base_url", "tts.qwen_base_url", "tts.qwen_instruct", "tts.qwen_api_key", "image.openai_base_url", "image.openai_api_key", "image.openai_model"] },
   { title: "Telegram", keys: ["telegram.bot_token"] },
   { title: "Avatar", keys: ["avatar.backend", "avatar.base_url", "avatar.sadtalker_dir"] },
+  { title: "B-roll & AI video", keys: ["broll.ai_backend", "broll.ai_base_url"] },
 ];
 
 const SAFETY_FIELDS: { key: string; label: string; type: "num" | "bool"; hint?: string }[] = [

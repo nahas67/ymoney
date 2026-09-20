@@ -98,6 +98,10 @@ class Settings(BaseSettings):
     avatar_base_url: str = ""            # generic renderer: multipart image+audio → mp4
     sadtalker_dir: str = ""              # local OpenTalker/SadTalker checkout with checkpoints
 
+    # ---- B-roll (stock + AI scene clips) ----
+    broll_ai_backend: str = "server"     # server | wan | ltx | synth
+    broll_ai_base_url: str = ""          # generic renderer: {prompt,seconds,aspect} → mp4
+
     # ---- Analytics ----
     mock_analytics: bool = False
 

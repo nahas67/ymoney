@@ -5,7 +5,7 @@ import { Badge, Card, Modal, PageHeader, Section, Tabs, statusTone } from "../co
 import { fmtAgo } from "../lib/format";
 
 export default function Assets() {
-  const [tab, setTab] = useState<"library" | "images" | "repurpose" | "motion" | "templates" | "dub" | "avatar">("library");
+  const [tab, setTab] = useState<"library" | "images" | "repurpose" | "motion" | "templates" | "dub" | "avatar" | "broll">("library");
   const lib = useFetch(() => wsApi.get("/assets"), [tab]);
   const imgStatus = useFetch(() => wsApi.get("/assets/images/status"), [tab]);
   const clipStatus = useFetch(() => wsApi.get("/repurpose/status"), [tab]);
@@ -30,6 +30,12 @@ export default function Assets() {
   const [avText, setAvText] = useState("");
   const [avResult, setAvResult] = useState<any>(null);
   const avStat = useFetch(() => wsApi.get("/assets/avatar/status"), [tab]);
+  const [bQuery, setBQuery] = useState("");
+  const [bResults, setBResults] = useState<any[]>([]);
+  const [bPrompt, setBPrompt] = useState("");
+  const [bPath, setBPath] = useState("");
+  const [bPlan, setBPlan] = useState<any[]>([]);
+  const bStat = useFetch(() => wsApi.get("/assets/broll/status"), [tab]);
 
   const caps: any = (lib.data as any)?.capabilities;
 
@@ -116,11 +122,64 @@ export default function Assets() {
     }
   }
 
+  async function searchBroll() {
+    if (!bQuery.trim()) return;
+    setBusy("bsearch");
+    try {
+      const r = await wsApi.post("/assets/broll/search", { query: bQuery, per_page: 6 });
+      setBResults(r.items ?? []);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function fetchBroll(id: string) {
+    setBusy(`bfetch${id}`);
+    try {
+      const r = await wsApi.post("/assets/broll/fetch", { video_id: id });
+      setBPath(r.path ?? "");
+      lib.reload();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function generateBroll() {
+    if (!bPrompt.trim()) return;
+    setBusy("bgen");
+    try {
+      const r = await wsApi.post("/assets/broll/generate", { prompt: bPrompt, seconds: 4 });
+      setBPath(r.path ?? "");
+      lib.reload();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function planBroll() {
+    if (!bQuery.trim()) return;
+    setBusy("bplan");
+    try {
+      const r = await wsApi.post("/assets/broll/plan", { topic: bQuery, n_scenes: 4 });
+      setBPlan(r.scenes ?? []);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
   return (
     <div className="space-y-4">
       <PageHeader title="Assets" subtitle="System renders, operator uploads, AI scene images and long-form repurposing."
         actions={caps && <Badge tone={caps.upload ? "success" : "muted"}>{caps.upload ? "uploads on" : caps.note}</Badge>} />
-      <Tabs tabs={[{ key: "library", label: "Library" }, { key: "images", label: "Generate images" }, { key: "repurpose", label: "Repurpose" }, { key: "motion", label: "Motion cards" }, { key: "templates", label: "Templates" }, { key: "dub", label: "Dub" }, { key: "avatar", label: "Avatar" }]}
+      <Tabs tabs={[{ key: "library", label: "Library" }, { key: "images", label: "Generate images" }, { key: "repurpose", label: "Repurpose" }, { key: "motion", label: "Motion cards" }, { key: "templates", label: "Templates" }, { key: "dub", label: "Dub" }, { key: "avatar", label: "Avatar" }, { key: "broll", label: "B-roll" }]}
         active={tab} onChange={setTab} />
 
       {tab === "library" && (
@@ -280,6 +339,61 @@ export default function Assets() {
             </div>
           )}
         </Card>
+      )}
+
+      {tab === "broll" && (
+        <div className="space-y-4">
+          <Card>
+            <b className="text-[13.5px]">Stock search + scene plan</b>
+            <div className="text-[12.5px] mt-1" style={{ color: "var(--text-muted)" }}>
+              {(bStat.data as any)?.stock ? "Pexels stock ready" : "Pexels key missing — add it under Settings → Connections."}
+              {" · "}AI lane: {(bStat.data as any)?.ai_backend ?? "…"} ({(bStat.data as any)?.ai_ready ? "ready" : (bStat.data as any)?.ai_detail ?? "…"})
+            </div>
+            <div className="flex gap-2 mt-3 flex-wrap">
+              <input className="input flex-1 min-w-[180px]" placeholder="e.g. neon stock chart" value={bQuery} onChange={(e) => setBQuery(e.target.value)} />
+              <button className="btn-outline !text-xs" disabled={busy === "bsearch" || !bQuery.trim()} onClick={searchBroll}>
+                {busy === "bsearch" ? "…" : "Search stock"}
+              </button>
+              <button className="btn-outline !text-xs" disabled={busy === "bplan" || !bQuery.trim()} onClick={planBroll}>
+                {busy === "bplan" ? "…" : "Plan scenes"}
+              </button>
+            </div>
+            {bResults.length > 0 && (
+              <div className="grid sm:grid-cols-2 gap-2 mt-3">
+                {bResults.map((c: any) => (
+                  <div key={c.video_id} className="rounded-lg overflow-hidden" style={{ background: "var(--bg-inset)", border: "var(--seam)" }}>
+                    {c.preview && <img src={c.preview} alt="" className="w-full aspect-video object-cover" loading="lazy" />}
+                    <div className="flex items-center gap-2 px-2.5 py-2 text-[12px]">
+                      <span className="truncate" style={{ color: "var(--text-muted)" }}>{c.author || c.video_id} · {c.duration ? `${c.duration.toFixed(0)}s` : "?"}</span>
+                      <button className="btn-primary !text-[11px] !py-1 ml-auto" disabled={busy === `bfetch${c.video_id}`} onClick={() => fetchBroll(c.video_id)}>Fetch</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {bPlan.length > 0 && (
+              <div className="mt-3 space-y-1.5">
+                {bPlan.map((s: any) => (
+                  <div key={s.index} className="text-[12.5px] flex gap-2 flex-wrap">
+                    <Badge tone={s.source === "ai" ? "info" : "muted"}>{s.source}</Badge>
+                    <span className="font-mono" style={{ color: "var(--text-muted)" }}>{s.query}</span>
+                    <span>→ {s.prompt}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+          <Card>
+            <b className="text-[13.5px]">AI-generate a clip</b>
+            <div className="flex gap-2 mt-2 flex-wrap">
+              <input className="input flex-1 min-w-[180px]" placeholder="e.g. rising chart, golden hour, vertical" value={bPrompt} onChange={(e) => setBPrompt(e.target.value)} />
+              <button className="btn-primary !text-xs" disabled={busy === "bgen" || !bPrompt.trim()} onClick={generateBroll}>
+                {busy === "bgen" ? "Generating…" : "Generate"}
+              </button>
+            </div>
+            {bPath && <div className="text-[12.5px] mt-2 font-mono break-words" style={{ color: "var(--accent)" }}>Stored: {bPath}</div>}
+          </Card>
+        </div>
       )}
     </div>
   );

@@ -21,7 +21,7 @@ cover remake · word-timed captions · BGM bed · Safety Center · SSE activity 
 |---|---|---|---|---|
 | Stock/composite | **ffmpeg_avatar (own)** | own | CPU | default real render — keep |
 | Link-to-shorts | **OpenShorts-style pipeline** (own, MIT-inspired) | own | CPU | URL → viral clips (see §3) |
-| AI B-roll | **Wan 2.1 1.3B** (T2V) | Apache-2.0 | ~8 GB VRAM | custom scene clips |
+| AI B-roll | **Wan 2.1 1.3B** (T2V) | Apache-2.0 | ~8 GB VRAM | custom scene clips — lane built (server/wan/ltx/synth), agent #19 |
 | AI B-roll (fast) | **LTX-Video 0.9.5** | LTX license | ~16 GB | fastest image-to-video |
 | AI B-roll (quality) | **Wan 2.2 / HunyuanVideo** | Apache-2.0 / Tencent | 24 GB+ | quality tier (later) |
 | Avatar presenter | **SadTalker native + generic server lane** (built — `providers/avatar.py`, agent #18) | open | ~8 GB / CPU-server | talking-head default |

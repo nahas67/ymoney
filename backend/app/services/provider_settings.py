@@ -76,6 +76,8 @@ REGISTRY: dict[str, dict] = {
     "avatar.backend": {"label": "Avatar backend (server|sadtalker|mock)", "secret": False, "env": "avatar_backend"},
     "avatar.base_url": {"label": "Avatar renderer URL (multipart image+audio → mp4)", "secret": False, "env": "avatar_base_url"},
     "avatar.sadtalker_dir": {"label": "SadTalker checkout dir (with checkpoints)", "secret": False, "env": "sadtalker_dir"},
+    "broll.ai_backend": {"label": "AI B-roll backend (server|wan|ltx|synth)", "secret": False, "env": "broll_ai_backend"},
+    "broll.ai_base_url": {"label": "AI B-roll renderer URL ({prompt,seconds,aspect} → mp4)", "secret": False, "env": "broll_ai_base_url"},
     "image.openai_base_url": {"label": "OpenAI-compatible image API base URL", "secret": False, "env": None},
     "image.openai_api_key": {"label": "OpenAI-compatible image API key", "secret": True, "env": None},
     "image.openai_model": {"label": "Image model name (optional)", "secret": False, "env": None},

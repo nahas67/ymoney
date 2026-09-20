@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { wsApi, videoFileUrl, videoThumbUrl } from "../lib/api";
+import { wsApi, videoFileUrl, videoThumbUrl, coverFileUrl } from "../lib/api";
 import { useFetch } from "../hooks/hooks";
-import { Badge, Card, PageHeader, ScoreBar, Tabs, WhyPanel } from "../components/ui";
+import { Badge, Card, Modal, PageHeader, ScoreBar, Tabs, WhyPanel } from "../components/ui";
 import { fmtDate } from "../lib/format";
 
 export default function ContentDetail() {
@@ -13,6 +13,10 @@ export default function ContentDetail() {
   const [tab, setTab] = useState<"video" | "research" | "strategy" | "variants" | "timeline">("video");
   const [busy, setBusy] = useState("");
   const [thumbAt, setThumbAt] = useState("1.0");
+  const [coversOpen, setCoversOpen] = useState(false);
+  const [covers, setCovers] = useState<any[]>([]);
+  const [coversBusy, setCoversBusy] = useState(false);
+  const [pick, setPick] = useState<number | null>(null);
   const [sched, setSched] = useState<{ platform: string; runAt: string } | null>(null);
 
   const c: any = detail.data;
@@ -34,6 +38,37 @@ export default function ContentDetail() {
     setBusy("thumb");
     try {
       await wsApi.post(`/videos/${c.video.id}/thumbnail`, { at_seconds: parseFloat(thumbAt) || 1 });
+      detail.reload();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function openCovers() {
+    if (!c?.video?.id) return;
+    setCoversOpen(true);
+    setCovers([]);
+    setPick(null);
+    setCoversBusy(true);
+    try {
+      const r = await wsApi.post(`/videos/${c.video.id}/covers`, { count: 3 });
+      setCovers(r.covers ?? []);
+    } catch (e: any) {
+      alert(e.message);
+      setCoversOpen(false);
+    } finally {
+      setCoversBusy(false);
+    }
+  }
+
+  async function pickCover() {
+    if (!c?.video?.id || pick == null) return;
+    setBusy("pick");
+    try {
+      await wsApi.post(`/videos/${c.video.id}/thumbnail`, { cover_index: pick });
+      setCoversOpen(false);
       detail.reload();
     } catch (e: any) {
       alert(e.message);
@@ -95,6 +130,7 @@ export default function ContentDetail() {
                     <div className="flex gap-2 mt-3 items-center flex-wrap">
                       <input className="input !w-24" value={thumbAt} onChange={(e) => setThumbAt(e.target.value)} aria-label="Thumbnail timestamp" />
                       <button className="btn-outline !text-xs" disabled={busy === "thumb"} onClick={remakeThumb}>Remake cover @sec</button>
+                      <button className="btn-primary !text-xs" onClick={openCovers}>Compare covers</button>
                       <span className="text-[12px] font-mono" style={{ color: "var(--text-muted)" }}>{c.video.engine} · {c.video.aspect_ratio} · {c.video.status}</span>
                     </div>
                   </>
@@ -190,6 +226,34 @@ export default function ContentDetail() {
           )}
         </>
       )}
+
+      <Modal open={coversOpen} onClose={() => setCoversOpen(false)} title="Compare covers" wide>
+        {coversBusy && <div className="text-[13px]" style={{ color: "var(--text-muted)" }}>Extracting candidates…</div>}
+        {!coversBusy && covers.length > 0 && (
+          <>
+            <div className="grid grid-cols-3 gap-3">
+              {covers.map((cv: any) => (
+                <button key={cv.index} onClick={() => setPick(cv.index)}
+                  className="rounded-xl overflow-hidden text-left"
+                  style={{ border: pick === cv.index ? "2px solid var(--accent)" : "var(--seam)", padding: 0, background: "var(--bg-inset)" }}>
+                  <img src={coverFileUrl(c.video.id, cv.index)} alt={`cover @${cv.at_seconds}s`} className="w-full aspect-[9/16] object-cover" />
+                  <div className="px-2 py-1.5 font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>
+                    @{cv.at_seconds}s
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-end mt-3">
+              <button className="btn-primary !text-xs" disabled={pick == null || busy === "pick"} onClick={pickCover}>
+                {busy === "pick" ? "…" : "Set as cover"}
+              </button>
+            </div>
+          </>
+        )}
+        {!coversBusy && !covers.length && (
+          <div className="text-[13px]" style={{ color: "var(--text-muted)" }}>No candidates — ffmpeg may be unavailable.</div>
+        )}
+      </Modal>
     </div>
   );
 }

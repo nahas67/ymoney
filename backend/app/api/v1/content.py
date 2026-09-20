@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from datetime import datetime, timezone, UTC
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 
@@ -420,10 +420,13 @@ def get_video(video_id: str, ws: Workspace = Depends(require_workspace_role("vie
 
 
 @videos_router.get("/{video_id}/thumbnail", summary="Poster frame for this video")
-def video_thumbnail(video_id: str, ws: Workspace = Depends(require_workspace_role("viewer")), db=Depends(get_db)):
+def video_thumbnail(video_id: str, request: Request, workspace_id: str, token: str | None = None, db=Depends(get_db)):
 
     from fastapi.responses import FileResponse
 
+    from app.services.auth_service import resolve_workspace
+
+    ws = resolve_workspace(request, db, workspace_id, token)
     v = db.get(Video, video_id)
     if not v or v.workspace_id != ws.id:
         raise HTTPException(status_code=404, detail="video not found")
@@ -437,6 +440,8 @@ def video_thumbnail(video_id: str, ws: Workspace = Depends(require_workspace_rol
 
 class ThumbnailBody(BaseModel):
     at_seconds: float = Field(default=1.0, ge=0, le=600)
+    cover_index: int | None = Field(default=None, ge=0, le=20,
+                                    description="pick a generated cover candidate instead of a timestamp")
 
 
 @videos_router.post("/{video_id}/thumbnail", summary="Regenerate poster frame at a timestamp")
@@ -444,11 +449,19 @@ def remake_thumbnail(video_id: str, body: ThumbnailBody, ws: Workspace = Depends
     v = db.get(Video, video_id)
     if not v or v.workspace_id != ws.id:
         raise HTTPException(status_code=404, detail="video not found")
-    from app.services.storage import get_storage, managed_path
+    from app.services.storage import LocalStorage, get_storage, managed_path
 
     src = managed_path(ws.id, v.file_path)
     if not src or not src.exists():
         raise HTTPException(status_code=404, detail="video file not found on disk")
+    if body.cover_index is not None:
+        cand = LocalStorage.cover_path_for(str(src), body.cover_index)
+        path = managed_path(ws.id, str(cand))
+        if not path or not path.exists():
+            raise HTTPException(status_code=404, detail="cover candidate not found — generate covers first")
+        v.thumbnail_path = str(path)
+        db.commit()
+        return {"thumbnail_path": v.thumbnail_path}
     thumb = get_storage().extract_thumbnail(str(src), at_seconds=body.at_seconds)
     if not thumb:
         raise HTTPException(status_code=503, detail="ffmpeg unavailable for thumbnails")
@@ -457,10 +470,63 @@ def remake_thumbnail(video_id: str, body: ThumbnailBody, ws: Workspace = Depends
     return {"thumbnail_path": thumb}
 
 
+class CoversBody(BaseModel):
+    count: int = Field(default=3, ge=1, le=5)
+    timestamps: list[float] | None = Field(default=None, description="explicit seconds; else spread across duration")
+
+
+@videos_router.post("/{video_id}/covers", summary="Generate cover candidates for side-by-side compare")
+def make_covers(video_id: str, body: CoversBody, ws: Workspace = Depends(require_workspace_role("member")), db=Depends(get_db)):
+    v = db.get(Video, video_id)
+    if not v or v.workspace_id != ws.id:
+        raise HTTPException(status_code=404, detail="video not found")
+    from app.services.storage import get_storage, managed_path, probe_metadata
+
+    src = managed_path(ws.id, v.file_path)
+    if not src or not src.exists():
+        raise HTTPException(status_code=404, detail="video file not found on disk")
+    if body.timestamps:
+        stamps = [max(0.0, t) for t in body.timestamps[:5]]
+    else:
+        dur = (probe_metadata(src).get("duration_seconds") or 30.0)
+        stamps = [round(dur * f, 2) for f in (0.08, 0.35, 0.65, 0.85, 0.95)][: body.count]
+    covers = get_storage().extract_covers(str(src), stamps)
+    if not covers:
+        raise HTTPException(status_code=503, detail="ffmpeg unavailable for covers")
+    return {"covers": [
+        {**c, "url": f"/api/v1/workspaces/{ws.id}/videos/{video_id}/covers/{c['index']}/file"}
+        for c in covers
+    ]}
+
+
+@videos_router.get("/{video_id}/covers/{index}/file", summary="Serve one cover candidate")
+def cover_file(video_id: str, index: int, request: Request, workspace_id: str, token: str | None = None, db=Depends(get_db)):
+    from fastapi.responses import FileResponse
+
+    from app.services.auth_service import resolve_workspace
+
+    ws = resolve_workspace(request, db, workspace_id, token)
+    v = db.get(Video, video_id)
+    if not v or v.workspace_id != ws.id:
+        raise HTTPException(status_code=404, detail="video not found")
+    from app.services.storage import LocalStorage, managed_path
+
+    src = managed_path(ws.id, v.file_path)
+    if not src:
+        raise HTTPException(status_code=404, detail="video file not found on disk")
+    cand = managed_path(ws.id, str(LocalStorage.cover_path_for(str(src), index)))
+    if not cand or not cand.exists():
+        raise HTTPException(status_code=404, detail="cover candidate not found")
+    return FileResponse(cand, media_type="image/jpeg", filename=cand.name)
+
+
 @videos_router.get("/{video_id}/file", summary="Stream the rendered file (mock artifacts served as JSON)")
-def video_file(video_id: str, ws: Workspace = Depends(require_workspace_role("viewer")), db=Depends(get_db)):
+def video_file(video_id: str, request: Request, workspace_id: str, token: str | None = None, db=Depends(get_db)):
     from fastapi.responses import FileResponse, PlainTextResponse
 
+    from app.services.auth_service import resolve_workspace
+
+    ws = resolve_workspace(request, db, workspace_id, token)
     v = db.get(Video, video_id)
     if not v or v.workspace_id != ws.id:
         raise HTTPException(status_code=404, detail="video not found")

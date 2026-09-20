@@ -161,6 +161,37 @@ class LocalStorage:
             logger.warning(f"thumbnail extraction failed for {src.name}: {exc}")
             return None
 
+    def extract_covers(self, stored_path: str, timestamps: list[float]) -> list[dict]:
+        """Extract N candidate cover frames (side-by-side compare set).
+
+        Returns [{index, path, at_seconds}] for frames that rendered; missing
+        ffmpeg or unreadable sources yield [] — never an exception.
+        """
+        src = Path(stored_path)
+        if not src.exists() or not shutil.which("ffmpeg"):
+            return []
+        out: list[dict] = []
+        for i, at in enumerate(timestamps):
+            dest = src.parent / f"{src.stem}.cover-{i}.jpg"
+            try:
+                subprocess.run(
+                    ["ffmpeg", "-y", "-v", "quiet", "-ss", str(max(0.0, at)), "-i", str(src),
+                     "-frames:v", "1", "-q:v", "3", str(dest)],
+                    check=True,
+                    timeout=60,
+                )
+            except (subprocess.SubprocessError, OSError) as exc:
+                logger.warning(f"cover {i} extraction failed for {src.name}: {exc}")
+                continue
+            if dest.exists():
+                out.append({"index": i, "path": str(dest), "at_seconds": round(max(0.0, at), 2)})
+        return out
+
+    @staticmethod
+    def cover_path_for(stored_path: str, index: int) -> Path:
+        src = Path(stored_path)
+        return src.parent / f"{src.stem}.cover-{int(index)}.jpg"
+
 
 def get_storage() -> LocalStorage:
     """Storage factory. S3-compatible providers plug in here later."""
@@ -230,3 +261,6 @@ class S3Storage:
 
     def extract_thumbnail(self, stored_path: str, at_seconds: float = 1.0) -> str | None:
         return None
+
+    def extract_covers(self, stored_path: str, timestamps: list[float]) -> list[dict]:
+        return []

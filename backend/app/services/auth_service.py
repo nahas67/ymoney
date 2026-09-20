@@ -167,3 +167,39 @@ def require_workspace_role(minimum_role: str):
         return ws
 
     return dependency
+
+
+def resolve_workspace(request, db: Session, workspace_id: str,
+                      token: str | None = None, minimum_role: str = "viewer") -> Workspace:
+    """Workspace auth for browser-tag media (img/video cannot send headers).
+
+    Accepts the bearer token from the Authorization header OR ?token=.
+    Same membership/role rules as require_workspace_role.
+    """
+    from app.core.security import decode_access_token
+
+    order = {WorkspaceMember.ROLE_VIEWER: 0, WorkspaceMember.ROLE_MEMBER: 1, WorkspaceMember.ROLE_ADMIN: 2, WorkspaceMember.ROLE_OWNER: 3}
+    bearer_token: str | None = token
+    try:
+        auth_header = request.headers.get("authorization", "")
+    except Exception:
+        auth_header = ""
+    if auth_header.lower().startswith("bearer "):
+        bearer_token = auth_header.split(" ", 1)[1].strip() or bearer_token
+    payload = decode_access_token(bearer_token) if bearer_token else None
+    user = db.get(User, payload.get("sub", "")) if payload else None
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="not authenticated")
+    ws = db.get(Workspace, workspace_id)
+    if not ws:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="workspace not found")
+    member = db.scalar(
+        select(WorkspaceMember).where(
+            WorkspaceMember.workspace_id == workspace_id, WorkspaceMember.user_id == user.id
+        )
+    )
+    if member is None and not user.is_superuser:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="not a workspace member")
+    if member is not None and minimum_role and order[member.role] < order[minimum_role]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="insufficient role")
+    return ws

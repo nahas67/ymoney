@@ -126,8 +126,14 @@ export function activityStreamUrl(): string {
 }
 
 export function videoFileUrl(videoId: string): string {
-  return `${BASE}/workspaces/${workspaceId}/videos/${videoId}/file`;
+  const t = accessToken ? `?token=${encodeURIComponent(accessToken)}` : "";
+  return `${BASE}/workspaces/${workspaceId}/videos/${videoId}/file${t}`;
 }
 export function videoThumbUrl(videoId: string): string {
-  return `${BASE}/workspaces/${workspaceId}/videos/${videoId}/thumbnail`;
+  const t = accessToken ? `?token=${encodeURIComponent(accessToken)}` : "";
+  return `${BASE}/workspaces/${workspaceId}/videos/${videoId}/thumbnail${t}`;
+}
+export function coverFileUrl(videoId: string, index: number): string {
+  const t = accessToken ? `?token=${encodeURIComponent(accessToken)}` : "";
+  return `${BASE}/workspaces/${workspaceId}/videos/${videoId}/covers/${index}/file${t}`;
 }

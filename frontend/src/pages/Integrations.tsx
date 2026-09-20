@@ -57,7 +57,7 @@ export default function Integrations() {
   return (
     <div className="space-y-4 max-w-[680px]">
       <PageHeader title="Telegram remote" subtitle="Run the studio from your phone: /status /run /stop /pause /cycle /cost, plus push alerts."
-        actions={<Badge tone={data?.configured ? "success" : "warning"}>{data?.configured ? "bot configured" : "needs bot token"}</Badge>} />
+        actions={<Badge tone={data?.bot_configured ? "success" : "warning"}>{data?.bot_configured ? `bot configured (${data?.token_source ?? "?"})` : "needs bot token"}</Badge>} />
       <Card>
         <b className="text-[14px]">1 · Pair a chat</b>
         <p className="text-[13px] mt-1" style={{ color: "var(--text-muted)" }}>
@@ -77,7 +77,7 @@ export default function Integrations() {
           <div key={l.id} className="flex items-center gap-2 py-2 text-[13px]" style={{ borderBottom: "var(--seam)" }}>
             <span className="font-medium">{l.chat_title || l.chat_id}</span>
             <Badge tone={statusTone(l.active ? "connected" : "paused")}>{l.active ? "active" : "paused"}</Badge>
-            <span className="font-mono text-[11.5px]" style={{ color: "var(--text-faint)" }}>seen {fmtAgo(l.last_seen_at)}</span>
+            <span className="font-mono text-[11.5px]" style={{ color: "var(--text-faint)" }}>linked {fmtAgo(l.linked_at)}</span>
             <span className="ml-auto flex gap-1.5">
               <button className="btn-ghost !text-[11px] !py-0.5" onClick={() => toggle(l.id)}>{l.active ? "Pause" : "Enable"}</button>
               <button className="btn-ghost !text-[11px] !py-0.5" onClick={() => unlink(l.id)}>Unlink</button>

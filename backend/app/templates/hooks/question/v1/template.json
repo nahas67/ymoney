@@ -1,0 +1,14 @@
+{
+  "module": "hooks",
+  "id": "question",
+  "version": "v1",
+  "title": "Question hook",
+  "description": "Curiosity question naming the topic payoff.",
+  "inputs": [
+    {"key": "topic", "label": "Topic", "type": "text", "default": ""}
+  ],
+  "payload": {
+    "template": "What if {topic} could change how you handle money — starting today?"
+  },
+  "attribution": "YMONEY built-in"
+}

@@ -1,0 +1,19 @@
+{
+  "module": "motion",
+  "id": "stat",
+  "version": "v1",
+  "title": "Stat hit card",
+  "description": "Giant number + label for data punches.",
+  "inputs": [
+    {"key": "title", "label": "Number", "type": "text", "default": ""},
+    {"key": "subtitle", "label": "Label", "type": "text", "default": ""},
+    {"key": "accent", "label": "Accent color", "type": "color", "default": "#22c55e"},
+    {"key": "duration", "label": "Seconds", "type": "number", "default": 3.0}
+  ],
+  "payload": {
+    "kind": "stat",
+    "accent": "#22c55e",
+    "duration": 3.0
+  },
+  "attribution": "YMONEY built-in"
+}

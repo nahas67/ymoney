@@ -1,0 +1,14 @@
+{
+  "module": "hooks",
+  "id": "bold_claim",
+  "version": "v1",
+  "title": "Bold claim hook",
+  "description": "Contrarian claim that reframes the topic.",
+  "inputs": [
+    {"key": "topic", "label": "Topic", "type": "text", "default": ""}
+  ],
+  "payload": {
+    "template": "Nobody talks about this side of {topic}."
+  },
+  "attribution": "YMONEY built-in"
+}

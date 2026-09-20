@@ -27,7 +27,20 @@ from app.services.storage import STORAGE_ROOT
 
 WORK_DIR = Path("data/motion")
 
-CARD_KINDS = ("hook", "stat", "cta", "lower")
+_DEFAULT_KINDS = ("hook", "stat", "cta", "lower")
+
+
+def _registry_kinds() -> tuple[str, ...]:
+    try:
+        from app.services.templates import list_templates
+
+        ids = tuple(t["id"] for t in list_templates("motion"))
+        return ids or _DEFAULT_KINDS
+    except Exception:
+        return _DEFAULT_KINDS
+
+
+CARD_KINDS = _registry_kinds()
 
 
 class MotionError(Exception):
@@ -94,6 +107,11 @@ def ffmpeg_present() -> bool:
     return bool(shutil.which("ffmpeg"))
 
 
+def _canonical_kinds() -> list[str]:
+    ids = set(_registry_kinds())
+    return [k for k in ("hook", "stat", "cta", "lower") if k in ids] + sorted(ids - {"hook", "stat", "cta", "lower"})
+
+
 def motion_status() -> dict:
     cli = hyperframes_available()
     return {
@@ -102,7 +120,7 @@ def motion_status() -> dict:
         "browser": browser_healthy() if cli else False,
         "ffmpeg": ffmpeg_present(),
         "ready": bool(cli and ffmpeg_present() and browser_healthy()) if cli else False,
-        "kinds": list(CARD_KINDS),
+        "kinds": _canonical_kinds(),
     }
 
 
@@ -178,7 +196,22 @@ p.sub{{position:absolute;top:1080px;width:1080px;text-align:center;color:#d4d4d8
 def render_card(kind: str, title: str, workspace_id: str, subtitle: str = "",
                 accent: str = "#22c55e", duration: float = 3.0,
                 filename: str | None = None) -> MotionCard:
-    """Lint-gate then render a motion card to the workspace storage boundary."""
+    """Lint-gate then render a motion card to the workspace storage boundary.
+
+    Stock defaults defer to the workspace's motion template override, so brand
+    kits work without code changes: pass explicit values to bypass it.
+    """
+    try:
+        from app.services.templates import resolve_template
+
+        tpl = (resolve_template("motion", (kind or "hook").lower(),
+                                workspace_id or None).get("payload") or {})
+        if accent == "#22c55e" and tpl.get("accent"):
+            accent = str(tpl["accent"])
+        if duration == 3.0 and tpl.get("duration"):
+            duration = float(tpl["duration"])
+    except (KeyError, TypeError, ValueError):
+        pass
     probe = motion_status()
     if not probe["cli"]:
         raise MotionError("hyperframes CLI not installed (npm i -g hyperframes or npx)")

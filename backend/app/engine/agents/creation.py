@@ -163,13 +163,29 @@ class StrategistAgent(BaseAgent):
         )
 
 
-HOOK_TEMPLATES = {
-    "question": 'What if {topic} could change how you handle money — starting today?',
-    "bold_claim": 'Nobody talks about this side of {topic}.',
-    "story": 'Three months ago I knew nothing about {topic}. Then this happened.',
-    "statistic": '{topic} just changed everything — here are the numbers.',
-    "curiosity_gap": 'The truth about {topic} that nobody explains properly.',
-}
+def _registry_hooks() -> dict[str, str]:
+    try:
+        from app.services.templates import list_templates
+
+        out = {}
+        for t in list_templates("hooks"):
+            tpl = (t.get("payload") or {}).get("template")
+            if tpl:
+                out[t["id"]] = tpl
+        if out:
+            return out
+    except Exception:
+        pass
+    return {
+        "question": 'What if {topic} could change how you handle money — starting today?',
+        "bold_claim": 'Nobody talks about this side of {topic}.',
+        "story": 'Three months ago I knew nothing about {topic}. Then this happened.',
+        "statistic": '{topic} just changed everything — here are the numbers.',
+        "curiosity_gap": 'The truth about {topic} that nobody explains properly.',
+    }
+
+
+HOOK_TEMPLATES = _registry_hooks()
 
 
 class ScriptWriterAgent(BaseAgent):

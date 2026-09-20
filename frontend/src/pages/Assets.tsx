@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { wsApi } from "../lib/api";
 import { useFetch } from "../hooks/hooks";
-import { Badge, Card, PageHeader, Section, Tabs, statusTone } from "../components/ui";
+import { Badge, Card, Modal, PageHeader, Section, Tabs, statusTone } from "../components/ui";
 import { fmtAgo } from "../lib/format";
 
 export default function Assets() {
-  const [tab, setTab] = useState<"library" | "images" | "repurpose" | "motion">("library");
+  const [tab, setTab] = useState<"library" | "images" | "repurpose" | "motion" | "templates">("library");
   const lib = useFetch(() => wsApi.get("/assets"), [tab]);
   const imgStatus = useFetch(() => wsApi.get("/assets/images/status"), [tab]);
   const clipStatus = useFetch(() => wsApi.get("/repurpose/status"), [tab]);
@@ -84,7 +84,7 @@ export default function Assets() {
     <div className="space-y-4">
       <PageHeader title="Assets" subtitle="System renders, operator uploads, AI scene images and long-form repurposing."
         actions={caps && <Badge tone={caps.upload ? "success" : "muted"}>{caps.upload ? "uploads on" : caps.note}</Badge>} />
-      <Tabs tabs={[{ key: "library", label: "Library" }, { key: "images", label: "Generate images" }, { key: "repurpose", label: "Repurpose" }, { key: "motion", label: "Motion cards" }]}
+      <Tabs tabs={[{ key: "library", label: "Library" }, { key: "images", label: "Generate images" }, { key: "repurpose", label: "Repurpose" }, { key: "motion", label: "Motion cards" }, { key: "templates", label: "Templates" }]}
         active={tab} onChange={setTab} />
 
       {tab === "library" && (
@@ -195,6 +195,92 @@ export default function Assets() {
           {mPath && <div className="text-[12.5px] mt-2 font-mono break-words" style={{ color: "var(--accent)" }}>Rendered: {mPath}</div>}
         </Card>
       )}
+
+      {tab === "templates" && <TemplatesTab />}
+    </div>
+  );
+}
+
+function TemplatesTab() {
+  const [module, setModule] = useState("");
+  const list = useFetch(() => wsApi.get(`/assets/templates${module ? `?module=${module}` : ""}`), [module]);
+  const [open, setOpen] = useState<any>(null);
+  const [overrideJson, setOverrideJson] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function inspect(t: any) {
+    const d = await wsApi.get(`/assets/templates/${t.module}/${t.id}`);
+    setOpen(d);
+    const s = await wsApi.get("/settings");
+    const cur = (s.settings?.templates ?? {})[`${t.module}/${t.id}`] ?? {};
+    setOverrideJson(JSON.stringify(cur, null, 2));
+  }
+
+  async function saveOverride() {
+    if (!open) return;
+    setSaving(true);
+    try {
+      const patch = overrideJson.trim() ? JSON.parse(overrideJson) : {};
+      const s = await wsApi.get("/settings");
+      const templates = { ...(s.settings?.templates ?? {}) };
+      if (!Object.keys(patch).length) delete templates[`${open.module}/${open.id}`];
+      else templates[`${open.module}/${open.id}`] = patch;
+      await wsApi.put("/settings", { settings: { templates } });
+      setOpen({ ...open, overridden: !!Object.keys(patch).length });
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-1.5 flex-wrap">
+        {[["", "all"], ["captions", "captions"], ["hooks", "hooks"], ["motion", "motion"]].map(([k, label]) => (
+          <button key={k} className={`tab ${module === k ? "active" : ""}`} onClick={() => setModule(k)}>{label}</button>
+        ))}
+      </div>
+      <Section data={(list.data as any)?.items} loading={list.loading} error={list.error} onRetry={list.reload}
+        empty="No templates" emptyHint="Built-ins ship with the backend; workspaces override them without touching files.">
+        {(rows) => (
+          <div className="grid md:grid-cols-2 gap-3">
+            {rows.map((t: any) => (
+              <Card key={`${t.module}/${t.id}`} style={{ padding: 14 }}>
+                <div className="flex gap-2 items-center flex-wrap">
+                  <Badge tone="muted">{t.module}</Badge>
+                  <b className="text-[13.5px]">{t.title}</b>
+                  <span className="font-mono text-[11px]" style={{ color: "var(--text-faint)" }}>{t.id} · {t.version}</span>
+                  {t.overridden && <Badge tone="info">overridden</Badge>}
+                  <button className="btn-ghost !text-[11px] !py-0.5 ml-auto" onClick={() => inspect(t)}>Inspect / override</button>
+                </div>
+                <div className="text-[12.5px] mt-1" style={{ color: "var(--text-muted)" }}>{t.description}</div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </Section>
+      <Modal open={!!open} onClose={() => setOpen(null)} title={open ? `${open.module}/${open.id}` : ""} wide>
+        {open && (
+          <div className="space-y-3">
+            <div className="text-[12.5px]" style={{ color: "var(--text-muted)" }}>
+              Versions: {(open.versions ?? []).join(", ")} · {open.attribution ?? ""}
+            </div>
+            <div>
+              <div className="panel-label mb-1">Resolved payload</div>
+              <pre className="text-[12px] font-mono whitespace-pre-wrap p-3 rounded-lg max-h-[220px] overflow-y-auto" style={{ background: "var(--bg-inset)", border: "var(--seam)" }}>
+                {JSON.stringify(open.payload, null, 2)}
+              </pre>
+            </div>
+            <div>
+              <div className="panel-label mb-1">Workspace override (JSON patch — empty clears)</div>
+              <textarea className="textarea font-mono !text-xs" rows={6} value={overrideJson} onChange={(e) => setOverrideJson(e.target.value)}
+                placeholder='{"payload": {"accent": "#f59e0b"}}' />
+            </div>
+            <button className="btn-primary !text-xs" disabled={saving} onClick={saveOverride}>Save override</button>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

@@ -59,7 +59,7 @@ def face_track_available() -> bool:
 # Caption presets (SRT + ASS force_style for the ffmpeg subtitles filter)
 # ---------------------------------------------------------------------------
 
-CAPTION_PRESETS: dict[str, str] = {
+_FALLBACK_PRESETS: dict[str, str] = {
     "minimal": (
         "FontName=Arial,FontSize=14,PrimaryColour=&H00FFFFFF,"
         "OutlineColour=&H80000000,BorderStyle=1,Outline=1,Shadow=0,"
@@ -78,8 +78,39 @@ CAPTION_PRESETS: dict[str, str] = {
 }
 
 
+def _registry_presets() -> dict[str, str]:
+    try:
+        from app.services.templates import list_templates
+
+        out = {}
+        for t in list_templates("captions"):
+            style = (t.get("payload") or {}).get("ass_style")
+            if style:
+                out[t["id"]] = style
+        return out or dict(_FALLBACK_PRESETS)
+    except Exception:
+        return dict(_FALLBACK_PRESETS)
+
+
+CAPTION_PRESETS: dict[str, str] = _registry_presets()
+
+
 def caption_style(preset: str) -> str:
     return CAPTION_PRESETS.get((preset or "").lower(), CAPTION_PRESETS["minimal"])
+
+
+def _preset_style(preset: str, workspace_id: str = "") -> str:
+    """Workspace-aware preset: override in settings wins, else built-in."""
+    try:
+        from app.services.templates import resolve_template
+
+        style = (resolve_template("captions", (preset or "minimal").lower(),
+                                  workspace_id or None).get("payload") or {}).get("ass_style")
+        if style:
+            return style
+    except Exception:
+        pass
+    return caption_style(preset)
 
 
 @dataclass
@@ -392,7 +423,7 @@ class ClipRepurposer:
             segments = self._even_segments(duration, clip_seconds, max_clips)
 
         centers = self.face_track_centers(source, segments) if face_track else {}
-        style = caption_style(caption_preset)
+        style = _preset_style(caption_preset, workspace_id)
         out_dir = STORAGE_ROOT / workspace_id
         out_dir.mkdir(parents=True, exist_ok=True)
         results: list[ClipResult] = []

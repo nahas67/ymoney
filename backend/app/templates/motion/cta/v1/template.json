@@ -1,0 +1,19 @@
+{
+  "module": "motion",
+  "id": "cta",
+  "version": "v1",
+  "title": "CTA end card",
+  "description": "Follow call-to-action closer.",
+  "inputs": [
+    {"key": "title", "label": "Title", "type": "text", "default": "Follow for more"},
+    {"key": "subtitle", "label": "Button text", "type": "text", "default": "▶ Follow"},
+    {"key": "accent", "label": "Accent color", "type": "color", "default": "#22c55e"},
+    {"key": "duration", "label": "Seconds", "type": "number", "default": 3.0}
+  ],
+  "payload": {
+    "kind": "cta",
+    "accent": "#22c55e",
+    "duration": 3.0
+  },
+  "attribution": "YMONEY built-in"
+}

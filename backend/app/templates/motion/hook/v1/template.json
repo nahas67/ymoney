@@ -1,0 +1,19 @@
+{
+  "module": "motion",
+  "id": "hook",
+  "version": "v1",
+  "title": "Hook title card",
+  "description": "Kinetic full-screen title for video openings.",
+  "inputs": [
+    {"key": "title", "label": "Title", "type": "text", "default": ""},
+    {"key": "subtitle", "label": "Subtitle", "type": "text", "default": ""},
+    {"key": "accent", "label": "Accent color", "type": "color", "default": "#22c55e"},
+    {"key": "duration", "label": "Seconds", "type": "number", "default": 3.0}
+  ],
+  "payload": {
+    "kind": "hook",
+    "accent": "#22c55e",
+    "duration": 3.0
+  },
+  "attribution": "YMONEY built-in"
+}

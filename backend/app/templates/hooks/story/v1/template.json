@@ -1,0 +1,14 @@
+{
+  "module": "hooks",
+  "id": "story",
+  "version": "v1",
+  "title": "Story hook",
+  "description": "Personal zero-to-result story opening.",
+  "inputs": [
+    {"key": "topic", "label": "Topic", "type": "text", "default": ""}
+  ],
+  "payload": {
+    "template": "Three months ago I knew nothing about {topic}. Then this happened."
+  },
+  "attribution": "YMONEY built-in"
+}

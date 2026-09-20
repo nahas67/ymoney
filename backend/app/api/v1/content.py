@@ -1022,6 +1022,38 @@ def render_motion_card(
     return {"path": card.path, "kind": card.kind, "duration": card.duration}
 
 
+@assets_router.get("/templates", summary="List creation templates (versioned registry)")
+def list_templates(ws: Workspace = Depends(require_workspace_role("viewer")),
+                   module: str = ""):
+    """Built-in caption/hook/motion templates, latest version each.
+
+    Workspaces override any template via PUT /workspaces/{id}/settings with
+    {"settings": {"templates": {"<module>/<id>": {payload patch, ...}}}} —
+    overrides merge over the built-in and are flagged "overridden".
+    """
+    from app.services.templates import list_templates as _list
+    from app.services.templates import workspace_overrides
+
+    overrides = workspace_overrides(ws.id)
+    items = []
+    for t in _list(module):
+        key = f"{t['module']}/{t['id']}"
+        items.append({**t, "overridden": key in overrides})
+    return {"items": items}
+
+
+@assets_router.get("/templates/{module}/{tid}", summary="Template detail (resolved)")
+def template_detail(module: str, tid: str, ws: Workspace = Depends(require_workspace_role("viewer")),
+                    version: str = ""):
+    from app.services.templates import resolve_template, versions_of
+
+    try:
+        resolved = resolve_template(module, tid, ws.id, version)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {**resolved, "versions": versions_of(module, tid)}
+
+
 @assets_router.post("/repurpose", summary="Cut a long-form source into vertical shorts")
 def repurpose_clips(
     body: ClipJobBody,

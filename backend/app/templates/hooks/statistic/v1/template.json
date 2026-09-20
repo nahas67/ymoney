@@ -1,0 +1,14 @@
+{
+  "module": "hooks",
+  "id": "statistic",
+  "version": "v1",
+  "title": "Statistic hook",
+  "description": "Numbers-first authority opening.",
+  "inputs": [
+    {"key": "topic", "label": "Topic", "type": "text", "default": ""}
+  ],
+  "payload": {
+    "template": "{topic} just changed everything — here are the numbers."
+  },
+  "attribution": "YMONEY built-in"
+}

@@ -1,0 +1,14 @@
+{
+  "module": "hooks",
+  "id": "curiosity_gap",
+  "version": "v1",
+  "title": "Curiosity gap hook",
+  "description": "Hidden-truth framing that demands the payoff.",
+  "inputs": [
+    {"key": "topic", "label": "Topic", "type": "text", "default": ""}
+  ],
+  "payload": {
+    "template": "The truth about {topic} that nobody explains properly."
+  },
+  "attribution": "YMONEY built-in"
+}

@@ -155,6 +155,10 @@ export default function ContentDetail() {
                   </div>
                 ) : <div className="text-[13px] mt-2" style={{ color: "var(--text-muted)" }}>Not QC'd yet.</div>}
                 <div className="mt-4 pt-3" style={{ borderTop: "var(--seam)" }}>
+                  <b className="text-[13px]">Publishing metadata</b>
+                  <MetaPack variants={c.variants ?? []} />
+                </div>
+                <div className="mt-4 pt-3" style={{ borderTop: "var(--seam)" }}>
                   <b className="text-[13px]">Schedule this video</b>
                   <div className="flex gap-2 mt-2 flex-wrap">
                     <select className="select !w-36" value={sched?.platform ?? "youtube"} onChange={(e) => setSched({ platform: e.target.value, runAt: sched?.runAt ?? "" })}>
@@ -251,6 +255,68 @@ export default function ContentDetail() {
 
 function estSeconds(script: string): number {
   return Math.max(5, Math.round((script || "").split(/\s+/).filter(Boolean).length / 2.6));
+}
+
+function MetaPack({ variants }: { variants: any[] }) {
+  const sel = variants.find((v) => v.selected) ?? variants[0];
+  const meta = sel?.metadata ?? {};
+  const plats = Object.keys(meta);
+  const [plat, setPlat] = useState("");
+  const [copied, setCopied] = useState("");
+  const active = plat || (plats[0] ?? "");
+  const m = meta[active] ?? {};
+
+  if (!sel) return <div className="text-[12.5px]" style={{ color: "var(--text-faint)" }}>No metadata yet — generated at publish time.</div>;
+  if (!plats.length) return <div className="text-[12.5px]" style={{ color: "var(--text-faint)" }}>No metadata yet — generated at publish time.</div>;
+
+  async function copy(key: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(key);
+      setTimeout(() => setCopied(""), 1500);
+    } catch {
+      alert("Copy failed — select the text manually.");
+    }
+  }
+
+  const copyBtn = (key: string, text: string) => (
+    <button className="btn-ghost !text-[11px] !py-0.5 ml-auto" onClick={() => copy(key, text)}>
+      {copied === key ? "Copied ✓" : "Copy"}
+    </button>
+  );
+
+  return (
+    <div className="mt-2">
+      <div className="flex gap-1.5 flex-wrap mb-2">
+        {plats.map((p) => (
+          <button key={p} className={`tab ${active === p ? "active" : ""}`} onClick={() => setPlat(p)}>{p}</button>
+        ))}
+      </div>
+      <div className="text-[13px] font-medium">{m.title}</div>
+      {(m.title_variants ?? []).length > 0 && (
+        <div className="text-[12px] mt-1" style={{ color: "var(--text-muted)" }}>
+          A/B: {(m.title_variants ?? []).join("  ·  ")}
+        </div>
+      )}
+      {[
+        ["First comment (post manually, then pin the CTA)", m.first_comment, "first"],
+        ["Pinned comment CTA", m.pinned_comment, "pinned"],
+      ].map(([label, text, key]: any) => (
+        text ? (
+          <div key={key} className="mt-2 rounded-lg p-2.5" style={{ background: "var(--bg-inset)", border: "var(--seam)" }}>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[11.5px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>{label}</span>
+              {copyBtn(key, text)}
+            </div>
+            <div className="text-[12.5px] whitespace-pre-wrap">{text}</div>
+          </div>
+        ) : null
+      ))}
+      <div className="text-[11.5px] mt-1.5" style={{ color: "var(--text-faint)" }}>
+        Auto-posting comments isn't available on current platform scopes — post from the phone app after publishing.
+      </div>
+    </div>
+  );
 }
 
 function VariantsCompare({ variants, contentId, onChange }: { variants: any[]; contentId: string; onChange: () => void }) {

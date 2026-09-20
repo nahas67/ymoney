@@ -35,6 +35,22 @@ def test_default_metadata_has_variants():
         assert out[p]["title_variants"]
         assert all(v != out[p]["title"] for v in out[p]["title_variants"])
         assert all(len(v) <= 150 for v in out[p]["title_variants"])
+        assert out[p]["first_comment"]
+        assert out[p]["pinned_comment"]
+
+
+def test_clean_platform_meta_comment_packs():
+    from app.engine.agents.distribution import clean_platform_meta
+
+    meta = {"title": "t", "first_comment": "  #a #b  ", "pinned_comment": "x" * 900,
+            "description": "d"}
+    out = clean_platform_meta("instagram", meta, "t", "s")
+    assert out is not None
+    assert out["first_comment"] == "#a #b"
+    assert len(out["pinned_comment"]) == 500
+    out2 = clean_platform_meta("youtube", {"title": "t"}, "t", "s")
+    assert out2 is not None
+    assert out2["first_comment"] == "" and out2["pinned_comment"] == ""
 
 
 def _mk_content(db, ws_id, status="SCRIPT_READY", n_variants=2):

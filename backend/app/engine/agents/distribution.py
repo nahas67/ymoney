@@ -48,6 +48,8 @@ def clean_platform_meta(p: str, meta: dict, topic: str, script: str) -> dict | N
         "title": title,
         "title_variants": variants,
         "description": description[:2000],
+        "first_comment": str(meta.get("first_comment", ""))[:1000].strip(),
+        "pinned_comment": str(meta.get("pinned_comment", ""))[:500].strip(),
         "hashtags": [h if h.startswith("#") else f"#{h}" for h in (meta.get("hashtags") or [])][:8],
         "keywords": [str(k) for k in (meta.get("keywords") or [])][:10],
         "category_id": str(meta.get("category_id") or meta.get("categoryId") or "27"),
@@ -71,9 +73,12 @@ def _default_metadata(topic: str, script: str, platforms: list[str]) -> dict:
             t = v[:tmax].strip()
             if t and t != title and t not in alts:
                 alts.append(t)
+        tags = tpl["hashtags"]
         out[p] = {
             "title": title,
             "title_variants": alts[:2],
+            "first_comment": " ".join(tags),
+            "pinned_comment": "Which tip will you try first? Comment below.",
             "description": f"{topic} explained in seconds. {script[:80]}..." + (
                 " Not financial advice. For education only." if finance else ""
             ),
@@ -108,13 +113,15 @@ class SEOAgent(BaseAgent):
                 "You generate platform-optimized short-form video metadata. For EACH platform in the "
                 "list return: title (punchy, within platform limits), title_variants (2 alternate "
                 "titles, same limits, different angles for A/B testing), description (1-2 sentences), "
+                "first_comment (hashtag/discovery block to post as the first comment), "
+                "pinned_comment (short engaging question CTA to pin for replies), "
                 "hashtags (4-8, platform conventions), keywords. JSON keyed by platform."
             ),
             user=json.dumps({"topic": topic, "platforms": platforms, "script_excerpt": script[:600]}),
             workspace_id=ctx.workspace_id or "",
             tier="cheap",
             temperature=0.7,
-            max_tokens=1000,
+            max_tokens=1100,
         )
         clean = {}
         for p, meta in (res.items() if isinstance(res, dict) else []):

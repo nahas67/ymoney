@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { api, getWorkspace, setAuth, setWorkspace, activityStreamUrl } from "../lib/api";
 import { useTheme } from "../hooks/hooks";
 import { Badge } from "./ui";
+import { brandLogoSrc } from "../pages/Brand";
 
 const NAV: { group: string; items: { to: string; label: string; icon: string; keys?: string }[] }[] = [
   { group: "Operate", items: [
@@ -52,7 +53,31 @@ export default function Layout() {
   const [mode, setMode] = useState<any>(null);
   const [wsName, setWsName] = useState("…");
   const [workspaces, setWorkspaces] = useState<any[]>([]);
+  const [brand, setBrand] = useState<any>(null);
   const lastKey = useRef<{ key: string; at: number } | null>(null);
+
+  function applyBrand(b: any) {
+    setBrand(b);
+    const root = document.documentElement;
+    const accent = b?.accent;
+    if (accent && /^#[0-9a-fA-F]{6}$/.test(accent)) {
+      root.style.setProperty("--accent", accent);
+      root.style.setProperty("--accent-hover", accent);
+      root.style.setProperty("--accent-dim", accent + "1f");
+      root.style.setProperty("--accent-glow", accent + "40");
+      root.style.setProperty("--accent-bright", accent);
+    }
+  }
+
+  useEffect(() => {
+    const load = () => {
+      if (!getWorkspace()) return;
+      api<any>("GET", `/workspaces/${getWorkspace()}/brand`).then((r) => applyBrand(r.brand)).catch(() => {});
+    };
+    load();
+    window.addEventListener("ym-brand", load);
+    return () => window.removeEventListener("ym-brand", load);
+  }, []);
 
   useEffect(() => {
     api<any>("GET", "/workspaces").then((r) => {
@@ -102,8 +127,12 @@ export default function Layout() {
       <aside className="hidden md:flex flex-col shrink-0 py-4 px-3 gap-1 overflow-y-auto"
         style={{ width: collapsed ? 62 : 218, borderRight: "var(--seam)", background: "var(--bg-panel)" }}>
         <div className="flex items-center gap-2 px-2 mb-3">
-          <span className="grid place-items-center w-8 h-8 rounded-lg font-bold text-white text-[15px]" style={{ background: "var(--accent)" }}>¥</span>
-          {!collapsed && <span className="font-bold tracking-tight text-[15px]">YMONEY</span>}
+          {brand?.logo_path ? (
+            <img src={brandLogoSrc()} alt="studio logo" className="w-8 h-8 rounded-lg object-cover" />
+          ) : (
+            <span className="grid place-items-center w-8 h-8 rounded-lg font-bold text-white text-[15px]" style={{ background: "var(--accent)" }}>¥</span>
+          )}
+          {!collapsed && <span className="font-bold tracking-tight text-[15px]">{brand?.app_name || "YMONEY"}</span>}
           <button className="ml-auto text-[12px] opacity-60 hover:opacity-100" onClick={() => setCollapsed(!collapsed)} aria-label="Toggle sidebar">{collapsed ? "»" : "«"}</button>
         </div>
         {NAV.map((g) => (

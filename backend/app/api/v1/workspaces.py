@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -138,6 +138,76 @@ def put_settings(
     ws.settings_json = merged
     db.commit()
     return {"settings": merged}
+
+
+# -- white-label brand kit ------------------------------------------------------
+
+BRAND_DEFAULTS = {"app_name": "", "accent": "#22c55e", "logo_path": ""}
+_ACCENT_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def resolve_brand(ws: Workspace) -> dict:
+    """Brand kit with safe defaults; invalid accents fall back (never break chrome)."""
+    raw = ((ws.settings_json or {}).get("brand") or {})
+    if not isinstance(raw, dict):
+        raw = {}
+    accent = str(raw.get("accent") or BRAND_DEFAULTS["accent"])
+    if not _ACCENT_RE.match(accent):
+        accent = BRAND_DEFAULTS["accent"]
+    return {
+        "app_name": str(raw.get("app_name") or "")[:60],
+        "accent": accent,
+        "logo_path": str(raw.get("logo_path") or ""),
+    }
+
+
+@router.get("/{workspace_id}/brand", summary="Resolved white-label brand kit")
+def get_brand(workspace_id: str, ws: Workspace = Depends(require_workspace_role("viewer"))):
+    return {"brand": resolve_brand(ws)}
+
+
+@router.post("/{workspace_id}/brand/logo", summary="Upload the workspace logo (PNG/JPG ≤2MB)")
+async def upload_logo(workspace_id: str, file: UploadFile = File(...),
+                ws: Workspace = Depends(require_workspace_role("admin")),
+                db=Depends(get_db)):
+    from pathlib import Path
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="file is empty")
+    if len(data) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="logo exceeds 2MB limit")
+    suffix = (Path(file.filename or "").suffix or "").lower()
+    if suffix not in (".png", ".jpg", ".jpeg", ".webp"):
+        raise HTTPException(status_code=400, detail=f"unsupported logo type: {suffix or 'unknown'}")
+    from app.services.storage import get_storage
+
+    stored = get_storage().save_media(ws.id, data=data, filename=f"brand/logo{suffix}")
+    merged = dict(ws.settings_json or {})
+    brand = dict(merged.get("brand") or {})
+    brand["logo_path"] = stored
+    merged["brand"] = brand
+    ws.settings_json = merged
+    db.commit()
+    return {"logo_path": stored}
+
+
+@router.get("/{workspace_id}/brand/logo/file", summary="Serve the workspace logo")
+def brand_logo_file(workspace_id: str, request: Request, token: str | None = None,
+                    db=Depends(get_db)):
+    """Browser-tag friendly (Authorization header or ?token=)."""
+    from fastapi.responses import FileResponse
+
+    from app.services.auth_service import resolve_workspace
+    from app.services.storage import managed_path
+
+    ws = resolve_workspace(request, db, workspace_id, token)
+    path = managed_path(ws.id, resolve_brand(ws)["logo_path"])
+    if not path or not path.exists():
+        raise HTTPException(status_code=404, detail="no logo uploaded")
+    suffix = path.suffix.lower()
+    media = "image/png" if suffix == ".png" else ("image/webp" if suffix == ".webp" else "image/jpeg")
+    return FileResponse(path, media_type=media, filename=path.name)
 
 
 # -- trend sources ------------------------------------------------------------

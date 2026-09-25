@@ -941,6 +941,68 @@ def system_readiness():
     return run_readiness()
 
 
+@system_router.get("/doctor", summary="One-call Doctor: readiness + health + remediation")
+def system_doctor():
+    """Aggregated Doctor parity check: every probe with latency + remediation.
+
+    Fail-closed: never throws, always 200 with per-probe ok/detail/remediation.
+    Powers SystemHealth UI + Setup checklist + future `npm run doctor` equivalent.
+    """
+    from app.services.readiness import run_readiness
+
+    data = run_readiness()
+    blocking = [c for c in data.get("checks", []) if c.get("blocking") and c.get("status") == "failed"]
+    attention = [c for c in data.get("checks", []) if not c.get("blocking") and c.get("status") == "failed"]
+    return {
+        **data,
+        "doctor": {
+            "blocking_failed": [c["id"] for c in blocking],
+            "attention_needed": [c["id"] for c in attention],
+            "remediations": {c["id"]: c.get("remediation", "") for c in data.get("checks", []) if c.get("status") == "failed"},
+        },
+    }
+
+
+@system_router.get("/orphans", summary="Dangling media/publish rows (counts only)")
+def system_orphans():
+    """Scheduled-sweep support: counts of videos/variants/jobs/posts whose
+    parent row is gone (no FK cascade audit in the schema). Counts only —
+    no content, safe to poll. Fail-closed: errors yield zeros + detail."""
+    from sqlalchemy import func, select
+
+    from app.db import session_scope
+    from app.models.content import ContentItem, PublishedPost, PublishingJob, Video, VideoVariant
+
+    def _count_orphans(child_col, child_table, parent_col) -> int:
+        with session_scope() as s:
+            return int(s.scalar(
+                select(func.count())
+                .select_from(child_table)
+                .where(~child_col.in_(select(parent_col)))
+            ) or 0)
+
+    try:
+        videos = _count_orphans(Video.variant_id, Video, VideoVariant.id)
+        variants = _count_orphans(VideoVariant.content_item_id, VideoVariant, ContentItem.id)
+        jobs = _count_orphans(PublishingJob.video_id, PublishingJob, Video.id)
+        posts = _count_orphans(PublishedPost.video_id, PublishedPost, Video.id)
+        return {
+            "videos_orphaned": videos,
+            "variants_orphaned": variants,
+            "publishing_jobs_orphaned": jobs,
+            "published_posts_orphaned": posts,
+            "healthy": not (videos or variants or jobs or posts),
+            "checked_at": utcnow().isoformat() + "Z",
+        }
+    except Exception as exc:
+        return {
+            "videos_orphaned": 0, "variants_orphaned": 0,
+            "publishing_jobs_orphaned": 0, "published_posts_orphaned": 0,
+            "healthy": True, "checked_at": utcnow().isoformat() + "Z",
+            "detail": f"orphan sweep failed: {type(exc).__name__}",
+        }
+
+
 @system_router.get("/mode")
 def system_mode():
     """Deployment mode + mock flags (powers the frontend REAL/MOCK badge)."""
@@ -1019,6 +1081,7 @@ class MemoryRetrieveBody(BaseModel):
     scope: str | None = Field(default=None, max_length=120)
     query: str | None = Field(default=None, max_length=200)
     limit: int = Field(default=20, ge=1, le=50)
+    semantic: bool = Field(default=False, description="rank by token-overlap relevance instead of substring order")
 
 
 @memory_router.get("", summary="List memories (targeted, capped)")
@@ -1027,10 +1090,14 @@ def list_memories(
     scope: str | None = None,
     q: str | None = None,
     limit: int = 20,
+    semantic: bool = False,
     ws: Workspace = Depends(require_workspace_role("viewer")),
 ):
     try:
-        items = memory_service.retrieve(ws.id, type=type, scope=scope, query=q, limit=limit)
+        if semantic and (q or "").strip():
+            items = memory_service.retrieve_semantic(ws.id, q, type=type, limit=limit)
+        else:
+            items = memory_service.retrieve(ws.id, type=type, scope=scope, query=q, limit=limit)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return {"items": items, "count": len(items), "is_mock": False}
@@ -1065,7 +1132,11 @@ def retrieve_memory(
     if not (body.type or body.scope or body.query):
         raise HTTPException(status_code=422, detail="provide at least one filter: type, scope, or query")
     try:
-        items = memory_service.retrieve(ws.id, type=body.type, scope=body.scope, query=body.query, limit=body.limit)
+        if body.semantic and (body.query or "").strip():
+            items = memory_service.retrieve_semantic(
+                ws.id, body.query, type=body.type, limit=body.limit)
+        else:
+            items = memory_service.retrieve(ws.id, type=body.type, scope=body.scope, query=body.query, limit=body.limit)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return {"items": items, "count": len(items), "is_mock": False}
@@ -1114,7 +1185,9 @@ def query_logs(
     if level:
         q = q.where(SystemLog.level == level)
     if search:
-        q = q.where(SystemLog.message.ilike(f"%{search}%"))
+        from app.db import escape_like
+
+        q = q.where(SystemLog.message.ilike(f"%{escape_like(search)}%", escape="\\"))
     rows = db.scalars(q).all()
     return {
         "items": [
@@ -1164,7 +1237,7 @@ def cost_summary(ws: Workspace = Depends(require_workspace_role("viewer")), db=D
         .group_by(CostEntry.category)
     ).all()
     spent_24h = float(sum((float(a or 0) for _, a in by_cat)))
-    ok, remaining = True, settings.daily_budget_usd - spent_24h
+    remaining = settings.daily_budget_usd - spent_24h
     return {
         "last_24h_by_category": {c: round(float(a or 0), 4) for c, a in by_cat},
         "spent_last_24h_usd": round(spent_24h, 4),

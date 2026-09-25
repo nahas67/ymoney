@@ -85,16 +85,20 @@ def test_fetch_raises_without_api_key():
 
 def test_fetch_raises_on_api_error_payload():
     src = NewsDataSource(api_key="k")
-    with patch("httpx.get", return_value=_resp({"status": "error", "results": {"message": "bad key"}})):
-        with pytest.raises(TrendSourceError, match="NewsData.io error"):
-            src.fetch(niche="x", limit=5)
+    with (
+        patch("httpx.get", return_value=_resp({"status": "error", "results": {"message": "bad key"}})),
+        pytest.raises(TrendSourceError, match="NewsData.io error"),
+    ):
+        src.fetch(niche="x", limit=5)
 
 
 def test_fetch_raises_when_no_usable_articles():
     src = NewsDataSource(api_key="k")
-    with patch("httpx.get", return_value=_resp({"status": "success", "results": []})):
-        with pytest.raises(TrendSourceError, match="no usable articles"):
-            src.fetch(niche="x", limit=5)
+    with (
+        patch("httpx.get", return_value=_resp({"status": "success", "results": []})),
+        pytest.raises(TrendSourceError, match="no usable articles"),
+    ):
+        src.fetch(niche="x", limit=5)
 
 
 def test_factory_reads_credential(monkeypatch):
@@ -109,7 +113,6 @@ def test_factory_reads_credential(monkeypatch):
 
 
 def test_pubdate_parser_handles_known_formats():
-    ts = NewsDataSource._parse_pubdate if hasattr(NewsDataSource, "_parse_pubdate") else None
     from app.providers.trends import _parse_pubdate
 
     assert _parse_pubdate("2026-09-05 09:30:00") is not None

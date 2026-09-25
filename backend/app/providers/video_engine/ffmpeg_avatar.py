@@ -293,7 +293,7 @@ def _clamp_volume(volume, default: float = 0.2) -> float:
         v = float(volume)
     except (TypeError, ValueError):
         return default
-    if v != v or v <= 0:  # NaN or muted
+    if v != v or v <= 0:  # noqa: PLR0124 — intentional NaN check (NaN != itself)
         return 0.0
     return min(v, 1.0)
 
@@ -566,8 +566,6 @@ class FFmpegAvatarEngine(BaseVideoEngine):
                 )
                 last = "[vcap]"
 
-            vf = ";".join(filters)
-
             # finance disclaimer footer burn-in (fail-closed monetization gate)
             if _is_finance_topic(req.subject, req.script) and _font_file():
                 font = _font_file()
@@ -577,8 +575,6 @@ class FFmpegAvatarEngine(BaseVideoEngine):
                     f"x=(w-text_w)/2:y=h-140[vcap2]"
                 )
                 last = "[vcap2]"
-
-            vf = ";".join(filters)
 
             # 5) BGM bed under narration (adopted from MPT bgm.py); honors
             #    RenderRequest.bgm_type / bgm_file / bgm_volume. Licensed tracks

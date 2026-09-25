@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { wsApi } from "../lib/api";
 import { useFetch } from "../hooks/hooks";
-import { Badge, Card, Field, Modal, PageHeader, Section, statusTone } from "../components/ui";
+import { Badge, Card, Field, Modal, PageHeader, SearchInput, Section, statusTone, toast } from "../components/ui";
 import { fmtAgo, fmtUSD } from "../lib/format";
 
 export default function Agents() {
@@ -10,6 +10,7 @@ export default function Agents() {
   const audits = useFetch(() => wsApi.get("/agents/tool-audits?limit=30"), []);
   const [open, setOpen] = useState<string | null>(null);
   const [view, setView] = useState<"fleet" | "audits">("fleet");
+  const [q, setQ] = useState("");
 
   return (
     <div className="space-y-4">
@@ -22,12 +23,17 @@ export default function Agents() {
         } />
 
       {view === "fleet" && (
-        <Section data={(fleet.data as any)?.items} loading={fleet.loading} error={fleet.error} onRetry={fleet.reload}
+        <div className="max-w-[300px] mb-3"><SearchInput value={q} onChange={setQ} placeholder="Filter agents…" /></div>
+      )}
+      {view === "fleet" && (
+        <Section data={((fleet.data as any)?.items ?? []).filter((a: any) =>
+          !q || `${a.title} ${a.key} ${a.description ?? ""}`.toLowerCase().includes(q.toLowerCase())
+        )} loading={fleet.loading} error={fleet.error} onRetry={fleet.reload}
           empty="No agent data" emptyHint="Agents register on backend boot.">
           {(list) => (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
               {list.map((a: any) => (
-                <Card key={a.key} className="cursor-pointer" style={{ padding: 15 }} >
+                <Card key={a.key} className="card-hover cursor-pointer" style={{ padding: 15 }} >
                   <div onClick={() => setOpen(a.key)}>
                     <div className="flex gap-2 items-center mb-1">
                       <b className="text-[13.5px]">{a.title}</b>
@@ -97,8 +103,9 @@ function AgentDetail({ agentKey, capabilities }: { agentKey: string; capabilitie
       d.reload();
       setEnabled(null);
       setModel(null);
+      toast("Agent config saved", "success");
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Save failed");
     } finally {
       setSaving(false);
     }

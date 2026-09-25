@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { wsApi } from "../lib/api";
 import { useFetch } from "../hooks/hooks";
-import { Badge, Card, Modal, PageHeader, Section, Tabs, statusTone } from "../components/ui";
+import { Badge, Card, Modal, PageHeader, Section, Tabs, statusTone, toast } from "../components/ui";
 import { fmtAgo } from "../lib/format";
 
 export default function Assets() {
@@ -47,8 +47,9 @@ export default function Assets() {
       await wsApi.upload("/assets/upload", file);
       setFile(null);
       lib.reload();
+      toast("Uploaded", "success");
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error");
     } finally {
       setBusy("");
     }
@@ -61,7 +62,7 @@ export default function Assets() {
       const r = await wsApi.post("/assets/images/generate", { prompt, n: 1 });
       setGenImgs(r.images ?? []);
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error");
     } finally {
       setBusy("");
     }
@@ -74,8 +75,9 @@ export default function Assets() {
       const r = await wsApi.post("/assets/repurpose", { source: src, max_clips: 5, rank, caption_preset: preset });
       setClips(r.clips ?? []);
       lib.reload();
+      toast(`Ready — ${(r.clips ?? []).length} clip(s)`, "success");
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error");
     } finally {
       setBusy("");
     }
@@ -89,7 +91,7 @@ export default function Assets() {
       setMPath(r.path ?? "");
       lib.reload();
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error");
     } finally {
       setBusy("");
     }
@@ -102,8 +104,9 @@ export default function Assets() {
       const r = await wsApi.post("/assets/dub", { source: dubSrc, target_lang: dubLang });
       setDubResult(r);
       lib.reload();
+      toast("Dub complete", "success");
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error");
     } finally {
       setBusy("");
     }
@@ -116,8 +119,9 @@ export default function Assets() {
       const r = await wsApi.post("/assets/avatar", { image: avImg, text: avText, backend: avLane });
       setAvResult(r);
       lib.reload();
+      toast("Avatar clip ready", "success");
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error");
     } finally {
       setBusy("");
     }
@@ -130,7 +134,7 @@ export default function Assets() {
       const r = await wsApi.post("/assets/broll/search", { query: bQuery, per_page: 6 });
       setBResults(r.items ?? []);
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error");
     } finally {
       setBusy("");
     }
@@ -143,7 +147,7 @@ export default function Assets() {
       setBPath(r.path ?? "");
       lib.reload();
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error");
     } finally {
       setBusy("");
     }
@@ -157,7 +161,7 @@ export default function Assets() {
       setBPath(r.path ?? "");
       lib.reload();
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error");
     } finally {
       setBusy("");
     }
@@ -170,7 +174,7 @@ export default function Assets() {
       const r = await wsApi.post("/assets/broll/plan", { topic: bQuery, n_scenes: 4 });
       setBPlan(r.scenes ?? []);
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error");
     } finally {
       setBusy("");
     }
@@ -434,7 +438,7 @@ function TemplatesTab() {
       await wsApi.put("/settings", { settings: { templates } });
       setOpen({ ...open, overridden: !!Object.keys(patch).length });
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error");
     } finally {
       setSaving(false);
     }

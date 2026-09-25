@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { wsApi, api } from "../lib/api";
 import { useFetch } from "../hooks/hooks";
-import { Badge, Card, PageHeader, Section, Tabs, statusTone } from "../components/ui";
+import { Badge, Card, ConfirmButton, PageHeader, Section, Tabs, statusTone, toast } from "../components/ui";
 import { fmtAgo, fmtCompact, platformLabel } from "../lib/format";
 
 const OAUTH_PLATFORMS = ["youtube", "tiktok", "facebook", "instagram"];
@@ -29,17 +29,22 @@ export default function Publishing() {
       }
       accounts.reload();
       diag.reload();
+      toast("Account connected", "success");
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Connect failed");
     } finally {
       setBusy("");
     }
   }
 
   async function disconnect(id: string) {
-    if (!confirm("Disconnect this account?")) return;
-    await wsApi.del(`/publishing/accounts/${id}`);
-    accounts.reload();
+    try {
+      await wsApi.del(`/publishing/accounts/${id}`);
+      toast("Account disconnected", "warning");
+      accounts.reload();
+    } catch (e: any) {
+      toast(e.message, "error", "Disconnect failed");
+    }
   }
 
   const pubs: any = (health.data as any)?.publishers ?? {};
@@ -82,7 +87,7 @@ export default function Publishing() {
                   <div key={a.id} className="flex items-center gap-2 text-[12.5px] py-1.5" style={{ borderBottom: "var(--seam)" }}>
                     <span>{a.display_name || a.external_id || p}</span>
                     <Badge tone={statusTone(a.status)}>{a.status}</Badge>
-                    <button className="btn-ghost !text-[11px] !py-0.5 ml-auto" onClick={() => disconnect(a.id)}>Disconnect</button>
+                    <ConfirmButton onConfirm={() => disconnect(a.id)} confirmText="Disconnect?" className="btn-ghost !text-[11px] !py-0.5 ml-auto">Disconnect</ConfirmButton>
                   </div>
                 ))}
                 <button className="btn-outline !text-xs mt-2.5" disabled={busy === p} onClick={() => connect(p)}>
@@ -128,7 +133,7 @@ export default function Publishing() {
           {(list) => (
             <div className="grid md:grid-cols-2 gap-3">
               {list.map((p: any) => (
-                <Card key={p.id} style={{ padding: 14 }}>
+                <Card key={p.id} className="card-hover" style={{ padding: 14 }}>
                   <div className="flex gap-2 items-center flex-wrap mb-1">
                     <Badge tone="muted">{platformLabel(p.platform)}</Badge>
                     {p.is_mock && <Badge tone="warning">MOCK</Badge>}

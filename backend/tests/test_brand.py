@@ -74,3 +74,23 @@ def test_logo_upload_serve_and_validation():
     r = client.post(f"/api/v1/workspaces/{ws_id}/brand/logo", headers=headers,
                     files={"file": ("big.png", io.BytesIO(big), "image/png")})
     assert r.status_code == 413
+
+
+def test_settings_rejects_raw_safety_bypass():
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    client = TestClient(create_app(), raise_server_exceptions=False)
+    headers, ws_id = _register(client)
+
+    # safety subtree must go through the validated endpoint, not the merge
+    r = client.put(f"/api/v1/workspaces/{ws_id}/settings", headers=headers,
+                   json={"settings": {"safety": {"daily_budget_usd": -5}}})
+    assert r.status_code == 422, r.text
+
+    # legit keys still merge fine
+    r = client.put(f"/api/v1/workspaces/{ws_id}/settings", headers=headers,
+                   json={"settings": {"brand": {"app_name": "Ok"}}})
+    assert r.status_code == 200, r.text
+    assert r.json()["settings"]["brand"]["app_name"] == "Ok"

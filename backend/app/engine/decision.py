@@ -127,6 +127,11 @@ class Decision:
     factors: list[Factor] = field(default_factory=list)
     evidence: list[str] = field(default_factory=list)
 
+    @property
+    def first_reason(self) -> str:
+        # Event logging must never crash on a reason-less decision
+        return self.reasons[0] if self.reasons else "no reason recorded"
+
     def why(self) -> dict:
         return {
             "action": self.action,
@@ -146,18 +151,27 @@ class Decision:
 def get_safety_settings(ws_settings: dict) -> dict:
     """Merged safety configuration with safe defaults."""
     s = ws_settings.get("safety", {}) if isinstance(ws_settings, dict) else {}
+
+    def _num(value, default, cast):
+        # Stored settings may hold explicit nulls (legacy rows, direct DB
+        # edits); fall back to the default instead of crashing every caller.
+        try:
+            return cast(value) if value is not None else default
+        except (TypeError, ValueError):
+            return default
+
     return {
-        "daily_budget_usd": float(s.get("daily_budget_usd", settings.daily_budget_usd)),
-        "monthly_budget_usd": float(s.get("monthly_budget_usd", settings.daily_budget_usd * 30)),
-        "per_video_budget_usd": float(s.get("per_video_budget_usd", settings.per_video_budget_usd)),
-        "max_videos_per_day": int(s.get("max_videos_per_day", 10)),
-        "max_uploads_per_hour": int(s.get("max_uploads_per_hour", 6)),
-        "min_qc_score": int(s.get("min_qc_score", settings.quality_threshold)),
-        "max_render_attempts": int(s.get("max_render_attempts", 2)),
-        "max_consecutive_failures": int(s.get("max_consecutive_failures", 3)),
-        "max_concurrent_renders": int(s.get("max_concurrent_renders", 2)),
-        "similarity_threshold": float(s.get("similarity_threshold", 0.55)),
-        "require_human_review_risk_above": float(s.get("require_human_review_risk_above", 60.0)),
+        "daily_budget_usd": _num(s.get("daily_budget_usd", settings.daily_budget_usd), settings.daily_budget_usd, float),
+        "monthly_budget_usd": _num(s.get("monthly_budget_usd", settings.daily_budget_usd * 30), settings.daily_budget_usd * 30, float),
+        "per_video_budget_usd": _num(s.get("per_video_budget_usd", settings.per_video_budget_usd), settings.per_video_budget_usd, float),
+        "max_videos_per_day": _num(s.get("max_videos_per_day", 10), 10, int),
+        "max_uploads_per_hour": _num(s.get("max_uploads_per_hour", 6), 6, int),
+        "min_qc_score": _num(s.get("min_qc_score", settings.quality_threshold), settings.quality_threshold, int),
+        "max_render_attempts": _num(s.get("max_render_attempts", 2), 2, int),
+        "max_consecutive_failures": _num(s.get("max_consecutive_failures", 3), 3, int),
+        "max_concurrent_renders": _num(s.get("max_concurrent_renders", 2), 2, int),
+        "similarity_threshold": _num(s.get("similarity_threshold", 0.55), 0.55, float),
+        "require_human_review_risk_above": _num(s.get("require_human_review_risk_above", 60.0), 60.0, float),
         "require_approval_before_publish": bool(s.get("require_approval_before_publish", False)),
         # adjusted-score bar to commit production spend; below this but above
         # wait_floor the supervisor WAITs for stronger candidates
@@ -172,7 +186,6 @@ def decide_next_best_action(workspace_id: str) -> Decision:
 
         ws_row = s.get(Workspace, workspace_id)
         ws_settings = (ws_row.settings_json or {}) if ws_row else {}
-        niche = (ws_row.niche or "") if ws_row else ""
         safety = get_safety_settings(ws_settings)
 
         candidates = s.scalars(

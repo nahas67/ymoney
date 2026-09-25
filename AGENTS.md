@@ -12,7 +12,7 @@ Users never operate agents manually; they observe and can disable/re-enable them
 
 | Agent | Responsibility |
 |---|---|
-| **Trend Hunter** | Fetches candidates from enabled trend sources (Google Trends RSS, Reddit JSON, mock). One failing source never kills the cycle. Dedupes by workspace+topic. |
+| **Trend Hunter** | Fetches candidates from enabled trend sources (Google Trends RSS, Reddit JSON, Hacker News, NewsData.io, CoinGecko, Dev.to, YouTube Trending/Channel, Bilibili, mock). One failing source never kills the cycle. Dedupes by workspace+topic. |
 | **Trend Analyst** | Scores all unscored opportunities with explainable scoring v2: per-component score/weight/reason/source/confidence, repetition penalty vs recent content, and lifecycle classification (EMERGING/RISING/PEAK/DECLINING/EVERGREEN). |
 | **Research Agent** | Produces a compact research brief: summary, key facts, angles, visual keywords, cautions — plus tracked claims with VERIFIED/LIKELY/UNCERTAIN/CONFLICTING status and an aggregate factual confidence. Conflicting or insufficient fact-confidence surfaces to QC notes. |
 | **Content Strategist** | Decides angle, audience, format, duration (clamped 20–90s), hook type, tone, CTA, platforms, aspect ratio. |

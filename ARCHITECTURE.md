@@ -21,7 +21,7 @@
                        │        │        │
               ┌────────▼──┐ ┌───▼────┐ ┌▼─────────────┐
               │ Discovery │ │ Agents │ │ Distribution │
-              │ providers │ │ (12)   │ │ publishers   │
+              │ providers │ │ (22)   │ │ publishers   │
               └───────────┘ └───┬────┘ └──────────────┘
                                 │ VideoEngine interface
                      ┌──────────▼──────────┐
@@ -32,12 +32,12 @@
 
 ### Key principle: adapters at every boundary
 
-- **VideoEngine** — `MoneyPrinterTurboAdapter` (HTTP) and `MockVideoEngine`. Swapping
+- **VideoEngine** — `ffmpeg_avatar` (default local real render) + `MoneyPrinterTurboAdapter` (HTTP) + `MockVideoEngine` (sim only). Swapping
   engines requires zero changes elsewhere.
-- **TrendSource** — Google Trends RSS, Reddit JSON, Mock; registry-based.
-- **Publisher** — YouTube Data API, TikTok Content Posting API, Facebook Graph,
-  Upload-Post relay, `MockPublisher`.
-- **AnalyticsProvider** — YouTube public stats today; mock simulator by default.
+- **TrendSource** — Google Trends RSS, Reddit JSON, HackerNews Algolia, NewsData.io, CoinGecko, Dev.to, YouTube Trending, YouTube Channel RSS; registry-based (`providers/trends/__init__.py`).
+- **Publisher** — YouTube Data API v3, TikTok Content Posting API, Facebook Graph Reels, Instagram Graph Reels,
+  Upload-Post relay. Production-only factory (`providers/publishers/factory.py`); no mock in product.
+- **AnalyticsProvider** — YouTube Data+Analytics API, TikTok Display, Meta Graph; mock only when `MOCK_ANALYTICS=true`, else `AnalyticsNotConfigured`.
 
 ## 2. Autopilot orchestration
 
@@ -185,6 +185,7 @@ knows HOW to render.** The only file that understands MPT's API shape is
 - **kokoro** — fully local Kokoro-82M (Apache-2 weights) behind any
   OpenAI-compatible `/audio/speech` server. Configure `KOKORO_BASE_URL` env or
   `tts.kokoro_base_url` under Settings → Connections.
+- **elevenlabs** — cloud neural voices + voice library (paid key via `tts.elevenlabs_api_key` / `ELEVENLABS_API_KEY`); per-content `voice` override takes any voice_id; cost estimated per character so budgets stay honest.
 - **mock** — deterministic labeled silence for simulation/CI (`TTS_RESULT.is_mock`).
 
 Selection: `TTS_PROVIDER=edge|kokoro|mock`. MoneyPrinterTurbo renders accept a

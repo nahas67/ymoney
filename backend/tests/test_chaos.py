@@ -32,8 +32,6 @@ def test_trend_source_failure_is_typed():
 def test_publisher_retry_then_failure(monkeypatch):
     """Retryable errors are retried once; non-retryable are not."""
 
-    calls = {"n": 0}
-
     class Flaky:
         platform = "flaky"
 

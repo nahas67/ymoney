@@ -10,7 +10,7 @@ from datetime import timedelta
 
 from sqlalchemy import select
 
-from app.db import session_scope
+from app.db import escape_like, session_scope
 from app.models import MemoryRecord
 from app.models.base import utcnow
 
@@ -73,12 +73,64 @@ def retrieve(
         if scope:
             q = q.where(MemoryRecord.scope == scope)
         if query:
-            needle = f"%{query.lower()}%"
-            q = q.where(MemoryRecord.content.ilike(needle))
+            needle = f"%{escape_like(query.lower())}%"
+            q = q.where(MemoryRecord.content.ilike(needle, escape="\\"))
         rows = s.scalars(
             q.order_by(MemoryRecord.importance.desc(), MemoryRecord.created_at.desc()).limit(limit)
         ).all()
         return [_to_dict(r) for r in rows]
+
+
+def semantic_score(query: str, content: str, scope: str = "") -> tuple[float, list[str]]:
+    """Token-overlap relevance between a query and one memory record.
+
+    |Q ∩ D| / min(|Q|, |D|) answers "is the query covered by this record?"
+    (OpenMontage's overlap-coefficient insight). Jaccard would punish long
+    records for being thorough — the wrong question for memory retrieval.
+    Returns (score 0..1, matched terms).
+    """
+    from app.engine.decision import _tokens
+
+    q = _tokens(query or "")
+    d = _tokens(f"{content or ''} {scope or ''}")
+    if not q or not d:
+        return 0.0, []
+    hit = sorted(q & d)
+    return round(len(hit) / min(len(q), len(d)), 3), hit
+
+
+def retrieve_semantic(
+    workspace_id: str,
+    query: str,
+    *,
+    type: str | None = "semantic",
+    limit: int = 5,
+) -> list[dict]:
+    """Rank memories by semantic overlap instead of substring match.
+
+    Same targeted-access contract as retrieve(): type-filtered candidates
+    with ranking headroom (never a store dump), ordered by overlap, then
+    importance, then recency. Items carry `semantic_score` + `matched_terms`
+    so callers can show their work.
+    """
+    limit = max(1, min(int(limit), MAX_RETRIEVE))
+    if not (query or "").strip():
+        return []
+    cands = retrieve(workspace_id, type=type, limit=min(max(limit * 3, 20), MAX_RETRIEVE))
+    # Newest first, then stable sorts keep recency as the final tie-break.
+    cands.sort(key=lambda h: h.get("created_at", ""), reverse=True)
+    scored = []
+    for h in cands:
+        s, matched = semantic_score(query, h.get("content", ""), h.get("scope", ""))
+        scored.append((s, h.get("importance", 0.0), matched, h))
+    scored.sort(key=lambda t: (-t[0], -t[1]))
+    out = []
+    for s, _imp, matched, h in scored[:limit]:
+        item = dict(h)
+        item["semantic_score"] = s
+        item["matched_terms"] = matched
+        out.append(item)
+    return out
 
 
 def style_context(workspace_id: str, *, limit: int = 4) -> list[dict]:
@@ -99,22 +151,32 @@ def style_context(workspace_id: str, *, limit: int = 4) -> list[dict]:
 
 
 def retrieve_for_topic(workspace_id: str, topic: str, *, limit: int = 5) -> list[dict]:
-    """Topic-aware retrieval: try the full topic string first, then fall back to
-    individual keywords. Shared by the decision engine and research agent so
-    both use identical, explainable matching."""
+    """Topic-aware retrieval: union of full-topic and keyword substring hits,
+    ranked by semantic overlap. Shared by the decision engine and research
+    agent so both use identical, explainable matching. Recall never shrinks
+    vs substring search (zero-overlap rows sink, not vanish); precision
+    ordering comes from the overlap score + matched terms on each item."""
+    from app.engine.decision import _tokens
+
     topic = (topic or "").strip()
     if not topic:
         return []
-    hits = retrieve(workspace_id, type="semantic", query=topic[:120], limit=limit)
-    if hits:
-        return hits
-    from app.engine.decision import _tokens
-
-    for tok in _tokens(topic.lower()):
-        hits = retrieve(workspace_id, type="semantic", query=tok, limit=limit)
-        if hits:
-            break
-    return hits
+    seen: dict[str, dict] = {}
+    queries = [topic[:120], *sorted(_tokens(topic.lower()))]
+    for q in queries:
+        for hit in retrieve(workspace_id, type="semantic", query=q, limit=limit):
+            seen.setdefault(hit["id"], hit)
+    # Newest first, then stable sorts keep recency as the final tie-break.
+    cands = sorted(seen.values(), key=lambda h: h.get("created_at", ""), reverse=True)
+    scored = []
+    for h in cands:
+        s, matched = semantic_score(topic, h.get("content", ""), h.get("scope", ""))
+        item = dict(h)
+        item["semantic_score"] = s
+        item["matched_terms"] = matched
+        scored.append((s, h.get("importance", 0.0), item))
+    scored.sort(key=lambda t: (-t[0], -t[1]))
+    return [item for _, _, item in scored[: max(1, limit)]]
 
 
 def _purge_expired(s, workspace_id: str) -> None:

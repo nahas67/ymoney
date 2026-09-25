@@ -15,7 +15,7 @@ class FakeLLMTransport:
     def __init__(self):
         self.calls: list[dict] = []
 
-    def post(self, url, *, headers=None, json=None, timeout=None, **kw):  # noqa: ARG002
+    def post(self, url, *, headers=None, json=None, timeout=None, **kw):
         self.calls.append(json or {})
         body = json or {}
         msgs = " ".join(m.get("content", "") for m in body.get("messages", []))
@@ -78,7 +78,7 @@ class _HTTPResponse:
 def fake_llm(monkeypatch):
     """Force LLM 'configured' and intercept HTTP with deterministic responses."""
     from app.providers import llm as llm_mod
-    from tests.fakes_llm import FakeLLMTransport  # noqa: F401
+    from tests.fakes_llm import FakeLLMTransport
 
     transport = FakeLLMTransport()
 

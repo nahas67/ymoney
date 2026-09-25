@@ -1,0 +1,5890 @@
+{
+  "info": {
+    "name": "YMONEY API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Generated from the live spec (`GET /openapi.json`) \u2014 regenerate with `python scripts/gen_postman.py`. Set collection variables first: baseUrl, workspaceId, jwt (login), apiKey (mint via api-keys)."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwt}}"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8100"
+    },
+    {
+      "key": "workspaceId",
+      "value": "YOUR_WORKSPACE_ID"
+    },
+    {
+      "key": "jwt",
+      "value": "YOUR_JWT_ACCESS_TOKEN"
+    },
+    {
+      "key": "apiKey",
+      "value": "YOUR_YM_API_KEY"
+    }
+  ],
+  "item": [
+    {
+      "name": "activity",
+      "item": [
+        {
+          "name": "Activity Stream",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/activity/stream",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "activity",
+                "stream"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Activity Stream\n\nServer-Sent Events stream of live workspace activity.\n\nEventSource cannot send Authorization headers, so the bearer token may be\nsupplied as ?token= as an alternative to the header. Header auth still\ntakes precedence when present."
+          }
+        },
+        {
+          "name": "Recent Activity",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/activity/recent",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "activity",
+                "recent"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Recent Activity"
+          }
+        }
+      ]
+    },
+    {
+      "name": "agents",
+      "item": [
+        {
+          "name": "Agent Detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/agents/:agent_key",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "agents",
+                ":agent_key"
+              ],
+              "query": []
+            },
+            "description": "Agent Detail\n\nPer-agent detail: catalog info + config + run history + aggregates."
+          }
+        },
+        {
+          "name": "Agent Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/agents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "agents"
+              ],
+              "query": []
+            },
+            "description": "Agent Status"
+          }
+        },
+        {
+          "name": "List Agent Configs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/agents/config",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "agents",
+                "config"
+              ],
+              "query": []
+            },
+            "description": "List Agent Configs"
+          }
+        },
+        {
+          "name": "List registered agent skills and tools",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/agents/capabilities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "agents",
+                "capabilities"
+              ],
+              "query": []
+            },
+            "description": "List registered agent skills and tools"
+          }
+        },
+        {
+          "name": "List tool execution audit records",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/agents/tool-audits",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "agents",
+                "tool-audits"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List tool execution audit records"
+          }
+        },
+        {
+          "name": "Update Agent Config",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/agents/config/:agent_key",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "agents",
+                "config",
+                ":agent_key"
+              ],
+              "query": []
+            },
+            "description": "Update Agent Config",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "analytics",
+      "item": [
+        {
+          "name": "Channel-level performance snapshot",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/analytics/overview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "analytics",
+                "overview"
+              ],
+              "query": []
+            },
+            "description": "Channel-level performance snapshot"
+          }
+        },
+        {
+          "name": "Learned performance patterns",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/analytics/patterns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "analytics",
+                "patterns"
+              ],
+              "query": []
+            },
+            "description": "Learned performance patterns"
+          }
+        },
+        {
+          "name": "Performance breakdowns by topic, hook style, and duration",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/analytics/breakdowns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "analytics",
+                "breakdowns"
+              ],
+              "query": []
+            },
+            "description": "Performance breakdowns by topic, hook style, and duration\n\nGroup measured posts by observable content features (topic, hook style,\nduration bucket). Mock and real posts are counted separately \u2014 never mixed."
+          }
+        }
+      ]
+    },
+    {
+      "name": "api-keys",
+      "item": [
+        {
+          "name": "List API key metadata (never hashes)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/api-keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "api-keys"
+              ],
+              "query": []
+            },
+            "description": "List API key metadata (never hashes)"
+          }
+        },
+        {
+          "name": "Mint a scoped API key (plaintext shown once)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/api-keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "api-keys"
+              ],
+              "query": []
+            },
+            "description": "Mint a scoped API key (plaintext shown once)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Prove key auth (key-only, no JWT)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/api-keys/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "api-keys",
+                "me"
+              ],
+              "query": []
+            },
+            "description": "Prove key auth (key-only, no JWT)"
+          }
+        },
+        {
+          "name": "Revoke an API key",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/api-keys/:key_id/revoke",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "api-keys",
+                ":key_id",
+                "revoke"
+              ],
+              "query": []
+            },
+            "description": "Revoke an API key"
+          }
+        },
+        {
+          "name": "Prove key auth (key-only, no JWT) (X-API-Key)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/api-keys/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "api-keys",
+                "me"
+              ],
+              "query": []
+            },
+            "description": "Prove key auth (key-only, no JWT)",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "assets",
+      "item": [
+        {
+          "name": "AI-generate one B-roll clip",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/broll/generate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "broll",
+                "generate"
+              ],
+              "query": []
+            },
+            "description": "AI-generate one B-roll clip",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Add a workspace template (credited authorship)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/templates",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "templates"
+              ],
+              "query": []
+            },
+            "description": "Add a workspace template (credited authorship)\n\nCommunity pattern: workspaces author their own templates with attribution\n(+ optional source link) instead of only patching built-ins. Collisions\nwith built-in ids are rejected \u2014 customize those via override patches.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "B-roll lane availability",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/broll/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "broll",
+                "status"
+              ],
+              "query": []
+            },
+            "description": "B-roll lane availability"
+          }
+        },
+        {
+          "name": "Clip repurposing availability",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/repurpose/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "repurpose",
+                "status"
+              ],
+              "query": []
+            },
+            "description": "Clip repurposing availability"
+          }
+        },
+        {
+          "name": "Cut a long-form source into vertical shorts",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/repurpose",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "repurpose"
+              ],
+              "query": []
+            },
+            "description": "Cut a long-form source into vertical shorts\n\nSynchronous cutting of an operator-supplied source into workspace assets.\n\nDownload requires yt-dlp; cutting requires ffmpeg. When unavailable the\nendpoint reports the exact remediation instead of failing obscurely.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete a workspace template",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/templates/:module/:tid",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "templates",
+                ":module",
+                ":tid"
+              ],
+              "query": []
+            },
+            "description": "Delete a workspace template"
+          }
+        },
+        {
+          "name": "Download one stock clip by Pexels id",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/broll/fetch",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "broll",
+                "fetch"
+              ],
+              "query": []
+            },
+            "description": "Download one stock clip by Pexels id",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Dubbing pipeline availability",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/dub/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "dub",
+                "status"
+              ],
+              "query": []
+            },
+            "description": "Dubbing pipeline availability"
+          }
+        },
+        {
+          "name": "Generate scene images",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/images/generate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "images",
+                "generate"
+              ],
+              "query": []
+            },
+            "description": "Generate scene images\n\nGenerate images via the configured provider and store them as workspace\nassets. Mock provider results are labeled is_mock=true.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Image generation availability",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/images/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "images",
+                "status"
+              ],
+              "query": []
+            },
+            "description": "Image generation availability"
+          }
+        },
+        {
+          "name": "List Assets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets"
+              ],
+              "query": []
+            },
+            "description": "List Assets\n\nAll video artifacts this workspace has produced, plus uploaded files.\n\nReal data only: rows come from the videos/variants tables plus the\nworkspace uploads directory (operator-supplied files)."
+          }
+        },
+        {
+          "name": "List creation templates (versioned registry)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/templates",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "templates"
+              ],
+              "query": [
+                {
+                  "key": "module",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List creation templates (versioned registry)\n\nBuilt-in caption/hook/motion templates, latest version each.\n\nWorkspaces override any template via PUT /workspaces/{id}/settings with\n{\"settings\": {\"templates\": {\"<module>/<id>\": {payload patch, ...}}}} \u2014\noverrides merge over the built-in and are flagged \"overridden\"."
+          }
+        },
+        {
+          "name": "List registered media assets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/media",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "media"
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "100",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List registered media assets"
+          }
+        },
+        {
+          "name": "Media asset detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/media/:asset_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "media",
+                ":asset_id"
+              ],
+              "query": []
+            },
+            "description": "Media asset detail"
+          }
+        },
+        {
+          "name": "Motion-graphics (HyperFrames) availability",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/motion/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "motion",
+                "status"
+              ],
+              "query": []
+            },
+            "description": "Motion-graphics (HyperFrames) availability"
+          }
+        },
+        {
+          "name": "Per-scene visual plan for a topic",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/broll/plan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "broll",
+                "plan"
+              ],
+              "query": []
+            },
+            "description": "Per-scene visual plan for a topic",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Pre-flight source quality check (never blocks)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/repurpose/probe",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "repurpose",
+                "probe"
+              ],
+              "query": []
+            },
+            "description": "Pre-flight source quality check (never blocks)\n\nFast yt-dlp/local probe before burning a cycle (openshorts quality_probe\npattern). Always 200 \u2014 unknown sources degrade to probe=\"unknown\" with a\nwarning instead of failing.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Preview any voice-stack provider with extras",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/voice/preview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "voice",
+                "preview"
+              ],
+              "query": []
+            },
+            "description": "Preview any voice-stack provider with extras\n\nNarrate a sample through a chosen provider (clone/emotion aware).\n\nUses the workspace default provider when blank. Returns raw audio bytes\nwith provider headers \u2014 the manual surface of the Voice Designer.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Register a typed media asset reference",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/media",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "media"
+              ],
+              "query": []
+            },
+            "description": "Register a typed media asset reference",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Render a kinetic motion-graphics card",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/motion",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "motion"
+              ],
+              "query": []
+            },
+            "description": "Render a kinetic motion-graphics card\n\nRender a hook/stat/CTA/lower-third card via HyperFrames.\n\nRequires the HyperFrames CLI + a working Chrome + ffmpeg; otherwise fails\nclosed with remediation (503) instead of faking output.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Render a talking-head presenter clip",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/avatar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "avatar"
+              ],
+              "query": []
+            },
+            "description": "Render a talking-head presenter clip\n\nPhoto + (audio | voiced text) \u2192 lip-synced MP4 via the avatar stack.\n\nRequires image + exactly one of audio/text; fails closed with remediation\nwhen no backend is ready.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Search stock video catalog",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/broll/search",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "broll",
+                "search"
+              ],
+              "query": []
+            },
+            "description": "Search stock video catalog",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Serve a registered media file",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/media/:asset_id/file",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "media",
+                ":asset_id",
+                "file"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Serve a registered media file\n\nWorkspace-guarded file serve for editor preview/proxy use.\n\nThe storage_key is resolved strictly inside the workspace directory;\nabsolute keys and escapes were already rejected at registration, and are\nre-checked here (defense in depth for legacy rows)."
+          }
+        },
+        {
+          "name": "Talking-avatar pipeline availability",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/avatar/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "avatar",
+                "status"
+              ],
+              "query": []
+            },
+            "description": "Talking-avatar pipeline availability"
+          }
+        },
+        {
+          "name": "Template detail (resolved)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/templates/:module/:tid",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "templates",
+                ":module",
+                ":tid"
+              ],
+              "query": [
+                {
+                  "key": "version",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Template detail (resolved)"
+          }
+        },
+        {
+          "name": "Translate and re-voice a video into another language",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/dub",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "dub"
+              ],
+              "query": []
+            },
+            "description": "Translate and re-voice a video into another language\n\nSynchronous dub: transcribe/parse \u2192 LLM translate \u2192 TTS \u2192 assemble.\n\nRequires LLM key + target-language TTS voice + ffmpeg; otherwise fails\nclosed with remediation (400/503).",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Upload an MP4/image asset",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/upload",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "upload"
+              ],
+              "query": []
+            },
+            "description": "Upload an MP4/image asset\n\nOperator-supplied asset stored under the workspace boundary."
+          }
+        },
+        {
+          "name": "Validate a dub request (no downloads, no AI calls)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/assets/dub/dry-run",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "assets",
+                "dub",
+                "dry-run"
+              ],
+              "query": []
+            },
+            "description": "Validate a dub request (no downloads, no AI calls)\n\nOpenCreator `--dry-run` pattern: command-shape + capability matrix only.\nAlways 200 \u2014 failures come back as check rows, never exceptions.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "auth",
+      "item": [
+        {
+          "name": "Create an account",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "register"
+              ],
+              "query": []
+            },
+            "description": "Create an account",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Current user profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "me"
+              ],
+              "query": []
+            },
+            "description": "Current user profile"
+          }
+        },
+        {
+          "name": "Exchange credentials for tokens",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ],
+              "query": []
+            },
+            "description": "Exchange credentials for tokens",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Rotate refresh token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "refresh"
+              ],
+              "query": []
+            },
+            "description": "Rotate refresh token",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "autopilot",
+      "item": [
+        {
+          "name": "Current autopilot state",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/autopilot/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "autopilot",
+                "status"
+              ],
+              "query": []
+            },
+            "description": "Current autopilot state"
+          }
+        },
+        {
+          "name": "Pause before the next stage",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/autopilot/pause",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "autopilot",
+                "pause"
+              ],
+              "query": []
+            },
+            "description": "Pause before the next stage"
+          }
+        },
+        {
+          "name": "Resume a paused run",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/autopilot/resume",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "autopilot",
+                "resume"
+              ],
+              "query": []
+            },
+            "description": "Resume a paused run"
+          }
+        },
+        {
+          "name": "Run exactly one FIND\u2192\u2026\u2192LEARN cycle",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/autopilot/run-one-cycle",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "autopilot",
+                "run-one-cycle"
+              ],
+              "query": []
+            },
+            "description": "Run exactly one FIND\u2192\u2026\u2192LEARN cycle"
+          }
+        },
+        {
+          "name": "Start the autonomous loop",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/autopilot/start",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "autopilot",
+                "start"
+              ],
+              "query": []
+            },
+            "description": "Start the autonomous loop",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Stop safely (running steps finish)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/autopilot/stop",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "autopilot",
+                "stop"
+              ],
+              "query": []
+            },
+            "description": "Stop safely (running steps finish)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "calendar",
+      "item": [
+        {
+          "name": "Add Schedule",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/calendar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "calendar"
+              ],
+              "query": []
+            },
+            "description": "Add Schedule",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Auto-fill the calendar at best hours within caps",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/calendar/plan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "calendar",
+                "plan"
+              ],
+              "query": []
+            },
+            "description": "Auto-fill the calendar at best hours within caps\n\nRun the Scheduler planner: APPROVED + render-ready content fills the\ncoming days at best measured hours. Idempotent \u2014 re-running changes nothing.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Best publish hours from measured history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/calendar/best-times",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "calendar",
+                "best-times"
+              ],
+              "query": []
+            },
+            "description": "Best publish hours from measured history\n\nHour-of-day (workspace timezone-naive UTC) ranked by average views.\n\nFalls back to generic evening hours when fewer than 3 measured posts exist."
+          }
+        },
+        {
+          "name": "Cancel Schedule",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/calendar/:entry_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "calendar",
+                ":entry_id"
+              ],
+              "query": []
+            },
+            "description": "Cancel Schedule"
+          }
+        },
+        {
+          "name": "List Schedule",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/calendar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "calendar"
+              ],
+              "query": []
+            },
+            "description": "List Schedule"
+          }
+        },
+        {
+          "name": "Reschedule",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/calendar/:entry_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "calendar",
+                ":entry_id"
+              ],
+              "query": []
+            },
+            "description": "Reschedule",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "campaigns",
+      "item": [
+        {
+          "name": "Campaign Detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/campaigns/:campaign_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "campaigns",
+                ":campaign_id"
+              ],
+              "query": []
+            },
+            "description": "Campaign Detail"
+          }
+        },
+        {
+          "name": "Create Campaign",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/campaigns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "campaigns"
+              ],
+              "query": []
+            },
+            "description": "Create Campaign",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List Campaigns",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/campaigns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "campaigns"
+              ],
+              "query": []
+            },
+            "description": "List Campaigns"
+          }
+        }
+      ]
+    },
+    {
+      "name": "connections",
+      "item": [
+        {
+          "name": "Images Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/connections/images",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "connections",
+                "images"
+              ],
+              "query": []
+            },
+            "description": "Images Status"
+          }
+        },
+        {
+          "name": "Images Test",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/connections/images/test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "connections",
+                "images",
+                "test"
+              ],
+              "query": []
+            },
+            "description": "Images Test\n\nGenerate one small test image; returns raw image bytes.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List Connections",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/connections",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "connections"
+              ],
+              "query": []
+            },
+            "description": "List Connections"
+          }
+        },
+        {
+          "name": "Set Connection",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/connections",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "connections"
+              ],
+              "query": []
+            },
+            "description": "Set Connection",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Test Llm",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/connections/test-llm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "connections",
+                "test-llm"
+              ],
+              "query": []
+            },
+            "description": "Test Llm\n\nLive reachability + auth check of the effective LLM configuration."
+          }
+        },
+        {
+          "name": "Test Publishing",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/connections/test-publishing",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "connections",
+                "test-publishing"
+              ],
+              "query": []
+            },
+            "description": "Test Publishing\n\nLive validation of the real publishing paths.\n\nChecks: (1) Upload-Post relay credentials \u2014 validated against the provider's\n/api/uploadposts/me endpoint; (2) connected platform accounts with tokens.\nNever raises: every failure is reported as structured status."
+          }
+        },
+        {
+          "name": "Tts Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/connections/tts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "connections",
+                "tts"
+              ],
+              "query": [
+                {
+                  "key": "language",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Tts Status\n\nEffective TTS provider, health, and available voices."
+          }
+        },
+        {
+          "name": "Tts Test",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/connections/tts/test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "connections",
+                "tts",
+                "test"
+              ],
+              "query": []
+            },
+            "description": "Tts Test\n\nSynthesize a short narration sample; returns raw audio bytes.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Update Video Engine",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/connections/video-engine",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "connections",
+                "video-engine"
+              ],
+              "query": []
+            },
+            "description": "Update Video Engine",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Video Engine Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/connections/video-engine",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "connections",
+                "video-engine"
+              ],
+              "query": []
+            },
+            "description": "Video Engine Status\n\nEffective engine config, live health, version, capabilities."
+          }
+        }
+      ]
+    },
+    {
+      "name": "content",
+      "item": [
+        {
+          "name": "Chronological event history for this item",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/content/:content_id/timeline",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "content",
+                ":content_id",
+                "timeline"
+              ],
+              "query": []
+            },
+            "description": "Chronological event history for this item"
+          }
+        },
+        {
+          "name": "Derive a child asset (short/variant/cut/translation)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/content/:content_id/derive",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "content",
+                ":content_id",
+                "derive"
+              ],
+              "query": []
+            },
+            "description": "Derive a child asset (short/variant/cut/translation)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Estimate render cost for a would-be video",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/content/estimate-cost",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "content",
+                "estimate-cost"
+              ],
+              "query": []
+            },
+            "description": "Estimate render cost for a would-be video\n\nEngine-aware flat estimate (MPT exposes no monetary cost, so the\nestimate is the configured per-render value times video_count). Safe on\nany engine: unreachable engines still return the configuration estimate.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Evidence bundle: WHAT/WHY/render/publish trail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/content/:content_id/audit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "content",
+                ":content_id",
+                "audit"
+              ],
+              "query": []
+            },
+            "description": "Evidence bundle: WHAT/WHY/render/publish trail\n\nOne-click transparency export: strategy decision, research claims,\nvariants, QC checks, compliance findings, publishing jobs and posts."
+          }
+        },
+        {
+          "name": "Full content item detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/content/:content_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "content",
+                ":content_id"
+              ],
+              "query": []
+            },
+            "description": "Full content item detail"
+          }
+        },
+        {
+          "name": "Human override actions",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/content/:content_id/actions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "content",
+                ":content_id",
+                "actions"
+              ],
+              "query": []
+            },
+            "description": "Human override actions",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Parent/child lineage for a content item",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/content/:content_id/lineage",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "content",
+                ":content_id",
+                "lineage"
+              ],
+              "query": []
+            },
+            "description": "Parent/child lineage for a content item"
+          }
+        },
+        {
+          "name": "Repurpose a long-form URL into short-form clip drafts",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/content/repurpose",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "content",
+                "repurpose"
+              ],
+              "query": []
+            },
+            "description": "Repurpose a long-form URL into short-form clip drafts\n\nDownload + cut a source video into short segments, each becoming a\nContentItem draft in the library. Returns the list of created items.\n\nFalls back to honest error responses when yt-dlp/ffmpeg are unavailable\nrather than silently producing nothing.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Search/filter the content library",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/content",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "content"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "campaign_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "offset",
+                  "value": "0",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Search/filter the content library"
+          }
+        },
+        {
+          "name": "Switch selected variant (pre-render only)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/content/:content_id/variants/:variant_id/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "content",
+                ":content_id",
+                "variants",
+                ":variant_id",
+                "select"
+              ],
+              "query": []
+            },
+            "description": "Switch selected variant (pre-render only)\n\nManually pick a different script variant for hook A/B decisions.\n\nAllowed only in SCRIPT_READY with no rendered video yet \u2014 switching after\na render would orphan the artifact (use retry/regenerate instead)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "costs",
+      "item": [
+        {
+          "name": "Cost Intelligence",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/costs/intelligence",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "costs",
+                "intelligence"
+              ],
+              "query": []
+            },
+            "description": "Cost Intelligence\n\nPer-cycle / per-video / per-platform / per-agent / efficiency economics."
+          }
+        },
+        {
+          "name": "Cost Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/costs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "costs"
+              ],
+              "query": []
+            },
+            "description": "Cost Summary"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cycles",
+      "item": [
+        {
+          "name": "Full cycle execution detail: stage jobs + agent runs with step traces",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/cycles/:cycle_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "cycles",
+                ":cycle_id"
+              ],
+              "query": []
+            },
+            "description": "Full cycle execution detail: stage jobs + agent runs with step traces"
+          }
+        },
+        {
+          "name": "List recent cycles",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/cycles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "cycles"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List recent cycles"
+          }
+        }
+      ]
+    },
+    {
+      "name": "decision",
+      "item": [
+        {
+          "name": "Next Best Action Preview",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/decision",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "decision"
+              ],
+              "query": []
+            },
+            "description": "Next Best Action Preview\n\nLive NEXT BEST ACTION with the complete WHY breakdown."
+          }
+        }
+      ]
+    },
+    {
+      "name": "intelligence",
+      "item": [
+        {
+          "name": "Cancel Browser Run",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/intelligence/browser/runs/:run_id/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "intelligence",
+                "browser",
+                "runs",
+                ":run_id",
+                "cancel"
+              ],
+              "query": []
+            },
+            "description": "Cancel Browser Run"
+          }
+        },
+        {
+          "name": "Create Browser Run",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/intelligence/browser/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "intelligence",
+                "browser",
+                "runs"
+              ],
+              "query": []
+            },
+            "description": "Create Browser Run",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Decision Log",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/intelligence/decisions/log",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "intelligence",
+                "decisions",
+                "log"
+              ],
+              "query": [
+                {
+                  "key": "kind",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Decision Log"
+          }
+        },
+        {
+          "name": "Decision Shadow Report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/intelligence/decisions/shadow-report",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "intelligence",
+                "decisions",
+                "shadow-report"
+              ],
+              "query": [
+                {
+                  "key": "kind",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Decision Shadow Report"
+          }
+        },
+        {
+          "name": "Get Browser Run",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/intelligence/browser/runs/:run_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "intelligence",
+                "browser",
+                "runs",
+                ":run_id"
+              ],
+              "query": []
+            },
+            "description": "Get Browser Run"
+          }
+        },
+        {
+          "name": "Get Verification Ledger",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/intelligence/verification/ledger",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "intelligence",
+                "verification",
+                "ledger"
+              ],
+              "query": [
+                {
+                  "key": "kind",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get Verification Ledger"
+          }
+        },
+        {
+          "name": "Recall Context",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/intelligence/context/recall/:ref_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "intelligence",
+                "context",
+                "recall",
+                ":ref_id"
+              ],
+              "query": []
+            },
+            "description": "Recall Context"
+          }
+        },
+        {
+          "name": "Route Task",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/intelligence/routing/route",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "intelligence",
+                "routing",
+                "route"
+              ],
+              "query": []
+            },
+            "description": "Route Task",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Routing Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/intelligence/routing/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "intelligence",
+                "routing",
+                "health"
+              ],
+              "query": []
+            },
+            "description": "Routing Health"
+          }
+        },
+        {
+          "name": "Routing Log",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/intelligence/routing/log",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "intelligence",
+                "routing",
+                "log"
+              ],
+              "query": []
+            },
+            "description": "Routing Log"
+          }
+        },
+        {
+          "name": "Run Budget",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/intelligence/context/budget",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "intelligence",
+                "context",
+                "budget"
+              ],
+              "query": []
+            },
+            "description": "Run Budget",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Run Decision",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/intelligence/decisions/:kind",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "intelligence",
+                "decisions",
+                ":kind"
+              ],
+              "query": []
+            },
+            "description": "Run Decision",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Run Verification Check",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/intelligence/verification/check",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "intelligence",
+                "verification",
+                "check"
+              ],
+              "query": []
+            },
+            "description": "Run Verification Check",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "jobs",
+      "item": [
+        {
+          "name": "Cancel Job",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/jobs/:job_id/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "jobs",
+                ":job_id",
+                "cancel"
+              ],
+              "query": []
+            },
+            "description": "Cancel Job"
+          }
+        },
+        {
+          "name": "List Jobs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/jobs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "jobs"
+              ],
+              "query": [
+                {
+                  "key": "status_filter",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "100",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List Jobs"
+          }
+        }
+      ]
+    },
+    {
+      "name": "live",
+      "item": [
+        {
+          "name": "Agent pipeline as a live DAG with per-node stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/live/agents/graph",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "live",
+                "agents",
+                "graph"
+              ],
+              "query": []
+            },
+            "description": "Agent pipeline as a live DAG with per-node stats\n\nReturns the agent pipeline in execution order with live state.\n\nThe frontend renders this as a horizontal DAG; each node shows live status\n(busy/idle/disabled/error), run counts, failure rate and average duration."
+          }
+        },
+        {
+          "name": "Per-minute metric buckets for the last 60 minutes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/live/metrics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "live",
+                "metrics"
+              ],
+              "query": []
+            },
+            "description": "Per-minute metric buckets for the last 60 minutes\n\nBucket agent runs, failures, events and cost into 1-minute slots.\n\nEmpty buckets are returned as zeros so the chart can render a continuous\naxis (60 points) without client-side gap-filling."
+          }
+        }
+      ]
+    },
+    {
+      "name": "logs",
+      "item": [
+        {
+          "name": "Query Logs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/logs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "logs"
+              ],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "level",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "100",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Query Logs"
+          }
+        }
+      ]
+    },
+    {
+      "name": "long-form",
+      "item": [
+        {
+          "name": "Advance one stage (MANUAL/REVIEW resume)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/long-form/projects/:project_id/advance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "long-form",
+                "projects",
+                ":project_id",
+                "advance"
+              ],
+              "query": []
+            },
+            "description": "Advance one stage (MANUAL/REVIEW resume)"
+          }
+        },
+        {
+          "name": "Cancel a running project",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/long-form/projects/:project_id/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "long-form",
+                "projects",
+                ":project_id",
+                "cancel"
+              ],
+              "query": []
+            },
+            "description": "Cancel a running project"
+          }
+        },
+        {
+          "name": "Cost estimate before execution",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/long-form/projects/:project_id/estimate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "long-form",
+                "projects",
+                ":project_id",
+                "estimate"
+              ],
+              "query": []
+            },
+            "description": "Cost estimate before execution"
+          }
+        },
+        {
+          "name": "Create a long-form project",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/long-form/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "long-form",
+                "projects"
+              ],
+              "query": []
+            },
+            "description": "Create a long-form project",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List long-form projects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/long-form/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "long-form",
+                "projects"
+              ],
+              "query": []
+            },
+            "description": "List long-form projects"
+          }
+        },
+        {
+          "name": "One repair pass for missing media",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/long-form/projects/:project_id/repair",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "long-form",
+                "projects",
+                ":project_id",
+                "repair"
+              ],
+              "query": []
+            },
+            "description": "One repair pass for missing media\n\nBounded repair: missing VISUAL clips get graphic fallbacks (recorded);\nmissing narration fails loudly. Single pass \u2014 never a loop."
+          }
+        },
+        {
+          "name": "Project detail + artifacts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/long-form/projects/:project_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "long-form",
+                "projects",
+                ":project_id"
+              ],
+              "query": []
+            },
+            "description": "Project detail + artifacts"
+          }
+        },
+        {
+          "name": "Rebuild timeline (manual-edit protected)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/long-form/projects/:project_id/regenerate-timeline",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "long-form",
+                "projects",
+                ":project_id",
+                "regenerate-timeline"
+              ],
+              "query": []
+            },
+            "description": "Rebuild timeline (manual-edit protected)\n\nRebuild the timeline from pipeline artifacts. When the timeline was\nmanually edited after generation (version advanced), requires explicit\nconfirm=true so human work is never silently destroyed.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Stage progress + cost",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/long-form/projects/:project_id/progress",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "long-form",
+                "projects",
+                ":project_id",
+                "progress"
+              ],
+              "query": []
+            },
+            "description": "Stage progress + cost"
+          }
+        },
+        {
+          "name": "Start the durable stage chain",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/long-form/projects/:project_id/generate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "long-form",
+                "projects",
+                ":project_id",
+                "generate"
+              ],
+              "query": []
+            },
+            "description": "Start the durable stage chain"
+          }
+        }
+      ]
+    },
+    {
+      "name": "memory",
+      "item": [
+        {
+          "name": "Delete a memory record",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/memory/:memory_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "memory",
+                ":memory_id"
+              ],
+              "query": []
+            },
+            "description": "Delete a memory record"
+          }
+        },
+        {
+          "name": "List memories (targeted, capped)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/memory",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "memory"
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "scope",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "q",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "semantic",
+                  "value": "False",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List memories (targeted, capped)"
+          }
+        },
+        {
+          "name": "Store a memory record",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/memory/store",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "memory",
+                "store"
+              ],
+              "query": []
+            },
+            "description": "Store a memory record",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Targeted retrieval (filters required by design)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/memory/retrieve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "memory",
+                "retrieve"
+              ],
+              "query": []
+            },
+            "description": "Targeted retrieval (filters required by design)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "opportunities",
+      "item": [
+        {
+          "name": "List opportunities with explainable scores",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/opportunities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "opportunities"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "offset",
+                  "value": "0",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List opportunities with explainable scores"
+          }
+        },
+        {
+          "name": "Manually select an opportunity for production",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/opportunities/:opportunity_id/select",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "opportunities",
+                ":opportunity_id",
+                "select"
+              ],
+              "query": []
+            },
+            "description": "Manually select an opportunity for production"
+          }
+        },
+        {
+          "name": "Skip an opportunity",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/opportunities/:opportunity_id/skip",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "opportunities",
+                ":opportunity_id",
+                "skip"
+              ],
+              "query": []
+            },
+            "description": "Skip an opportunity",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "public",
+      "item": [
+        {
+          "name": "Public Media",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/media/:token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "public",
+                "media",
+                ":token"
+              ],
+              "query": []
+            },
+            "description": "Public Media\n\nServe one workspace video/image file behind a short-lived signed token.\n\nUsed to build publicly reachable video_url links for PULL-style platform\nAPIs (Instagram Graph) without requiring S3/CDN."
+          }
+        }
+      ]
+    },
+    {
+      "name": "publishing",
+      "item": [
+        {
+          "name": "Connect an account (tokens stored encrypted)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/publishing/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "publishing",
+                "accounts"
+              ],
+              "query": []
+            },
+            "description": "Connect an account (tokens stored encrypted)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Disconnect Account",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/publishing/accounts/:account_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "publishing",
+                "accounts",
+                ":account_id"
+              ],
+              "query": []
+            },
+            "description": "Disconnect Account"
+          }
+        },
+        {
+          "name": "List Accounts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/publishing/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "publishing",
+                "accounts"
+              ],
+              "query": []
+            },
+            "description": "List Accounts"
+          }
+        },
+        {
+          "name": "List Published Posts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/publishing/posts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "publishing",
+                "posts"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List Published Posts"
+          }
+        },
+        {
+          "name": "List Publishing Jobs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/publishing/jobs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "publishing",
+                "jobs"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List Publishing Jobs"
+          }
+        },
+        {
+          "name": "Oauth Facebook Callback",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/publishing/oauth/facebook/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "publishing",
+                "oauth",
+                "facebook",
+                "callback"
+              ],
+              "query": [
+                {
+                  "key": "code",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "state",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "error",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Oauth Facebook Callback"
+          }
+        },
+        {
+          "name": "Oauth Facebook Start",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/publishing/oauth/facebook/start",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "publishing",
+                "oauth",
+                "facebook",
+                "start"
+              ],
+              "query": []
+            },
+            "description": "Oauth Facebook Start"
+          }
+        },
+        {
+          "name": "Oauth Instagram Callback",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/publishing/oauth/instagram/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "publishing",
+                "oauth",
+                "instagram",
+                "callback"
+              ],
+              "query": [
+                {
+                  "key": "code",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "state",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "error",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Oauth Instagram Callback"
+          }
+        },
+        {
+          "name": "Oauth Instagram Start",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/publishing/oauth/instagram/start",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "publishing",
+                "oauth",
+                "instagram",
+                "start"
+              ],
+              "query": []
+            },
+            "description": "Oauth Instagram Start"
+          }
+        },
+        {
+          "name": "Oauth Tiktok Callback",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/publishing/oauth/tiktok/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "publishing",
+                "oauth",
+                "tiktok",
+                "callback"
+              ],
+              "query": [
+                {
+                  "key": "code",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "state",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "error",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Oauth Tiktok Callback"
+          }
+        },
+        {
+          "name": "Oauth Tiktok Start",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/publishing/oauth/tiktok/start",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "publishing",
+                "oauth",
+                "tiktok",
+                "start"
+              ],
+              "query": []
+            },
+            "description": "Oauth Tiktok Start"
+          }
+        },
+        {
+          "name": "Oauth Youtube Callback",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/publishing/oauth/youtube/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "publishing",
+                "oauth",
+                "youtube",
+                "callback"
+              ],
+              "query": [
+                {
+                  "key": "code",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "state",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "error",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Oauth Youtube Callback\n\nBrowser-facing callback. Returns a tiny HTML page that closes the popup."
+          }
+        },
+        {
+          "name": "Oauth Youtube Start",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/publishing/oauth/youtube/start",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "publishing",
+                "oauth",
+                "youtube",
+                "start"
+              ],
+              "query": []
+            },
+            "description": "Oauth Youtube Start"
+          }
+        }
+      ]
+    },
+    {
+      "name": "safety",
+      "item": [
+        {
+          "name": "Get Safety",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/safety",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "safety"
+              ],
+              "query": []
+            },
+            "description": "Get Safety"
+          }
+        },
+        {
+          "name": "Put Safety",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/safety",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "safety"
+              ],
+              "query": []
+            },
+            "description": "Put Safety",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "system",
+      "item": [
+        {
+          "name": "Dangling media/publish rows (counts only)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/orphans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "system",
+                "orphans"
+              ],
+              "query": []
+            },
+            "description": "Dangling media/publish rows (counts only)\n\nScheduled-sweep support: counts of videos/variants/jobs/posts whose\nparent row is gone (no FK cascade audit in the schema). Counts only \u2014\nno content, safe to poll. Fail-closed: errors yield zeros + detail."
+          }
+        },
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "system",
+                "health"
+              ],
+              "query": []
+            },
+            "description": "Health"
+          }
+        },
+        {
+          "name": "One-call Doctor: readiness + health + remediation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/doctor",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "system",
+                "doctor"
+              ],
+              "query": []
+            },
+            "description": "One-call Doctor: readiness + health + remediation\n\nAggregated Doctor parity check: every probe with latency + remediation.\n\nFail-closed: never throws, always 200 with per-probe ok/detail/remediation.\nPowers SystemHealth UI + Setup checklist + future `npm run doctor` equivalent."
+          }
+        },
+        {
+          "name": "System Mode",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/mode",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "system",
+                "mode"
+              ],
+              "query": []
+            },
+            "description": "System Mode\n\nDeployment mode + mock flags (powers the frontend REAL/MOCK badge)."
+          }
+        },
+        {
+          "name": "System Readiness",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/readiness",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "system",
+                "readiness"
+              ],
+              "query": []
+            },
+            "description": "System Readiness\n\nReal production readiness: probes LLM auth, video engine, ffmpeg,\nstorage, trends and publishing configuration. No fake providers."
+          }
+        }
+      ]
+    },
+    {
+      "name": "telegram",
+      "item": [
+        {
+          "name": "Enable/disable a chat link",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/telegram/links/:link_id/toggle",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "telegram",
+                "links",
+                ":link_id",
+                "toggle"
+              ],
+              "query": []
+            },
+            "description": "Enable/disable a chat link"
+          }
+        },
+        {
+          "name": "Generate a one-time pairing code (15 min TTL)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/telegram/pairing-code",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "telegram",
+                "pairing-code"
+              ],
+              "query": []
+            },
+            "description": "Generate a one-time pairing code (15 min TTL)"
+          }
+        },
+        {
+          "name": "Send a test message to all linked chats",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/telegram/test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "telegram",
+                "test"
+              ],
+              "query": []
+            },
+            "description": "Send a test message to all linked chats",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Telegram integration status for this workspace",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/telegram/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "telegram",
+                "status"
+              ],
+              "query": []
+            },
+            "description": "Telegram integration status for this workspace"
+          }
+        },
+        {
+          "name": "Unlink a chat",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/telegram/links/:link_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "telegram",
+                "links",
+                ":link_id"
+              ],
+              "query": []
+            },
+            "description": "Unlink a chat"
+          }
+        }
+      ]
+    },
+    {
+      "name": "timelines",
+      "item": [
+        {
+          "name": "Apply typed edit operations (stale-safe)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/timelines/:timeline_id/operations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "timelines",
+                ":timeline_id",
+                "operations"
+              ],
+              "query": []
+            },
+            "description": "Apply typed edit operations (stale-safe)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Create an empty timeline",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/timelines",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "timelines"
+              ],
+              "query": []
+            },
+            "description": "Create an empty timeline",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Download validated .otio",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/timelines/:timeline_id/export/otio",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "timelines",
+                ":timeline_id",
+                "export",
+                "otio"
+              ],
+              "query": []
+            },
+            "description": "Download validated .otio"
+          }
+        },
+        {
+          "name": "Final Cut Pro XML (verified only)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/timelines/:timeline_id/export/fcpxml",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "timelines",
+                ":timeline_id",
+                "export",
+                "fcpxml"
+              ],
+              "query": []
+            },
+            "description": "Final Cut Pro XML (verified only)"
+          }
+        },
+        {
+          "name": "Import an existing render as a timeline",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/timelines/from-video",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "timelines",
+                "from-video"
+              ],
+              "query": []
+            },
+            "description": "Import an existing render as a timeline",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List workspace timelines",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/timelines",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "timelines"
+              ],
+              "query": [
+                {
+                  "key": "content_item_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List workspace timelines"
+          }
+        },
+        {
+          "name": "Load a timeline (editor load)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/timelines/:timeline_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "timelines",
+                ":timeline_id"
+              ],
+              "query": []
+            },
+            "description": "Load a timeline (editor load)"
+          }
+        },
+        {
+          "name": "OTIO-compatible export",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/timelines/:timeline_id/otio",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "timelines",
+                ":timeline_id",
+                "otio"
+              ],
+              "query": []
+            },
+            "description": "OTIO-compatible export"
+          }
+        },
+        {
+          "name": "Render manifest for a timeline",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/timelines/:timeline_id/manifest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "timelines",
+                ":timeline_id",
+                "manifest"
+              ],
+              "query": []
+            },
+            "description": "Render manifest for a timeline"
+          }
+        },
+        {
+          "name": "Render the edited timeline to MP4",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/timelines/:timeline_id/render",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "timelines",
+                ":timeline_id",
+                "render"
+              ],
+              "query": []
+            },
+            "description": "Render the edited timeline to MP4",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Replace all scenes for a timeline",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/timelines/:timeline_id/scenes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "timelines",
+                ":timeline_id",
+                "scenes"
+              ],
+              "query": []
+            },
+            "description": "Replace all scenes for a timeline",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Restore a version onto a new tip (append-only)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/timelines/:timeline_id/versions/:version_id/restore",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "timelines",
+                ":timeline_id",
+                "versions",
+                ":version_id",
+                "restore"
+              ],
+              "query": []
+            },
+            "description": "Restore a version onto a new tip (append-only)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Save a version (undo history)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/timelines/:timeline_id/versions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "timelines",
+                ":timeline_id",
+                "versions"
+              ],
+              "query": []
+            },
+            "description": "Save a version (undo history)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Save timeline tracks (editor save)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/timelines/:timeline_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "timelines",
+                ":timeline_id"
+              ],
+              "query": []
+            },
+            "description": "Save timeline tracks (editor save)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Scenes for a timeline",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/timelines/:timeline_id/scenes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "timelines",
+                ":timeline_id",
+                "scenes"
+              ],
+              "query": []
+            },
+            "description": "Scenes for a timeline"
+          }
+        },
+        {
+          "name": "Version history for a timeline",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/timelines/:timeline_id/versions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "timelines",
+                ":timeline_id",
+                "versions"
+              ],
+              "query": []
+            },
+            "description": "Version history for a timeline"
+          }
+        }
+      ]
+    },
+    {
+      "name": "video-campaigns",
+      "item": [
+        {
+          "name": "Vc Aggregate",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/campaigns/:campaign_id/aggregate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "campaigns",
+                ":campaign_id",
+                "aggregate"
+              ],
+              "query": []
+            },
+            "description": "Vc Aggregate"
+          }
+        },
+        {
+          "name": "Vc Cancel",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/campaigns/:campaign_id/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "campaigns",
+                ":campaign_id",
+                "cancel"
+              ],
+              "query": []
+            },
+            "description": "Vc Cancel"
+          }
+        },
+        {
+          "name": "Vc Content",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/campaigns/:campaign_id/content",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "campaigns",
+                ":campaign_id",
+                "content"
+              ],
+              "query": []
+            },
+            "description": "Vc Content"
+          }
+        },
+        {
+          "name": "Vc Create From Master",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/campaigns/from-master",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "campaigns",
+                "from-master"
+              ],
+              "query": []
+            },
+            "description": "Vc Create From Master",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Vc Derive",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/campaigns/:campaign_id/derive",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "campaigns",
+                ":campaign_id",
+                "derive"
+              ],
+              "query": []
+            },
+            "description": "Vc Derive"
+          }
+        },
+        {
+          "name": "Vc Generate More",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/campaigns/:campaign_id/generate-more",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "campaigns",
+                ":campaign_id",
+                "generate-more"
+              ],
+              "query": []
+            },
+            "description": "Vc Generate More",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Vc Progress",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/campaigns/:campaign_id/progress",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "campaigns",
+                ":campaign_id",
+                "progress"
+              ],
+              "query": []
+            },
+            "description": "Vc Progress"
+          }
+        },
+        {
+          "name": "Vc Publish",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/campaigns/:campaign_id/publish",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "campaigns",
+                ":campaign_id",
+                "publish"
+              ],
+              "query": []
+            },
+            "description": "Vc Publish",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Vc Qc",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/campaigns/:campaign_id/qc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "campaigns",
+                ":campaign_id",
+                "qc"
+              ],
+              "query": []
+            },
+            "description": "Vc Qc"
+          }
+        },
+        {
+          "name": "Vc Regenerate Platform Variant",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/content/:content_id/platform-variants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "content",
+                ":content_id",
+                "platform-variants"
+              ],
+              "query": []
+            },
+            "description": "Vc Regenerate Platform Variant",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Vc Regenerate Short",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/content/:content_id/regenerate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "content",
+                ":content_id",
+                "regenerate"
+              ],
+              "query": []
+            },
+            "description": "Vc Regenerate Short"
+          }
+        },
+        {
+          "name": "Vc Schedule",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/campaigns/:campaign_id/schedule",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "campaigns",
+                ":campaign_id",
+                "schedule"
+              ],
+              "query": []
+            },
+            "description": "Vc Schedule",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "videos",
+      "item": [
+        {
+          "name": "Generate AI thumbnail candidates via image provider",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/videos/:video_id/ai-covers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "videos",
+                ":video_id",
+                "ai-covers"
+              ],
+              "query": []
+            },
+            "description": "Generate AI thumbnail candidates via image provider",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Generate cover candidates for side-by-side compare",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/videos/:video_id/covers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "videos",
+                ":video_id",
+                "covers"
+              ],
+              "query": []
+            },
+            "description": "Generate cover candidates for side-by-side compare",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get one video incl. quality checks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/videos/:video_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "videos",
+                ":video_id"
+              ],
+              "query": []
+            },
+            "description": "Get one video incl. quality checks"
+          }
+        },
+        {
+          "name": "List rendered videos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/videos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "videos"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List rendered videos"
+          }
+        },
+        {
+          "name": "Poster frame for this video",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/videos/:video_id/thumbnail",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "videos",
+                ":video_id",
+                "thumbnail"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Poster frame for this video"
+          }
+        },
+        {
+          "name": "Regenerate poster frame at a timestamp",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/videos/:video_id/thumbnail",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "videos",
+                ":video_id",
+                "thumbnail"
+              ],
+              "query": []
+            },
+            "description": "Regenerate poster frame at a timestamp",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Serve one AI cover candidate",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/videos/:video_id/ai-covers/:index/file",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "videos",
+                ":video_id",
+                "ai-covers",
+                ":index",
+                "file"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Serve one AI cover candidate"
+          }
+        },
+        {
+          "name": "Serve one cover candidate",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/videos/:video_id/covers/:index/file",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "videos",
+                ":video_id",
+                "covers",
+                ":index",
+                "file"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Serve one cover candidate"
+          }
+        },
+        {
+          "name": "Stream the rendered file (mock artifacts served as JSON)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/videos/:video_id/file",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "videos",
+                ":video_id",
+                "file"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Stream the rendered file (mock artifacts served as JSON)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "webhooks",
+      "item": [
+        {
+          "name": "Delete a webhook subscription",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/webhooks/:sub_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "webhooks",
+                ":sub_id"
+              ],
+              "query": []
+            },
+            "description": "Delete a webhook subscription"
+          }
+        },
+        {
+          "name": "List webhook subscriptions (never secrets)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/webhooks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "webhooks"
+              ],
+              "query": []
+            },
+            "description": "List webhook subscriptions (never secrets)"
+          }
+        },
+        {
+          "name": "Send a signed ping to verify URL + secret",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/webhooks/:sub_id/test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "webhooks",
+                ":sub_id",
+                "test"
+              ],
+              "query": []
+            },
+            "description": "Send a signed ping to verify URL + secret"
+          }
+        },
+        {
+          "name": "Subscribe a URL to workspace events (secret shown once)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/webhooks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "webhooks"
+              ],
+              "query": []
+            },
+            "description": "Subscribe a URL to workspace events (secret shown once)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "workspaces",
+      "item": [
+        {
+          "name": "Add Trend Source",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/trend-sources",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "trend-sources"
+              ],
+              "query": []
+            },
+            "description": "Add Trend Source",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Create a workspace",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces"
+              ],
+              "query": []
+            },
+            "description": "Create a workspace",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete Trend Source",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/trend-sources/:source_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "trend-sources",
+                ":source_id"
+              ],
+              "query": []
+            },
+            "description": "Delete Trend Source"
+          }
+        },
+        {
+          "name": "Get workspace",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}"
+              ],
+              "query": []
+            },
+            "description": "Get workspace"
+          }
+        },
+        {
+          "name": "Get workspace settings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "settings"
+              ],
+              "query": []
+            },
+            "description": "Get workspace settings"
+          }
+        },
+        {
+          "name": "List Trend Sources",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/trend-sources",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "trend-sources"
+              ],
+              "query": []
+            },
+            "description": "List Trend Sources"
+          }
+        },
+        {
+          "name": "List my workspaces",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces"
+              ],
+              "query": []
+            },
+            "description": "List my workspaces"
+          }
+        },
+        {
+          "name": "List workspace members",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/members",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "members"
+              ],
+              "query": []
+            },
+            "description": "List workspace members"
+          }
+        },
+        {
+          "name": "Resolved white-label brand kit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/brand",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "brand"
+              ],
+              "query": []
+            },
+            "description": "Resolved white-label brand kit"
+          }
+        },
+        {
+          "name": "Serve the workspace logo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/brand/logo/file",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "brand",
+                "logo",
+                "file"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Serve the workspace logo\n\nBrowser-tag friendly (Authorization header or ?token=)."
+          }
+        },
+        {
+          "name": "Update workspace",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}"
+              ],
+              "query": []
+            },
+            "description": "Update workspace",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Update workspace settings (merged)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "settings"
+              ],
+              "query": []
+            },
+            "description": "Update workspace settings (merged)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Upload the workspace logo (PNG/JPG \u22642MB)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/brand/logo",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "brand",
+                "logo"
+              ],
+              "query": []
+            },
+            "description": "Upload the workspace logo (PNG/JPG \u22642MB)"
+          }
+        }
+      ]
+    }
+  ]
+}

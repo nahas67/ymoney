@@ -48,10 +48,14 @@ export default function Login({ onAuthed }: { onAuthed: () => void }) {
 
   return (
     <div className="min-h-screen grid place-items-center p-4" style={{ background: "var(--bg)" }}>
-      <Card className="w-full max-w-[400px]" style={{ padding: 28 }}>
+      <Card className="w-full max-w-[400px]" style={{ padding: 28, boxShadow: "var(--pop-shadow)" }}>
         <div className="flex items-center gap-2.5 mb-1">
-          <span className="grid place-items-center w-9 h-9 rounded-xl font-bold text-white text-[17px]" style={{ background: "var(--accent)" }}>¥</span>
-          <b className="text-[19px] tracking-tight">YMONEY</b>
+          <span className="grid place-items-center w-10 h-10 rounded-xl font-bold text-white text-[19px]"
+            style={{ background: "linear-gradient(135deg, var(--accent-bright), var(--accent-deep))", boxShadow: "0 0 24px -4px var(--accent-glow)" }}>¥</span>
+          <div>
+            <b className="text-[19px] tracking-tight">YMONEY</b>
+            <div className="text-[10.5px] font-medium" style={{ color: "var(--text-faint)" }}>autonomous studio</div>
+          </div>
         </div>
         <p className="text-[13px] mb-5" style={{ color: "var(--text-muted)" }}>Autonomous short-form content OS. One niche, every platform.</p>
         <div className="flex gap-1.5 mb-5">

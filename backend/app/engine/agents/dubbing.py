@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.engine.agents.base import AgentMeta, BaseAgent
+from app.providers.clips import get_repurposer
 from app.providers.dubbing import (
     DubError,
     assemble_dubbed,
@@ -21,7 +22,6 @@ from app.providers.dubbing import (
     to_bilingual,
     translate_segments,
 )
-from app.providers.clips import get_repurposer
 from app.services.storage import STORAGE_ROOT
 
 

@@ -65,6 +65,7 @@ def test_workspace_isolation(client):
     assert r.status_code == 403
 
 
+@pytest.mark.slow
 def test_full_api_cycle_with_mocks(client):
     token, ws_id, headers = _register(client)
     r = client.post(

@@ -169,13 +169,12 @@ def test_for_update_only_on_postgres():
 
 
 def test_engine_gpu_detection(monkeypatch):
-    from app.core import config as config_mod
-    from app.engine import autopilot as autopilot_mod
-    from app.providers.video_engine.base import VideoEngineRequestInvalid
-
     # NOTE: _engine_needs_gpu imports the factory lazily, so patch it there
     # (this also dodges the factory's process-global engine cache).
     import app.providers.video_engine.factory as factory_mod
+    from app.core import config as config_mod
+    from app.engine import autopilot as autopilot_mod
+    from app.providers.video_engine.base import VideoEngineRequestInvalid
 
     def boom(*a, **k):
         raise VideoEngineRequestInvalid("no engine")

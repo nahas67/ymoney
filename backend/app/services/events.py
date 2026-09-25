@@ -77,6 +77,18 @@ def record_event(
         telegram_service.on_event(workspace_id, kind, message, level)
     except Exception:  # pragma: no cover — telemetry must never break the pipeline
         pass
+
+    # Outbound webhooks (best-effort; delivery retries on the job queue)
+    try:
+        from app.services import webhooks as _webhooks
+
+        _webhooks.enqueue_for_event(
+            workspace_id, kind, payload.get("id", ""),
+            message=message, level=level, source=source,
+            data=data or {}, created_at=payload.get("created_at", ""),
+        )
+    except Exception:  # pragma: no cover
+        pass
     return payload
 
 

@@ -14,8 +14,10 @@ from app.providers.publishers.base import BasePublisher, PublishMetadata, Publis
 class MockPublisher(BasePublisher):
     platform = "mock"
 
-    def publish(self, video_path: str, meta: PublishMetadata, account: dict) -> PublishResult:
+    def publish(self, video_path: str = "", meta: PublishMetadata | None = None,
+                account: dict | None = None, **kwargs) -> PublishResult:
         time.sleep(0.05)  # simulate latency
+        _ = (video_path, meta, account, kwargs)
         post_id = f"mock-{int(time.time()*1000)}"
         return PublishResult(
             success=True,

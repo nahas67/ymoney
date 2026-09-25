@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { wsApi } from "../lib/api";
 import { useFetch } from "../hooks/hooks";
-import { Badge, Card, Field, PageHeader } from "../components/ui";
+import { Badge, Card, Field, PageHeader, toast } from "../components/ui";
 
 export function brandLogoSrc(): string {
   const ws = localStorage.getItem("ym_ws");
@@ -37,8 +37,10 @@ export default function Brand() {
       setMsg("Saved — reload to apply chrome.");
       brand.reload();
       window.dispatchEvent(new Event("ym-brand"));
+      toast("Brand kit saved", "success");
     } catch (e: any) {
       setMsg(e.message);
+      toast(e.message, "error", "Save failed");
     } finally {
       setBusy("");
     }
@@ -61,8 +63,10 @@ export default function Brand() {
       setMsg("Logo uploaded.");
       brand.reload();
       window.dispatchEvent(new Event("ym-brand"));
+      toast("Logo uploaded", "success");
     } catch (e: any) {
       setMsg(e.message);
+      toast(e.message, "error", "Upload failed");
     } finally {
       setBusy("");
     }

@@ -49,9 +49,17 @@ All errors: `{ "detail": string | [{msg, loc, type}] }`.
 ## Assets (`/workspaces/{id}/assets`)
 - `GET ""` — system-produced artifacts (videos table) with capabilities metadata.
   Uploads are reported as unsupported rather than faked.
+- `POST /repurpose/probe {url}` — pre-flight source quality (always 200, fail-open).
+- Templates: `GET /templates` (+`/{module}/{id}` detail) with attribution/source;
+  `POST /templates {template}` (admin) authors workspace customs (built-in ids
+  rejected — patch those via settings); `DELETE /templates/{module}/{id}`.
+- `POST /dub/dry-run` — validate a dub request (always 200, no downloads/AI).
 
 ## Videos (`/workspaces/{id}/videos`)
 - `GET /` · `GET /{video_id}` (incl. quality checks) · `GET /{video_id}/file`
+- `GET /{video_id}/thumbnail` · `POST /{video_id}/thumbnail {at_seconds|cover_index|ai_cover_index}` (poster pick)
+- `POST /{video_id}/covers {count,timestamps?}` + `GET /{video_id}/covers/{index}/file` (ffmpeg frame compare)
+- `POST /{video_id}/ai-covers {prompt?,count≤3,size?}` + `GET /{video_id}/ai-covers/{index}/file` (generative via image provider, fail-closed 503)
 
 ## Cycles & jobs
 - `GET /workspaces/{id}/cycles`
@@ -83,6 +91,26 @@ All errors: `{ "detail": string | [{msg, loc, type}] }`.
 
 ## System
 - `GET /system/health` — DB + video engine + LLM provider + per-publisher status, mock flags
+- `GET /system/readiness` — 11 blocking/non-blocking probes with latency + remediation (fail-closed)
+- `GET /system/doctor` — unified Doctor: readiness + `blocking_failed/attention_needed/remediations`
+- `GET /system/mode` — deployment mode + mock flags (REAL/MOCK badge)
+- `GET /system/orphans` — dangling media/publish row counts (fail-closed)
+
+## API keys (`/workspaces/{id}/api-keys`, third-party auth separate from JWT)
+- `POST "" {name, role}` (admin) — mints `ym_...`, plaintext shown **once**
+- `GET ""` — key metadata (prefix/role/revoked/last_used; never hashes)
+- `POST /{key_id}/revoke` (admin)
+- `GET /me` — key-only proof (`Bearer ym_...` or `X-API-Key`)
+
+## Webhooks (`/workspaces/{id}/webhooks`, signed event POSTs, queued retries)
+- `POST "" {url, events}` (admin) — subscribes; `https` required (http dev-only for localhost); secret `whsec_...` shown **once**
+- `GET ""` — subscriptions + event catalog (never secrets)
+- `DELETE /{sub_id}` (admin); `POST /{sub_id}/test` (admin) — signed ping
+- Delivery: `X-YM-Signature: sha256=<hmac>` over canonical JSON, `X-YM-Event`/`X-YM-Delivery`; 429/5xx retried ×5, 4xx terminal
+
+## Clients
+- Live spec: `GET /openapi.json` (Swagger UI at `/docs` when served)
+- Postman: `docs/ymoney-postman.json` (regenerate: `python scripts/gen_postman.py`; variables: `baseUrl`, `workspaceId`, `jwt`, `apiKey`)
 - `GET /workspaces/{id}/logs?category&level&search` (admin)
 - `GET /workspaces/{id}/costs` — 24h spend by category vs budgets
 - `GET /workspaces/{id}/costs/intelligence` — cost per cycle/video/publication/1k views,

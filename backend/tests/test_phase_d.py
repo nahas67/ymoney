@@ -48,6 +48,32 @@ def test_cycle_detail_not_found(client):
     assert r.status_code == 404
 
 
+def test_cycle_list_tolerates_missing_select_summary(client):
+    """Cycles without a select/opportunity summary must list with topic None,
+    not 500 (StopIteration). Found live on the Autopilot page."""
+    _tok, ws_id, headers = _register(client)
+
+    from app.db import session_scope
+    from app.models import AutopilotRun, Cycle
+
+    with session_scope() as s:
+        run = AutopilotRun(workspace_id=ws_id, mode="SINGLE_CYCLE", state="STOPPED")
+        s.add(run)
+        s.flush()
+        s.add(Cycle(workspace_id=ws_id, autopilot_run_id=run.id, number=1,
+                    stage="FIND", status="FAILED", summary_json={}))
+        s.add(Cycle(workspace_id=ws_id, autopilot_run_id=run.id, number=2,
+                    stage="LEARN", status="COMPLETED",
+                    summary_json={"select": {"opportunity": "money habits"}}))
+        s.flush()
+
+    r = client.get(f"/api/v1/workspaces/{ws_id}/cycles?limit=30", headers=headers)
+    assert r.status_code == 200, r.text
+    by_number = {c["number"]: c for c in r.json()["items"]}
+    assert by_number[1]["topic"] is None
+    assert by_number[2]["topic"] == "money habits"
+
+
 def test_cycle_detail_404_for_other_workspace(client):
     """No cross-workspace leakage: cycle ids from another workspace are 404."""
     _tok1, ws1, h1 = _register(client)
@@ -183,6 +209,7 @@ def test_breakdowns_grouping_logic():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_publishing_job_preregistration(client):
     """After a cycle's UPLOAD stage, a QUEUED/PUBLISHED PublishingJob row must
     exist per (video, platform) — created before the publish call, and never

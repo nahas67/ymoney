@@ -10,10 +10,10 @@ import re
 import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import UTC
 
 import httpx
 from loguru import logger
-from datetime import UTC
 
 
 @dataclass
@@ -148,7 +148,7 @@ class RedditTrendSource(BaseTrendSource):
             self._last_call = self._time()
             resp.raise_for_status()
             data = resp.json()
-            children = data.get("data", {}).get("children", [])
+            children = (data.get("data") or {}).get("children", [])
             out: list[TrendCandidate] = []
             for ch in children:
                 d = ch.get("data", {})
@@ -396,7 +396,7 @@ def _parse_pubdate(value: str | None) -> float | None:
     """NewsData pubDate ('2026-09-05 12:34:56' UTC) → epoch seconds."""
     if not value:
         return None
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
         try:
@@ -680,7 +680,7 @@ class YouTubeChannelSource(BaseTrendSource):
             age_h = self.days * 24.0
             if pub_el is not None and pub_el.text:
                 try:
-                    from datetime import datetime, timezone
+                    from datetime import datetime
 
                     pub_ts = datetime.fromisoformat(pub_el.text.replace("Z", "+00:00")).timestamp()
                     age_h = max((now - pub_ts) / 3600.0, 0.5)
@@ -705,6 +705,100 @@ class YouTubeChannelSource(BaseTrendSource):
         return out
 
 
+# ---------------------------------------------------------------------------
+# Bilibili — keyless video search (Agent-Reach-adapted search-API fallback)
+# ---------------------------------------------------------------------------
+
+
+class BilibiliTrendSource(BaseTrendSource):
+    """Trending-by-query Bilibili videos via the keyless search API.
+
+    Agent-Reach verified (2026-06) that yt-dlp is 412-blocked by Bilibili
+    risk control while the public search API stays reachable without login.
+    Search-only by design: pass the workspace niche as `q` (or at fetch
+    time). Titles arrive with <em> keyword markup, stripped here. Velocity
+    blends play count with recency; volume scales with plays.
+    """
+
+    kind = "bilibili"
+    name = "Bilibili"
+
+    SEARCH_URL = "https://api.bilibili.com/x/web-interface/search/all/v2"
+
+    def __init__(self, q: str = ""):
+        self.q = (q or "").strip()
+
+    def fetch(self, niche: str, limit: int) -> list[TrendCandidate]:
+        import time as _t
+
+        query = self.q or (niche or "").strip()
+        if not query:
+            raise TrendSourceError("bilibili: a keyword query is required (source q or workspace niche)")
+        try:
+            resp = httpx.get(
+                self.SEARCH_URL,
+                params={"keyword": query, "page": 1},
+                headers={"User-Agent": "ymoney-trend-reader/1.0"},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as exc:
+            logger.warning(f"bilibili fetch failed: {exc}")
+            raise TrendSourceError(f"Bilibili unavailable: {exc}") from exc
+        if data.get("code") != 0:
+            raise TrendSourceError(
+                f"Bilibili error: code={data.get('code')} msg={str(data.get('message', ''))[:100]}"
+            )
+        now = _t.time()
+        out: list[TrendCandidate] = []
+        for block in (data.get("data") or {}).get("result") or []:
+            if (block.get("result_type") or "") != "video":
+                continue
+            for item in (block.get("data") or [])[:limit]:
+                title = re.sub(r"<[^>]+>", "", (item.get("title") or "")).strip()
+                if not title:
+                    continue
+                bvid = (item.get("bvid") or "").strip()
+                try:
+                    plays = int(item.get("play") or 0)
+                except (TypeError, ValueError):
+                    plays = 0
+                try:
+                    danmaku = int(item.get("danmaku") or 0)
+                except (TypeError, ValueError):
+                    danmaku = 0
+                try:
+                    pub_ts = float(item.get("pubdate") or 0)
+                except (TypeError, ValueError):
+                    pub_ts = 0.0
+                age_h = max((now - pub_ts) / 3600.0, 0.5) if pub_ts else 24.0
+                out.append(
+                    TrendCandidate(
+                        topic=title[:300],
+                        source=self.kind,
+                        external_ref=f"https://www.bilibili.com/video/{bvid}" if bvid else "",
+                        raw={
+                            "bvid": bvid,
+                            "author": item.get("author", ""),
+                            "plays": plays,
+                            "danmaku": danmaku,
+                            "age_hours": round(age_h, 1),
+                        },
+                        velocity_hint=min(((plays + danmaku * 5) / age_h) / 20000.0, 1.0),
+                        volume_hint=min(plays / 1000000.0, 1.0) if plays else None,
+                    )
+                )
+                if len(out) >= limit:
+                    break
+            if len(out) >= limit:
+                break
+        if not out:
+            raise TrendSourceError("Bilibili returned no usable videos")
+        out.sort(key=lambda c: (c.velocity_hint or 0), reverse=True)
+        return out
+
+
 REGISTRY: dict[str, type[BaseTrendSource]] = {
     GoogleTrendsSource.kind: GoogleTrendsSource,
     RedditTrendSource.kind: RedditTrendSource,
@@ -714,6 +808,7 @@ REGISTRY: dict[str, type[BaseTrendSource]] = {
     DevToTrendSource.kind: DevToTrendSource,
     YouTubeTrendingSource.kind: YouTubeTrendingSource,
     YouTubeChannelSource.kind: YouTubeChannelSource,
+    BilibiliTrendSource.kind: BilibiliTrendSource,
 }
 
 
@@ -779,4 +874,6 @@ def create_source(kind: str, config: dict | None = None) -> BaseTrendSource:
             channel_id=str(cfg.get("channel_id", "")),
             days=int(cfg.get("days", 30)),
         )
+    if cls is BilibiliTrendSource:
+        return BilibiliTrendSource(q=str(cfg.get("q", "")))
     raise TrendSourceError(f"source kind '{kind}' has no factory")

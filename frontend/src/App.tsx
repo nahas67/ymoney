@@ -8,6 +8,8 @@ import Autopilot from "./pages/Autopilot";
 import Trends from "./pages/Trends";
 import Studio from "./pages/Studio";
 import ContentDetail from "./pages/ContentDetail";
+import Editor from "./pages/Editor";
+import LongForm from "./pages/LongForm";
 import CalendarPage from "./pages/CalendarPage";
 import Composer from "./pages/Composer";
 import Publishing from "./pages/Publishing";
@@ -16,6 +18,10 @@ import Analytics from "./pages/Analytics";
 import Intelligence from "./pages/Intelligence";
 import Memory from "./pages/Memory";
 import Agents from "./pages/Agents";
+import Approvals from "./pages/Approvals";
+import ApiKeys from "./pages/ApiKeys";
+import Webhooks from "./pages/Webhooks";
+import Templates from "./pages/Templates";
 import Campaigns from "./pages/Campaigns";
 import Brand from "./pages/Brand";
 import Assets from "./pages/Assets";
@@ -67,7 +73,10 @@ export default function App() {
         <Route path="ideas" element={<Ideas />} />
         <Route path="studio" element={<Studio />} />
         <Route path="studio/:contentId" element={<ContentDetail />} />
+        <Route path="editor/:timelineId" element={<Editor />} />
+        <Route path="longform" element={<LongForm />} />
         <Route path="calendar" element={<CalendarPage />} />
+        <Route path="approvals" element={<Approvals />} />
         <Route path="composer" element={<Composer />} />
         <Route path="publishing" element={<Publishing />} />
         <Route path="inbox" element={<Inbox />} />
@@ -76,12 +85,16 @@ export default function App() {
         <Route path="memory" element={<Memory />} />
         <Route path="agents" element={<Agents />} />
         <Route path="campaigns" element={<Campaigns />} />
+        <Route path="campaigns/:id" element={<Campaigns />} />
         <Route path="brand" element={<Brand />} />
         <Route path="assets" element={<Assets />} />
         <Route path="health" element={<SystemHealth />} />
         <Route path="integrations" element={<Integrations />} />
         <Route path="live" element={<LiveMonitor />} />
         <Route path="setup" element={<Setup />} />
+        <Route path="developers/keys" element={<ApiKeys />} />
+        <Route path="developers/webhooks" element={<Webhooks />} />
+        <Route path="developers/templates" element={<Templates />} />
         <Route path="settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

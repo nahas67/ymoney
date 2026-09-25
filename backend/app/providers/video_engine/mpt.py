@@ -95,7 +95,7 @@ class MoneyPrinterTurboAdapter(BaseVideoEngine):
             with self._client() as client:
                 resp = client.get("/openapi.json")
                 if resp.status_code == 200:
-                    return str(resp.json().get("info", {}).get("version") or "") or None
+                    return str((resp.json().get("info") or {}).get("version") or "") or None
         except httpx.HTTPError:
             pass
         return None
@@ -106,7 +106,7 @@ class MoneyPrinterTurboAdapter(BaseVideoEngine):
             with self._client() as client:
                 resp = client.get("/api/v1/tasks", params={"page": 1, "page_size": min(limit, 100)})
             resp.raise_for_status()
-            tasks = resp.json().get("data", {}).get("tasks", [])
+            tasks = (resp.json().get("data") or {}).get("tasks", [])
             out = []
             for t in tasks:
                 subject = ((t.get("params") or {}).get("video_subject") or "")
@@ -216,10 +216,9 @@ class MoneyPrinterTurboAdapter(BaseVideoEngine):
         if not url.startswith(("http://", "https://")):
             url = f"{self.base_url}/tasks/{url_or_path.lstrip('/')}"
         try:
-            with httpx.Client(timeout=self.timeout) as client:
-                with client.stream("GET", url) as resp:
-                    resp.raise_for_status()
-                    return b"".join(chunk for chunk in resp.iter_bytes(chunk_size=1 << 20))
+            with httpx.Client(timeout=self.timeout) as client, client.stream("GET", url) as resp:
+                resp.raise_for_status()
+                return b"".join(chunk for chunk in resp.iter_bytes(chunk_size=1 << 20))
         except httpx.HTTPError as exc:
             raise self._translate_http_error(exc) from exc
 

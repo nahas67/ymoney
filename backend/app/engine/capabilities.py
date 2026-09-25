@@ -7,9 +7,9 @@ providers and agents can evolve without changing orchestration code.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
-from collections.abc import Callable
 
 from app.db import session_scope
 from app.models import CapabilityPermission, ToolCallAudit

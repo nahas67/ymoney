@@ -157,6 +157,20 @@ class TrendAnalystAgent(BaseAgent):
                     opp.virality = float(breakdown.get("virality", 0.0))
                     ids.append(opp.id)
                 self.step_done("ok", f"scored {len(ids)} opportunity(ies)")
+                # Intelligence advisory (Work 05, Lane A): shadow-only by default.
+                # Scores above stay authoritative; the hook records agreement only.
+                try:
+                    from app.engine.intelligence.integrations import advise_trend_scores
+
+                    pending_rows = s.scalars(
+                        select(Opportunity).where(Opportunity.id.in_(ids))
+                    ).all() if ids else []
+                    advise_trend_scores(
+                        [{"topic": o.topic, "score": o.score} for o in pending_rows],
+                        workspace_id=ws,
+                    )
+                except Exception:
+                    pass
                 s.flush()
             return len(ids)
 

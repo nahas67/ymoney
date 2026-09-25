@@ -7,7 +7,7 @@ import time
 import pytest
 
 # import registers handlers
-import app.engine.autopilot  # noqa: F401,E402
+import app.engine.autopilot  # noqa: F401
 from app.db import session_scope
 from app.engine.autopilot import (
     get_autopilot_status,

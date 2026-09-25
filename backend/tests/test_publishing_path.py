@@ -151,13 +151,12 @@ def test_credential_unique_indexes_enforce_one_row_per_scope(db_session, workspa
     key = "upload_post.api_key"
     set_credential(key, "keep-me", workspace_id=ws)
     try:
-        with pytest.raises(IntegrityError):
-            with session_scope() as s:
-                s.add(
-                    ApiCredential(
-                        workspace_id=ws, provider=key, name="duplicate", value_enc="x"
-                    )
+        with pytest.raises(IntegrityError), session_scope() as s:
+            s.add(
+                ApiCredential(
+                    workspace_id=ws, provider=key, name="duplicate", value_enc="x"
                 )
+            )
     finally:
         set_credential(key, None, workspace_id=ws)
 

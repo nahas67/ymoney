@@ -137,6 +137,14 @@ export function coverFileUrl(videoId: string, index: number): string {
   const t = accessToken ? `?token=${encodeURIComponent(accessToken)}` : "";
   return `${BASE}/workspaces/${workspaceId}/videos/${videoId}/covers/${index}/file${t}`;
 }
+export function aiCoverFileUrl(videoId: string, index: number): string {
+  const t = accessToken ? `?token=${encodeURIComponent(accessToken)}` : "";
+  return `${BASE}/workspaces/${workspaceId}/videos/${videoId}/ai-covers/${index}/file${t}`;
+}
+export function mediaFileUrl(assetId: string): string {
+  const t = accessToken ? `?token=${encodeURIComponent(accessToken)}` : "";
+  return `${BASE}/workspaces/${workspaceId}/assets/media/${assetId}/file${t}`;
+}
 
 export async function downloadAudit(contentId: string): Promise<void> {
   const headers: Record<string, string> = {};

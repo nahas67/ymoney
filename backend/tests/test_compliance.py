@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from app.providers import compliance as comp_mod
 from app.providers.compliance import preflight, reused_content_score
 
 
@@ -28,6 +27,7 @@ def _make_video(dest: Path, w: int = 1080, h: int = 1920, seconds: int = 30) -> 
     assert proc.returncode == 0, proc.stderr.decode()[:300]
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not _has_ffmpeg(), reason="ffmpeg not installed")
 def test_preflight_passes_good_vertical(tmp_path):
     src = tmp_path / "good.mp4"
@@ -37,6 +37,7 @@ def test_preflight_passes_good_vertical(tmp_path):
         assert pf["passed"], (platform, pf["checks"])
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not _has_ffmpeg(), reason="ffmpeg not installed")
 def test_preflight_blocks_overtime_and_landscape(tmp_path):
     long_v = tmp_path / "long.mp4"

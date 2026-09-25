@@ -16,12 +16,12 @@ import importlib.util
 import json
 import shutil
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from loguru import logger
 
-from app.services.storage import STORAGE_ROOT
+from app.services.storage import STORAGE_ROOT, probe_metadata
 
 
 class ClipError(Exception):
@@ -302,8 +302,7 @@ class ClipRepurposer:
         if not windows:
             return []
         scored = self._llm_rank(windows, workspace_id) or _heuristic_rank(windows)
-        scored.sort(key=lambda m: -m.score)
-        return scored[:max(1, max_moments)]
+        return trim_to_best(scored, moment_count_target(max_moments))
 
     def _llm_rank(self, windows: list[dict], workspace_id: str) -> list[ViralMoment] | None:
         try:
@@ -533,6 +532,61 @@ class ClipRepurposer:
         }
 
 
+def probe_source_quality(url: str, timeout: int = 25) -> dict:
+    """Fast pre-flight probe of a repurpose source (openshorts quality_probe pattern).
+
+    Local paths: existence + ffprobe dimensions. Remote URLs: yt-dlp metadata
+    only (no download). Never raises — failures degrade to probe="unknown"
+    and callers proceed anyway (fail-open): a probe problem must never cost
+    the job, but a known-bad source earns a warning before burning a cycle.
+    """
+    result: dict = {"max_height": 0, "mode": None, "duration": 0,
+                    "probe": "unknown", "warning": ""}
+    if not (url or "").strip():
+        result["warning"] = "source URL is empty"
+        return result
+    url = url.strip()
+    if not url.startswith(("http://", "https://")):
+        p = Path(url)
+        if not p.exists():
+            result["warning"] = "local source not found"
+            return result
+        try:
+            meta = probe_metadata(p)
+        except Exception:
+            meta = {}
+        result.update(mode="local", probe="ok",
+                      width=meta.get("width"), height=meta.get("height"),
+                      duration=meta.get("duration") or 0)
+        if not meta.get("height"):
+            result["warning"] = "ffprobe unavailable — dimensions unknown"
+        return result
+    if not yt_dlp_available():
+        result["warning"] = "yt-dlp not installed — source quality unknown"
+        return result
+    try:
+        proc = subprocess.run(
+            ["yt-dlp", "--dump-single-json", "--no-download", "--no-playlist",
+             "--socket-timeout", "20", "--retries", "1", "--", url],
+            capture_output=True, timeout=timeout,
+        )
+        info = json.loads(proc.stdout or "{}") if proc.returncode == 0 else {}
+    except (subprocess.SubprocessError, ValueError) as exc:
+        logger.info(f"[clips] quality probe failed ({type(exc).__name__}); continuing blind")
+        result["warning"] = "probe failed — continuing blind"
+        return result
+    heights = [f.get("height") or 0 for f in (info.get("formats") or [])
+               if f.get("vcodec", "none") != "none"]
+    result.update(mode="remote", probe="ok",
+                  max_height=max(heights, default=0),
+                  duration=int(info.get("duration") or 0))
+    if result["max_height"] and result["max_height"] < 720:
+        result["warning"] = (
+            f"low source resolution ({result['max_height']}p) — vertical crop will be soft"
+        )
+    return result
+
+
 def _candidate_windows(segments: list[dict], min_s: float = 15.0, max_s: float = 60.0) -> list[dict]:
     """Merge consecutive transcript segments into 15–60s standalone windows."""
     out: list[dict] = []
@@ -607,8 +661,51 @@ def _heuristic_rank(windows: list[dict]) -> list[ViralMoment]:
             hook=hook, reason=f"{hook_hits} hook marker(s), {numbers} number(s), {len(words)} words",
             text=t,
         ))
-    out.sort(key=lambda m: -m.score)
+    out.sort(key=lambda m: (-m.score, m.start))
     return out
+
+
+def moment_count_target(requested: int, default_max: int = 5) -> int:
+    """Effective moment-selection count: sane clamps, env-overridable for A/B.
+
+    Adapted from openshorts' CLIP_TARGET_MIN/MAX discipline: experiments run
+    without a deploy (LINKMINER_MIN/MAX_MOMENTS), and bad input degrades
+    instead of breaking the job (clamped 1..12).
+    """
+    import os as _os
+
+    if requested is None:
+        target = default_max
+    else:
+        try:
+            target = int(requested)
+        except (TypeError, ValueError):
+            target = default_max
+    raw_max = _os.environ.get("LINKMINER_MAX_MOMENTS")
+    if raw_max:
+        try:
+            target = int(raw_max)
+        except ValueError:
+            pass
+    raw_min = _os.environ.get("LINKMINER_MIN_MOMENTS")
+    if raw_min:
+        try:
+            target = max(target, int(raw_min))
+        except ValueError:
+            pass
+    return max(1, min(12, target))
+
+
+def trim_to_best(moments: list[ViralMoment], max_moments: int) -> list[ViralMoment]:
+    """Top-N by score with a deterministic start-time tie-break.
+
+    Score-descending return (best first) is this pipeline's contract —
+    callers number clips from this order. Ties resolve to the earliest
+    window regardless of input order (sort stability alone only guarantees
+    that for pre-sorted input).
+    """
+    ranked = sorted(moments, key=lambda m: (-m.score, m.start))
+    return ranked[:max(1, int(max_moments or 1))]
 
 
 def _srt_single(text: str, duration: float) -> str:

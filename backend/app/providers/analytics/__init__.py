@@ -127,7 +127,7 @@ class TikTokAnalyticsProvider(BaseAnalyticsProvider):
             timeout=20,
         )
         resp.raise_for_status()
-        videos = resp.json().get("data", {}).get("videos") or []
+        videos = (resp.json().get("data") or {}).get("videos") or []
         if not videos:
             return PostStats()
         v = videos[0]

@@ -60,6 +60,21 @@ def session_scope() -> Session:
         session.close()
 
 
+def escape_like(raw: str) -> str:
+    """Escape LIKE wildcards so user search text matches literally.
+
+    Without this, a search for "100%" matches anything containing "100"
+    (% = any run) and "_" matches any single character. Read-only impact,
+    but wrong results are wrong results.
+    """
+    return (
+        (raw or "")
+        .replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
+
+
 class _Local(threading.local):
     session: Session | None = None
 

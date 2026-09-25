@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import ClassVar
 
 from app.engine.agents.base import AgentMeta, BaseAgent
 from app.providers import llm
@@ -124,7 +125,7 @@ class StrategistAgent(BaseAgent):
         description="Decides angle, format, hook style and platform plan.",
     )
 
-    DEFAULT_STRATEGY = {
+    DEFAULT_STRATEGY: ClassVar[dict] = {
         "angle": "practical explainer with a contrarian hook",
         "target_audience": "viewers seeking quick actionable insight",
         "format": "talking-head narration over b-roll with captions",
@@ -145,7 +146,10 @@ class StrategistAgent(BaseAgent):
                 "return a JSON strategy: angle, target_audience, format, duration_seconds (25-60), "
                 "hook_type (question|bold_claim|story|statistic|curiosity_gap), tone, cta, "
                 "platforms (subset of youtube/tiktok/facebook/instagram), aspect_ratio "
-                "(9:16 recommended for shorts/reels), rationale."
+                "(9:16 recommended for shorts/reels), rationale. Retention doctrine: the hook "
+                "must land in the first 3 seconds; structure payoffs before attention wanes; "
+                "balance educate/entertain/inspire across the plan; titles must work with the "
+                "thumbnail as one micro-story (curiosity or extreme value, never clickbait)."
                 + style_block
             ),
             user=json.dumps({"topic": topic, "research": research}, ensure_ascii=False),
@@ -154,13 +158,68 @@ class StrategistAgent(BaseAgent):
             model=self.model_for(ctx.workspace_id) if ctx.workspace_id else None,
         )
         merged = {**self.DEFAULT_STRATEGY, **{k: v for k, v in res.items() if v}}
-        merged["duration_seconds"] = int(max(20, min(90, merged.get("duration_seconds", 32))))
+        try:
+            merged["duration_seconds"] = int(max(20, min(90, merged.get("duration_seconds", 32))))
+        except (TypeError, ValueError):
+            # LLM returned a non-numeric duration — fall back, don't kill the stage
+            merged["duration_seconds"] = 32
         return merged
 
     def run(self, ctx, topic: str, research: dict) -> dict:
         return self.execute(
             ctx, "strategy", input_summary=topic, fn=lambda: self.strategize(ctx, topic, research)
         )
+
+    def plan_from_reference(self, ctx, *, url: str, topic: str = "") -> dict:
+        """Reference-driven plan (OpenMontage-adapted): mine a reference video,
+        then shape keeps/changes/cost/sample BEFORE any production spend.
+
+        Returns keeps[] (pacing/hook/structure to preserve), changes[]
+        (topic/visual/angle shifts for the new video), an honest flat cost
+        estimate, and the top moment as the look-and-feel sample.
+        """
+
+        def work():
+            from app.core.config import settings
+            from app.engine.agents import repurpose as rep_mod
+
+            self.step("mine_reference", url[:80])
+            mined = rep_mod.LinkMinerAgent().mine(ctx, source=url, max_moments=5)
+            moments = mined.get("moments", []) or []
+            self.step_done("ok", f"{len(moments)} moment(s) from '{mined.get('source_title', '')[:40]}'")
+            self.step("shape_plan", "keeps / changes / cost")
+            res = llm.complete_json(
+                system=(
+                    "You are a reference analyst for short-form video. Given mined moments "
+                    "(score/hook/reason/text) from a reference video and an optional new topic, "
+                    "return JSON: keeps (up to 3 pacing/hook/structure traits worth preserving), "
+                    "changes (up to 3 topic/visual/angle shifts for the new video). "
+                    "Reply with JSON only."
+                ),
+                user=json.dumps(
+                    {"topic": topic, "source_title": mined.get("source_title", ""),
+                     "moments": moments[:8]}, ensure_ascii=False),
+                workspace_id=ctx.workspace_id or "",
+                tier="reasoning",
+                model=self.model_for(ctx.workspace_id) if ctx.workspace_id else None,
+            )
+            keeps = [str(k)[:200] for k in (res.get("keeps") or []) if str(k).strip()][:3]
+            changes = [str(c)[:200] for c in (res.get("changes") or []) if str(c).strip()][:3]
+            sample = max(moments, key=lambda m: float(m.get("score", 0))) if moments else {}
+            self.step_done("ok", f"{len(keeps)} keeps, {len(changes)} changes")
+            return {
+                "summary": f"reference plan from '{mined.get('source_title', '')[:60]}'",
+                "source_title": mined.get("source_title", ""),
+                "source_duration": mined.get("source_duration"),
+                "topic": topic or mined.get("source_title", ""),
+                "keeps": keeps,
+                "changes": changes,
+                "estimated_cost_usd": float(settings.mpt_estimated_render_cost_usd),
+                "sample_moment": sample,
+                "moments_analyzed": len(moments),
+            }
+
+        return self.execute(ctx, "reference_plan", input_summary=url[:200], fn=work)
 
 
 def _registry_hooks() -> dict[str, str]:
@@ -208,7 +267,10 @@ class ScriptWriterAgent(BaseAgent):
                 f"{int(duration * 2.6)} words). Start with a scroll-stopping hook of type "
                 f"'{strategy.get('hook_type', 'question')}'. Keep momentum, concrete specifics, "
                 f"end with CTA: '{strategy.get('cta', 'follow for more')}'. Tone: "
-                f"{strategy.get('tone', 'direct and friendly')}. Output ONLY the script text."
+                f"{strategy.get('tone', 'direct and friendly')}. Retention mechanics: no intro "
+                f"logo or dead air — open on the hook; a pattern interrupt (new visual, cut, "
+                f"caption emphasis) roughly every 8-12 seconds; end on the CTA directly, never "
+                f"'thanks for watching'. Output ONLY the script text."
                 + style_block
             ),
             user=json.dumps({"topic": topic, "research_brief": research}, ensure_ascii=False),
@@ -300,8 +362,20 @@ class HookOptimizerAgent(BaseAgent):
         ("bold_claim", 78),
         ("curiosity_gap", 80),
         ("statistic", 74),
+        ("command", 76),
         ("story", 70),
     )
+    # First-120-chars markers per hook type (TikTok/Video-Opt persona signals:
+    # commands convert like questions; concrete numbers beat abstractions).
+    HOOK_MARKERS: ClassVar[dict[str, tuple[str, ...]]] = {
+        "question": ("?",),
+        "bold_claim": ("nobody",),
+        "curiosity_gap": ("truth",),
+        "statistic": ("numbers",),
+        "command": ("stop", "never", "don't"),
+        "story": ("ago",),
+    }
+    NUMBER_BONUS = 4.0
 
     def run(self, ctx, variants: list[dict], patterns: list[dict] | None = None) -> list[dict]:
         return self.rank_hooks(ctx, variants, patterns)
@@ -320,12 +394,13 @@ class HookOptimizerAgent(BaseAgent):
                     pattern_hook_bonus += p.get("observed_improvement_pct", 0) / 10.0
             for v in variants:
                 base = 60.0
+                opening = v.get("script", "").lower()[:120]
                 for kind, score in self.HOOK_SIGNALS:
-                    marker = {"question": "?", "bold_claim": "Nobody", "curiosity_gap": "truth",
-                              "statistic": "numbers", "story": "ago"}[kind]
-                    if marker.lower() in v.get("script", "").lower()[:120]:
+                    if any(m in opening for m in self.HOOK_MARKERS[kind]):
                         base = float(score)
                         break
+                if any(c.isdigit() for c in opening):
+                    base += self.NUMBER_BONUS
                 v["predicted_score"] = round(min(100.0, base + pattern_hook_bonus), 1)
             variants.sort(key=lambda v: -(v.get("predicted_score") or 0))
             return variants

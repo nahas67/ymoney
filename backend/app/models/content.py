@@ -78,27 +78,18 @@ class ContentItem(Base, PKMixin, TimestampMixin):
         Index("ix_content_campaign", "campaign_id"),
     )
 
-    STATUS_FLOW = [
-        "IDEA",
-        "RESEARCHING",
-        "STRATEGY",
-        "SCRIPTING",
-        "SCRIPT_READY",
-        "PRODUCTION",
-        "QC",
-        "APPROVED",
-        "SCHEDULED",
-        "PUBLISHED",
-        "ANALYZING",
-        "LEARNED",
-    ]
-
     workspace_id: Mapped[str] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
     )
     campaign_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
     cycle_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
     opportunity_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
+    # --- content lineage (Work 01): every derived asset knows its ancestry ---
+    parent_content_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    root_content_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    # short|variant|localized|platform_cut|repurpose|translation|other
+    derivation_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    lineage_version: Mapped[int] = mapped_column(Integer, default=1)
     topic: Mapped[str] = mapped_column(String(400), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="IDEA", index=True)
     strategy_json: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -217,6 +208,9 @@ class PublishedPost(Base, PKMixin, TimestampMixin):
     title: Mapped[str] = mapped_column(String(300), default="")
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_mock: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Work 04 Lane A: lineage back to the platform variant + campaign.
+    platform_variant_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    campaign_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
 
     metrics: Mapped[list[PostMetric]] = relationship(
         back_populates="post", cascade="all, delete-orphan"

@@ -38,6 +38,7 @@ _MANAGEABLE = {
     "tts.qwen_base_url": ps.REGISTRY["tts.qwen_base_url"],
     "tts.qwen_instruct": ps.REGISTRY["tts.qwen_instruct"],
     "tts.qwen_api_key": ps.REGISTRY["tts.qwen_api_key"],
+    "tts.elevenlabs_api_key": ps.REGISTRY["tts.elevenlabs_api_key"],
     "image.openai_base_url": ps.REGISTRY["image.openai_base_url"],
     "image.openai_api_key": ps.REGISTRY["image.openai_api_key"],
     "image.openai_model": ps.REGISTRY["image.openai_model"],
@@ -264,10 +265,17 @@ def tts_status(ws=Depends(require_workspace_role("admin")), language: str = ""):
             error = str(exc)
         except Exception as exc:  # voice listing must never 500 the page
             error = f"voice list failed: {type(exc).__name__}"
+        try:
+            from app.engine.provider_scoring import score_tts
+
+            ranked = [s.to_dict() for s in score_tts()]
+        except Exception:
+            ranked = []
     return {
         **status,
         "voices": voices,
         "error": error,
+        "ranked": ranked,
     }
 
 
@@ -314,7 +322,14 @@ def images_status(ws=Depends(require_workspace_role("admin"))):
     from app.providers.images import image_provider_status
 
     with ps.workspace_scope(ws.id):
-        return image_provider_status()
+        status = image_provider_status()
+        try:
+            from app.engine.provider_scoring import score_images
+
+            ranked = [s.to_dict() for s in score_images()]
+        except Exception:
+            ranked = []
+        return {**status, "ranked": ranked}
 
 
 class ImageTestBody(BaseModel):
@@ -337,6 +352,8 @@ def images_test(body: ImageTestBody, ws=Depends(require_workspace_role("admin"))
             blobs = provider.generate(prompt, size="512x288", n=1)
     except ImageProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
+    if not blobs:
+        raise HTTPException(status_code=502, detail="image provider returned no candidates")
     return Response(
         content=blobs[0],
         media_type="image/png" if blobs[0][:4] == b"\x89PNG" else "image/jpeg",

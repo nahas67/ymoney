@@ -82,8 +82,9 @@ def test_factory_builds_new_kinds(monkeypatch):
 
 
 def test_topic_hot_relevance():
-    from app.engine.decision import _pattern_relevant
     from types import SimpleNamespace
+
+    from app.engine.decision import _pattern_relevant
 
     assert _pattern_relevant(SimpleNamespace(pattern_key="topic_hot_quantum"), "quantum breakthrough") is True
     assert _pattern_relevant(SimpleNamespace(pattern_key="topic_hot_quantum"), "money saving tips") is False
@@ -139,7 +140,6 @@ def test_competitor_scan_alerts_uncovered(tmp_path, monkeypatch):
 
 
 def test_fatigue_decays_stale_pattern(tmp_path, monkeypatch):
-    from datetime import datetime
 
     from app.db import session_scope
     from app.engine.agents.intelligence import LearningAgent
@@ -201,11 +201,12 @@ def _mk_ready_content(s, ws_id, topic="plan me", status="APPROVED"):
 
 
 def test_scheduler_plans_and_stays_idempotent(tmp_path, monkeypatch):
+    from sqlalchemy import select
+
     from app.db import session_scope
     from app.engine.agents.scheduler import SchedulerAgent
     from app.models import ScheduleEntry
     from app.services.jobs import JobContext
-    from sqlalchemy import select
 
     monkeypatch.chdir(tmp_path)
     with session_scope() as s:

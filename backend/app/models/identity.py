@@ -111,6 +111,44 @@ class ApiCredential(Base, PKMixin, TimestampMixin):
     value_enc: Mapped[str] = mapped_column(Text, default="")
 
 
+class WorkspaceApiKey(Base, PKMixin, TimestampMixin):
+    """Scoped third-party API key: workspace-bound, role-bearing, revocable.
+
+    Only the sha256 hash is stored (see core.security.hash_token); the
+    plaintext `ym_...` value is shown once at mint time and never again.
+    """
+
+    __tablename__ = "workspace_api_keys"
+
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(120), default="")
+    prefix: Mapped[str] = mapped_column(String(16), index=True)
+    key_hash: Mapped[str] = mapped_column(String(128), index=True)
+    role: Mapped[str] = mapped_column(String(20), default="member")  # viewer|member|admin
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class WebhookSubscription(Base, PKMixin, TimestampMixin):
+    """Outbound webhook: POST signed event payloads to a workspace URL.
+
+    The signing secret is AES-encrypted at rest (see core.security);
+    plaintext is shown once at subscribe time and never again.
+    """
+
+    __tablename__ = "webhook_subscriptions"
+
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    url: Mapped[str] = mapped_column(String(2000), default="")
+    secret_enc: Mapped[str] = mapped_column(Text, default="")
+    events_json: Mapped[list] = mapped_column(JSON, default=list)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
 class AuditLog(Base, PKMixin, TimestampMixin):
     __tablename__ = "audit_logs"
 

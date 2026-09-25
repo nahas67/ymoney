@@ -115,7 +115,10 @@ class SEOAgent(BaseAgent):
                 "titles, same limits, different angles for A/B testing), description (1-2 sentences), "
                 "first_comment (hashtag/discovery block to post as the first comment), "
                 "pinned_comment (short engaging question CTA to pin for replies), "
-                "hashtags (4-8, platform conventions), keywords. JSON keyed by platform."
+                "hashtags (4-8 mixing trending, niche and branded tags, platform conventions), "
+                "keywords. Title craft: spread curiosity, direct/search and benefit angles "
+                "across title + variants; each title must pair with the thumbnail as one "
+                "micro-story. JSON keyed by platform."
             ),
             user=json.dumps({"topic": topic, "platforms": platforms, "script_excerpt": script[:600]}),
             workspace_id=ctx.workspace_id or "",

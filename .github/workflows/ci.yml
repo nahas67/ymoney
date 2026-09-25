@@ -28,12 +28,34 @@ jobs:
         # failure instead of stalling the job.
         run: uv run pytest tests -q
 
+      - name: Slow integration tests
+        # Render-heavy coverage marked slow (top --durations); same gate as above.
+        run: uv run pytest tests -q -m slow
+
       - name: Lint (ruff) — informational until backlog item F5 cleanup
         # The repo carries a known ~500-finding style baseline. This step is a
         # non-blocking signal today; flip `continue-on-error: false` once the
         # F5 cleanup lands.
         continue-on-error: true
         run: uv run ruff check app tests --output-format concise
+
+  backend-slow:
+    name: Backend (slow integration tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Slow integration tests
+        # Render-heavy coverage marked slow in pyproject/--durations.
+        run: uv run pytest tests -q -m slow
 
   frontend:
     name: Frontend (build)

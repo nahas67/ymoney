@@ -47,6 +47,31 @@ def managed_path(workspace_id: str, stored_path: str) -> Path | None:
     return candidate if _inside(workspace_root, candidate) else None
 
 
+def validate_storage_key(workspace_id: str, key: str):
+    """Validate a workspace-relative media key for MediaAsset registration.
+
+    Returns the normalized relative key, or None when the key is absolute,
+    escapes the workspace directory, or is empty. No filesystem access —
+    registration records references; bytes stay managed by storage providers.
+    """
+    from pathlib import PurePosixPath
+
+    if not workspace_id or not (key or "").strip():
+        return None
+    normalized = PurePosixPath((key or "").replace("\\", "/"))
+    if normalized.is_absolute() or ".." in normalized.parts:
+        return None
+    text = normalized.as_posix().lstrip("/")
+    if not text or text in (".",):
+        return None
+    workspace_root = (STORAGE_ROOT / workspace_id).resolve()
+    storage_root = STORAGE_ROOT.resolve()
+    if not _inside(storage_root, workspace_root):
+        return None
+    candidate = (workspace_root / text).resolve()
+    return text if _inside(workspace_root, candidate) else None
+
+
 def mock_render_spec_path(reference: str) -> Path | None:
     """Resolve a mock artifact reference without permitting path traversal."""
     if not reference.startswith("mock:"):

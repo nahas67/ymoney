@@ -89,4 +89,4 @@ def cuda_present() -> bool:
         return False
 
 
-__all__ = ["configured", "push", "pop", "ping", "cuda_present"]
+__all__ = ["configured", "cuda_present", "ping", "pop", "push"]

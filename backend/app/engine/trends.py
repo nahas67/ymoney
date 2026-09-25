@@ -86,7 +86,7 @@ class NormalizedTrend:
     classification_confidence: float = 0.3
     confidence: float = 0.5            # source-reported confidence in the datum
 
-    def finalize(self) -> "NormalizedTrend":
+    def finalize(self) -> NormalizedTrend:
         self.lifecycle, self.classification_confidence = classify_lifecycle(
             velocity_hint=self.velocity,
             volume_hint=self.volume,

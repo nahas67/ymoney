@@ -13,7 +13,7 @@ class FakeLLMTransport:
     def __init__(self):
         self.calls: list[dict] = []
 
-    def post(self, url, *, headers=None, json=None, timeout=None, **kw):  # noqa: ARG002
+    def post(self, url, *, headers=None, json=None, timeout=None, **kw):
         self.calls.append(json or {})
         body = json or {}
         msgs = " ".join(m.get("content", "") for m in body.get("messages", []))

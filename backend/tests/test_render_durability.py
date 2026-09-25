@@ -186,7 +186,7 @@ def test_crash_between_submit_and_persist_adopts_orphan(workspace_with_user, fak
     real_submit = fake_engine.submit
 
     def accept_then_die(req):
-        h = real_submit(req)
+        real_submit(req)
         raise KeyboardInterrupt
 
     fake_engine.submit = accept_then_die

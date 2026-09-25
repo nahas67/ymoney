@@ -21,6 +21,8 @@ TEMPLATE_ROOT = Path(__file__).resolve().parent.parent / "templates"
 
 REQUIRED_KEYS = ("module", "id", "version", "title", "payload")
 
+CUSTOM_KEY = "templates_custom"
+
 
 class TemplateError(Exception):
     pass
@@ -39,6 +41,9 @@ def validate_template(data: dict) -> list[str]:
     for i, inp in enumerate(data.get("inputs") or []):
         if not isinstance(inp, dict) or "key" not in inp or "type" not in inp:
             problems.append(f"inputs[{i}] needs key + type")
+    source = data.get("source", "")
+    if source and (not isinstance(source, str) or len(source) > 500):
+        problems.append("source must be a short string (author link)")
     return problems
 
 
@@ -70,8 +75,13 @@ def load_all() -> dict[str, dict]:
     return out
 
 
-def list_templates(module: str = "") -> list[dict]:
-    """Latest version per (module, id); optional module filter."""
+def list_templates(module: str = "", workspace_id: str | None = None) -> list[dict]:
+    """Latest version per (module, id); optional module filter.
+
+    With a workspace, community customs are appended (flagged custom:true).
+    Customs may not collide with built-in ids — customize those via override
+    patches instead, so authorship stays unambiguous.
+    """
     latest: dict[tuple[str, str], dict] = {}
     for (mod, tid, ver), data in load_all().items():
         if module and mod != module:
@@ -79,15 +89,70 @@ def list_templates(module: str = "") -> list[dict]:
         cur = latest.get((mod, tid))
         if cur is None or ver > cur["version"]:
             latest[(mod, tid)] = data
-    return [latest[k] for k in sorted(latest)]
+    out = [latest[k] for k in sorted(latest)]
+    if workspace_id:
+        seen = {(t["module"], t["id"]) for t in out}
+        for t in custom_templates(workspace_id):
+            if module and t["module"] != module:
+                continue
+            if (t["module"], t["id"]) in seen:
+                continue  # defensive: customs can't shadow built-ins
+            out.append({**t, "custom": True})
+    return sorted(out, key=lambda t: (t["module"], t["id"]))
 
 
-def versions_of(module: str, tid: str) -> list[str]:
-    return sorted(v for (m, t, v) in load_all() if m == module and t == tid)
+def versions_of(module: str, tid: str, workspace_id: str | None = None) -> list[str]:
+    out = sorted(v for (m, t, v) in load_all() if m == module and t == tid)
+    if workspace_id:
+        out = sorted(set(out) | {t.get("version", "") for t in custom_templates(workspace_id)
+                                 if t.get("module") == module and t.get("id") == tid})
+    return out
 
 
-def get_template(module: str, tid: str, version: str = "") -> dict:
-    """Latest matching version by default; KeyError when unknown."""
+def custom_templates(workspace_id: str | None) -> list[dict]:
+    """Workspace-authored templates (OpenCreator community pattern).
+
+    Stored under settings_json["templates_custom"]; invalid entries are
+    skipped loudly. Attribution defaults to "workspace custom" so authorship
+    is never blank; an optional `source` links the original.
+    """
+    from loguru import logger
+
+    if not workspace_id:
+        return []
+    try:
+        from app.db import session_scope
+        from app.models import Workspace
+
+        with session_scope() as s:
+            ws = s.get(Workspace, workspace_id)
+            raws = (ws.settings_json.get(CUSTOM_KEY) or []) if ws and ws.settings_json else []
+    except Exception:
+        return []
+    out = []
+    for raw in raws if isinstance(raws, list) else []:
+        if validate_template(raw if isinstance(raw, dict) else {}):
+            logger.warning("[templates] invalid custom template skipped")
+            continue
+        t = deepcopy(raw)
+        t.setdefault("attribution", "workspace custom")
+        t.setdefault("source", "")
+        out.append(t)
+    return out
+
+
+def get_template(module: str, tid: str, version: str = "", workspace_id: str | None = None) -> dict:
+    """Latest matching version by default; customs resolve first; KeyError when unknown."""
+    if workspace_id:
+        cands = [(t.get("version", ""), t) for t in custom_templates(workspace_id)
+                 if t.get("module") == module and t.get("id") == tid]
+        if cands:
+            if version:
+                for v, d in cands:
+                    if v == version:
+                        return {**deepcopy(d), "custom": True}
+                raise KeyError(f"unknown version '{version}' for custom template '{module}/{tid}'")
+            return {**deepcopy(max(cands, key=lambda c: c[0])[1]), "custom": True}
     cands = [(v, d) for (m, t, v), d in load_all().items() if m == module and t == tid]
     if not cands:
         raise KeyError(f"unknown template '{module}/{tid}'")
@@ -122,14 +187,20 @@ def workspace_overrides(workspace_id: str | None) -> dict:
             ws = s.get(Workspace, workspace_id)
             if not ws or not ws.settings_json:
                 return {}
-            return dict((ws.settings_json.get("templates") or {}))
+            return dict(ws.settings_json.get("templates") or {})
     except Exception:
         return {}
 
 
 def resolve_template(module: str, tid: str, workspace_id: str | None = None,
                      version: str = "") -> dict:
-    """Built-in + workspace override merged; the single read path for engines."""
+    """Customs first, then built-in + workspace override merged; the single
+    read path for engines."""
+    if workspace_id:
+        customs = [t for t in custom_templates(workspace_id)
+                   if t.get("module") == module and t.get("id") == tid]
+        if customs:
+            return get_template(module, tid, version, workspace_id)
     base = get_template(module, tid, version)
     key = f"{module}/{tid}"
     patch = workspace_overrides(workspace_id).get(key)
@@ -143,6 +214,7 @@ def resolve_template(module: str, tid: str, workspace_id: str | None = None,
 __all__ = [
     "TemplateError",
     "apply_override",
+    "custom_templates",
     "get_template",
     "list_templates",
     "load_all",

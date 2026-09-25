@@ -112,8 +112,9 @@ categories, keywords, sentiment, and publisher-authority metadata (free tier:
 200 credits/day, 10 articles/request; add the key under **Settings →
 Connections & Keys** and it joins discovery automatically) — plus two more
 keyless catalog picks: **CoinGecko** (trending crypto coins, real market
-attention signals) and **Dev.to** (practitioner tech articles with reaction
-velocity). Configure per-workspace via the trend-sources API (`q`, `language`,
+attention signals), **Dev.to** (practitioner tech articles with reaction
+velocity), **YouTube Trending / Channel RSS** (chart + watchlist tracking) and
+**Bilibili** (keyless video search by niche keyword). Configure per-workspace via the trend-sources API (`q`, `language`,
 `categories`, `timeframe` for newsdata; `tag`, `days` for devto).
 
 ### Live Monitor (real-time graphs + agent work graph)

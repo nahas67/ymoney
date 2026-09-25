@@ -86,11 +86,17 @@ export function useTheme(): ["light" | "dark" | "system", (t: "light" | "dark" |
   const [theme, setThemeState] = useState<"light" | "dark" | "system">(
     () => (localStorage.getItem("ym_theme") as any) || "system"
   );
+  const apply = (t: "light" | "dark" | "system") => {
+    const dark = t === "dark" || (t !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.classList.toggle("light", !dark);
+  };
+  useEffect(() => {
+    apply(localStorage.getItem("ym_theme") as any || "system");
+  }, []);
   const setTheme = (t: "light" | "dark" | "system") => {
     setThemeState(t);
     localStorage.setItem("ym_theme", t);
-    const dark = t === "dark" || (t !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-    document.documentElement.classList.toggle("dark", dark);
+    apply(t);
   };
   return [theme, setTheme];
 }

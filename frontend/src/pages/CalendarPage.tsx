@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { wsApi } from "../lib/api";
 import { useFetch } from "../hooks/hooks";
-import { Badge, Card, PageHeader, Section, statusTone } from "../components/ui";
+import { Badge, Card, PageHeader, Section, statusTone, toast } from "../components/ui";
 import { platformLabel } from "../lib/format";
 
 function monthGrid(year: number, month: number): (Date | null)[][] {
@@ -39,10 +39,10 @@ export default function CalendarPage() {
     setPlanning(true);
     try {
       const r = await wsApi.post("/calendar/plan", { days: 7 });
-      alert(r.summary ?? `Scheduled ${(r.created ?? []).length} publish(es)`);
+      toast(r.summary ?? `Scheduled ${(r.created ?? []).length} publish(es)`, "success");
       sched.reload();
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Auto-fill failed");
     } finally {
       setPlanning(false);
     }
@@ -52,9 +52,10 @@ export default function CalendarPage() {
     setCancelId(id);
     try {
       await wsApi.del(`/calendar/${id}`);
+      toast("Schedule entry cancelled", "warning");
       sched.reload();
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Cancel failed");
     } finally {
       setCancelId("");
     }

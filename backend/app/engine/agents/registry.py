@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from app.engine.agents.avatar import AvatarDirectorAgent
 from app.engine.agents.base import AgentMeta, BaseAgent
+from app.engine.agents.broll import BrollResearcherAgent
+from app.engine.agents.competitor import CompetitorAnalystAgent
+from app.engine.agents.compliance import ComplianceOfficerAgent
 from app.engine.agents.creation import (
     HookOptimizerAgent,
     ResearchAgent,
@@ -11,17 +15,13 @@ from app.engine.agents.creation import (
 )
 from app.engine.agents.discovery import TrendAnalystAgent, TrendHunterAgent
 from app.engine.agents.distribution import PublisherAgent, SEOAgent
-from app.engine.agents.intelligence import AnalyticsCollectorAgent, LearningAgent
-from app.engine.agents.production import QualityAgent, VideoProducerAgent
-from app.engine.agents.avatar import AvatarDirectorAgent
-from app.engine.agents.broll import BrollResearcherAgent
-from app.engine.agents.compliance import ComplianceOfficerAgent
-from app.engine.agents.competitor import CompetitorAnalystAgent
 from app.engine.agents.dubbing import DubbingLocalizerAgent
+from app.engine.agents.intelligence import AnalyticsCollectorAgent, LearningAgent
 from app.engine.agents.motion import MotionDesignerAgent
+from app.engine.agents.production import QualityAgent, VideoProducerAgent
+from app.engine.agents.repurpose import LinkMinerAgent, RepurposeEditorAgent
 from app.engine.agents.scheduler import SchedulerAgent
 from app.engine.agents.voice import VoiceDesignerAgent
-from app.engine.agents.repurpose import LinkMinerAgent, RepurposeEditorAgent
 
 AGENTS: dict[str, type[BaseAgent]] = {
     "trend_hunter": TrendHunterAgent,

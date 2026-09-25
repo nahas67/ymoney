@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { wsApi, api } from "../lib/api";
 import { useFetch } from "../hooks/hooks";
-import { Badge, Card, PageHeader, Section, Tabs, statusTone } from "../components/ui";
+import { Badge, Card, PageHeader, Section, Tabs, statusTone, toast } from "../components/ui";
 import { fmtUSD } from "../lib/format";
 
 export default function SystemHealth() {
   const [tab, setTab] = useState<"status" | "engine" | "jobs" | "logs" | "costs">("status");
   const health = useFetch(() => api("GET", "/system/health"), [tab]);
   const readiness = useFetch(() => api("GET", "/system/readiness"), [tab]);
+  const doctor = useFetch(() => api("GET", "/system/doctor"), [tab]);
+  const orphans = useFetch(() => api("GET", "/system/orphans"), [tab]);
   const engine = useFetch(() => wsApi.get("/connections/video-engine"), [tab]);
   const tts = useFetch(() => wsApi.get("/connections/tts"), [tab]);
   const images = useFetch(() => wsApi.get("/connections/images"), [tab]);
@@ -36,8 +38,9 @@ export default function SystemHealth() {
       if (!r.ok) throw new Error(await r.text());
       const blob = await r.blob();
       new Audio(URL.createObjectURL(blob)).play();
+      toast("TTS sample played", "success");
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "TTS test failed");
     } finally {
       setTtsBusy(false);
     }
@@ -57,8 +60,9 @@ export default function SystemHealth() {
       if (!r.ok) throw new Error(await r.text());
       const blob = await r.blob();
       new Audio(URL.createObjectURL(blob)).play();
+      toast("Voice preview played", "success");
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Voice preview failed");
     } finally {
       setTtsBusy(false);
     }
@@ -76,7 +80,7 @@ export default function SystemHealth() {
       const blob = await r.blob();
       setImgResult(URL.createObjectURL(blob));
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Image test failed");
     } finally {
       setImgBusy(false);
     }
@@ -113,15 +117,54 @@ export default function SystemHealth() {
             </div>
           </Card>
           <Card>
-            <b className="text-[14px]">Readiness ({(readiness.data as any)?.status})</b>
-            <div className="mt-2 space-y-1.5 text-[13px]">
-              {((readiness.data as any)?.checks ?? []).map((c: any) => (
-                <div key={c.id} className="flex justify-between gap-2">
-                  <span className="capitalize" style={{ color: "var(--text-muted)" }}>{c.id.replace(/_/g, " ")}</span>
-                  <span className="truncate" style={{ color: c.status === "passed" ? "var(--accent)" : "var(--danger)" }}>{c.detail}</span>
-                </div>
-              ))}
+            <div className="flex items-center justify-between gap-2">
+              <b className="text-[14px]">Readiness ({(readiness.data as any)?.status})</b>
+              {(doctor.data as any)?.doctor?.blocking_failed?.length > 0 && (
+                <Badge tone="warning">blocked: {(doctor.data as any).doctor.blocking_failed.join(", ")}</Badge>
+              )}
             </div>
+            <div className="mt-2 space-y-1.5 text-[13px]">
+              {(["Built-in", "Configured"] as const).map((group) => {
+                const tier = group === "Built-in" ? 0 : 1;
+                const rows = ((doctor.data as any)?.checks ?? (readiness.data as any)?.checks ?? [])
+                  .filter((c: any) => (c.tier ?? 1) === tier);
+                if (!rows.length) return null;
+                return (
+                  <div key={group}>
+                    <div className="panel-label mb-1 mt-2">{group}</div>
+                    {rows.map((c: any) => (
+                <div key={c.id}>
+                  <div className="flex justify-between gap-2">
+                    <span className="capitalize" style={{ color: "var(--text-muted)" }}>{c.id.replace(/_/g, " ")}</span>
+                    <span className="truncate" style={{ color: c.status === "passed" ? "var(--accent)" : "var(--danger)" }}>
+                      {c.detail}{c.latency_ms != null ? ` · ${c.latency_ms}ms` : ""}
+                    </span>
+                  </div>
+                  {c.status !== "passed" && c.remediation && (
+                    <button className="text-[12px] font-mono text-left" style={{ color: "var(--text-faint)" }}
+                      title="Click to copy remediation" onClick={() => navigator.clipboard?.writeText(c.remediation)}>
+                      ↳ {c.remediation} (click to copy)
+                    </button>
+                  )}
+                </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+            {(orphans.data as any) && (
+              <div className="mt-3 pt-2 text-[12.5px] flex justify-between" style={{ borderTop: "var(--seam)" }}>
+                <span style={{ color: "var(--text-muted)" }}>Orphan rows</span>
+                <Badge tone={(orphans.data as any)?.healthy ? "success" : "warning"}>
+                  {(orphans.data as any)?.healthy ? "none" : [
+                    (orphans.data as any)?.videos_orphaned ?? 0,
+                    (orphans.data as any)?.variants_orphaned ?? 0,
+                    (orphans.data as any)?.publishing_jobs_orphaned ?? 0,
+                    (orphans.data as any)?.published_posts_orphaned ?? 0,
+                  ].reduce((a: number, b: number) => a + b, 0) + " dangling"}
+                </Badge>
+              </div>
+            )}
           </Card>
         </div>
       )}
@@ -151,7 +194,7 @@ export default function SystemHealth() {
               <div className="grid grid-cols-2 gap-2 mt-2">
                 <select className="select" value={labProvider} onChange={(e) => setLabProvider(e.target.value)} aria-label="Provider">
                   <option value="">workspace default</option>
-                  {["edge", "kokoro", "chatterbox", "qwen3", "mock"].map((p) => <option key={p} value={p}>{p}</option>)}
+                  {["edge", "kokoro", "chatterbox", "qwen3", "elevenlabs", "mock"].map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
                 <input className="input" placeholder="voice id (blank = default)" value={labVoice} onChange={(e) => setLabVoice(e.target.value)} aria-label="Voice" />
               </div>

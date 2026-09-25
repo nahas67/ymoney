@@ -101,6 +101,7 @@ def _make_tone(dest: Path, seconds: float = 2.0) -> None:
     assert proc.returncode == 0, proc.stderr.decode()[:300]
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not _has_ffmpeg(), reason="ffmpeg not installed")
 def test_assemble_dubbed_portrait_bilingual(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
@@ -193,3 +194,47 @@ def test_dub_api_validation():
     r = client.post(f"/api/v1/workspaces/{ws_id}/assets/dub", headers=headers,
                     json={"source": "/nonexistent/video.mp4", "target_lang": "es"})
     assert r.status_code == 400
+
+
+def test_dry_run_validates_without_side_effects(tmp_path):
+    from app.providers import dubbing as dub_mod
+
+    bad = dub_mod.dry_run_dub("/nonexistent/video.mp4", "xx", srt="not subtitles")
+    assert bad["ok"] is False
+    steps = {c["step"]: c["status"] for c in bad["checks"]}
+    assert steps["language"] == "failed" and steps["source"] == "failed"
+    assert steps["subtitles"] == "failed"
+
+    f = tmp_path / "s.mp4"
+    f.write_bytes(b"\x00" * 512)
+    srt = "1\n00:00:00,000 --> 00:00:02,000\nhola mundo\n"
+    good = dub_mod.dry_run_dub(str(f), "es", voice="Rachel", srt=srt)
+    assert [c["step"] for c in good["checks"]] == [
+        "language", "source", "subtitles", "translation", "voice", "tts", "assemble"]
+    assert good["checks"][2]["detail"].startswith("1 supplied cue")
+    assert "Rachel" in good["checks"][4]["detail"]
+    # nothing written anywhere near the source
+    assert [p for p in tmp_path.iterdir() if p.name != "s.mp4"] == []
+
+
+def test_dub_dry_run_endpoint_always_200():
+    import os
+
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    client = TestClient(create_app(), raise_server_exceptions=False)
+    email = f"dub{os.urandom(4).hex()}@test.local"
+    r = client.post("/api/v1/auth/register",
+                    json={"email": email, "password": "supersecret123"})
+    assert r.status_code == 200, r.text
+    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    ws_id = r.json()["workspace"]["id"]
+
+    r = client.post(f"/api/v1/workspaces/{ws_id}/assets/dub/dry-run", headers=headers,
+                    json={"source": "/nonexistent/video.mp4", "target_lang": "xx"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is False
+    assert {c["step"] for c in body["checks"]} >= {"language", "source", "translation", "tts", "assemble"}

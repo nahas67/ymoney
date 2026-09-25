@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { wsApi, videoFileUrl, videoThumbUrl, coverFileUrl, downloadAudit } from "../lib/api";
+import { wsApi, videoFileUrl, videoThumbUrl, coverFileUrl, aiCoverFileUrl, downloadAudit } from "../lib/api";
 import { useFetch } from "../hooks/hooks";
-import { Badge, Card, Modal, PageHeader, ScoreBar, Tabs, WhyPanel } from "../components/ui";
+import { Badge, Card, Modal, PageHeader, ScoreBar, Tabs, WhyPanel, toast } from "../components/ui";
+import TimelinesPanel from "../components/TimelinesPanel";
 import { fmtDate } from "../lib/format";
 
 export default function ContentDetail() {
@@ -10,27 +11,38 @@ export default function ContentDetail() {
   const nav = useNavigate();
   const detail = useFetch(() => wsApi.get(`/content/${contentId}`), [contentId]);
   const timeline = useFetch(() => wsApi.get(`/content/${contentId}/timeline`), [contentId]);
-  const [tab, setTab] = useState<"video" | "research" | "strategy" | "variants" | "timeline">("video");
+  const [tab, setTab] = useState<"video" | "research" | "strategy" | "variants" | "timeline" | "edit">("video");
   const [busy, setBusy] = useState("");
   const [thumbAt, setThumbAt] = useState("1.0");
   const [coversOpen, setCoversOpen] = useState(false);
   const [covers, setCovers] = useState<any[]>([]);
   const [coversBusy, setCoversBusy] = useState(false);
   const [pick, setPick] = useState<number | null>(null);
+  const [coversMode, setCoversMode] = useState<"frames" | "ai">("frames");
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiPick, setAiPick] = useState<number | null>(null);
   const [sched, setSched] = useState<{ platform: string; runAt: string } | null>(null);
 
   const c: any = detail.data;
 
-  async function action(a: string) {
+  async function action(a: string, reason?: string) {
     setBusy(a);
     try {
-      await wsApi.post(`/content/${contentId}/actions`, { action: a });
+      await wsApi.post(`/content/${contentId}/actions`, reason == null ? { action: a } : { action: a, reason });
       detail.reload();
+      if (a === "approve") toast("Approved — upload queued", "success");
+      else if (a === "reject") toast("Rejected", "warning");
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Action failed");
     } finally {
       setBusy("");
     }
+  }
+
+  async function reject() {
+    const reason = window.prompt("Rejection reason (stored on the item):", "");
+    if (reason == null) return;
+    await action("reject", reason);
   }
 
   async function remakeThumb() {
@@ -39,8 +51,9 @@ export default function ContentDetail() {
     try {
       await wsApi.post(`/videos/${c.video.id}/thumbnail`, { at_seconds: parseFloat(thumbAt) || 1 });
       detail.reload();
+      toast("Poster updated", "success");
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Thumbnail failed");
     } finally {
       setBusy("");
     }
@@ -51,12 +64,14 @@ export default function ContentDetail() {
     setCoversOpen(true);
     setCovers([]);
     setPick(null);
+    setAiPick(null);
+    setCoversMode("frames");
     setCoversBusy(true);
     try {
       const r = await wsApi.post(`/videos/${c.video.id}/covers`, { count: 3 });
       setCovers(r.covers ?? []);
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Covers failed");
       setCoversOpen(false);
     } finally {
       setCoversBusy(false);
@@ -64,16 +79,35 @@ export default function ContentDetail() {
   }
 
   async function pickCover() {
-    if (!c?.video?.id || pick == null) return;
+    if (!c?.video?.id) return;
+    const body = coversMode === "ai" ? { ai_cover_index: aiPick } : { cover_index: pick };
+    if (coversMode === "ai" ? aiPick == null : pick == null) return;
     setBusy("pick");
     try {
-      await wsApi.post(`/videos/${c.video.id}/thumbnail`, { cover_index: pick });
+      await wsApi.post(`/videos/${c.video.id}/thumbnail`, body);
       setCoversOpen(false);
       detail.reload();
+      toast("Cover set", "success");
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Set cover failed");
     } finally {
       setBusy("");
+    }
+  }
+
+  async function genAiCovers() {
+    if (!c?.video?.id) return;
+    setCovers([]);
+    setAiPick(null);
+    setCoversBusy(true);
+    try {
+      const r = await wsApi.post(`/videos/${c.video.id}/ai-covers`,
+        { prompt: aiPrompt.trim() || undefined, count: 3 });
+      setCovers(r.covers ?? []);
+    } catch (e: any) {
+      toast(e.message, "error", "AI covers failed");
+    } finally {
+      setCoversBusy(false);
     }
   }
 
@@ -83,10 +117,10 @@ export default function ContentDetail() {
     try {
       // datetime-local is naive — the API requires explicit timezone ISO.
       await wsApi.post("/calendar", { content_item_id: contentId, platform: sched.platform, run_at: new Date(sched.runAt).toISOString() });
-      alert("Scheduled");
+      toast("Scheduled", "success");
       setSched(null);
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Schedule failed");
     } finally {
       setBusy("");
     }
@@ -97,11 +131,13 @@ export default function ContentDetail() {
       <PageHeader title={c?.topic ?? "Content"} subtitle={c ? `${c.status} · ${fmtDate(c.created_at)}` : undefined}
         actions={<>
           <button className="btn-ghost !text-xs" onClick={() => nav("/studio")}>← Library</button>
-          <button className="btn-outline !text-xs" onClick={() => contentId && downloadAudit(contentId).catch((e: any) => alert(e.message))}>Export audit</button>
+          <button className="btn-outline !text-xs" onClick={() => contentId && downloadAudit(contentId).then(
+            () => toast("Audit exported", "success")).catch((e: any) => toast(e.message, "error", "Export failed"))}>Export audit</button>
           {c && ["QC", "APPROVED", "SCHEDULED"].includes(c.status) && (
             <>
               <button className="btn-primary !text-xs" disabled={busy === "approve"} onClick={() => action("approve")}>Approve</button>
               <button className="btn-outline !text-xs" disabled={busy === "retry"} onClick={() => action("retry")}>Retry</button>
+              <button className="btn-outline !text-xs" disabled={busy === "reject"} onClick={reject}>Reject</button>
               <button className="btn-ghost !text-xs" disabled={busy === "skip"} onClick={() => action("skip")}>Skip</button>
             </>
           )}
@@ -118,7 +154,7 @@ export default function ContentDetail() {
           <Tabs tabs={[
             { key: "video", label: "Video & QC" }, { key: "research", label: "Research & claims" },
             { key: "strategy", label: "Strategy" }, { key: "variants", label: `Variants (${c.variants?.length ?? 0})` },
-            { key: "timeline", label: "Timeline" },
+            { key: "timeline", label: "Timeline" }, { key: "edit", label: "Edit timeline" },
           ]} active={tab} onChange={setTab} />
 
           {tab === "video" && (
@@ -219,34 +255,62 @@ export default function ContentDetail() {
               ))}
             </Card>
           )}
+
+          {tab === "edit" && contentId && (
+            <TimelinesPanel contentId={contentId} videoId={c.video?.id} />
+          )}
         </>
       )}
 
       <Modal open={coversOpen} onClose={() => setCoversOpen(false)} title="Compare covers" wide>
-        {coversBusy && <div className="text-[13px]" style={{ color: "var(--text-muted)" }}>Extracting candidates…</div>}
+        <div className="flex gap-2 mb-3">
+          <button className={coversMode === "frames" ? "btn-primary !text-xs" : "btn-ghost !text-xs"}
+            onClick={() => { setCoversMode("frames"); setAiPick(null); if (c?.video?.id) openCovers(); }}>Frames</button>
+          <button className={coversMode === "ai" ? "btn-primary !text-xs" : "btn-ghost !text-xs"}
+            onClick={() => { setCoversMode("ai"); setCovers([]); setPick(null); }}>✨ AI generate</button>
+        </div>
+        {coversMode === "ai" && (
+          <div className="flex gap-2 mb-3">
+            <input className="input" placeholder="Prompt (blank = topic + hook)…" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} />
+            <button className="btn-outline !text-xs whitespace-nowrap" disabled={coversBusy} onClick={genAiCovers}>
+              {coversBusy ? "…" : "Generate 3"}
+            </button>
+          </div>
+        )}
+        {coversBusy && <div className="text-[13px]" style={{ color: "var(--text-muted)" }}>{coversMode === "ai" ? "Generating…" : "Extracting candidates…"}</div>}
         {!coversBusy && covers.length > 0 && (
           <>
             <div className="grid grid-cols-3 gap-3">
-              {covers.map((cv: any) => (
-                <button key={cv.index} onClick={() => setPick(cv.index)}
-                  className="rounded-xl overflow-hidden text-left"
-                  style={{ border: pick === cv.index ? "2px solid var(--accent)" : "var(--seam)", padding: 0, background: "var(--bg-inset)" }}>
-                  <img src={coverFileUrl(c.video.id, cv.index)} alt={`cover @${cv.at_seconds}s`} className="w-full aspect-[9/16] object-cover" />
-                  <div className="px-2 py-1.5 font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>
-                    @{cv.at_seconds}s
-                  </div>
-                </button>
-              ))}
+              {covers.map((cv: any) => {
+                const sel = coversMode === "ai" ? aiPick : pick;
+                const setSel = coversMode === "ai" ? setAiPick : setPick;
+                return (
+                  <button key={cv.index} onClick={() => setSel(cv.index)}
+                    className="rounded-xl overflow-hidden text-left"
+                    style={{ border: sel === cv.index ? "2px solid var(--accent)" : "var(--seam)", padding: 0, background: "var(--bg-inset)" }}>
+                    <img src={coversMode === "ai" ? aiCoverFileUrl(c.video.id, cv.index) : coverFileUrl(c.video.id, cv.index)}
+                      alt={coversMode === "ai" ? `AI cover ${cv.index}` : `cover @${cv.at_seconds}s`} className="w-full aspect-[9/16] object-cover" />
+                    <div className="px-2 py-1.5 font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>
+                      {coversMode === "ai" ? "✨ AI" : `@${cv.at_seconds}s`}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
             <div className="flex justify-end mt-3">
-              <button className="btn-primary !text-xs" disabled={pick == null || busy === "pick"} onClick={pickCover}>
+              <button className="btn-primary !text-xs"
+                disabled={(coversMode === "ai" ? aiPick == null : pick == null) || busy === "pick"} onClick={pickCover}>
                 {busy === "pick" ? "…" : "Set as cover"}
               </button>
             </div>
           </>
         )}
         {!coversBusy && !covers.length && (
-          <div className="text-[13px]" style={{ color: "var(--text-muted)" }}>No candidates — ffmpeg may be unavailable.</div>
+          <div className="text-[13px]" style={{ color: "var(--text-muted)" }}>
+            {coversMode === "ai"
+              ? "Press Generate — needs an image provider key (Settings → Connections)."
+              : "No candidates — ffmpeg may be unavailable."}
+          </div>
         )}
       </Modal>
     </div>
@@ -275,7 +339,7 @@ function MetaPack({ variants }: { variants: any[] }) {
       setCopied(key);
       setTimeout(() => setCopied(""), 1500);
     } catch {
-      alert("Copy failed — select the text manually.");
+      toast("Copy failed — select the text manually.", "warning");
     }
   }
 
@@ -332,8 +396,9 @@ function VariantsCompare({ variants, contentId, onChange }: { variants: any[]; c
     try {
       await wsApi.post(`/content/${contentId}/variants/${id}/select`);
       onChange();
+      toast("Variant selected", "success");
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Select failed");
     } finally {
       setBusy("");
     }

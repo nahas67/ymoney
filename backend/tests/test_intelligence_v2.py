@@ -28,9 +28,6 @@ class TestResearchClaims:
         assert 0 <= result["factual_confidence"] <= 1
 
     def test_conflicting_claims_flagged(self):
-        from app.engine.agents.creation import ResearchAgent
-
-        raw = ResearchAgent.research.__wrapped__ if hasattr(ResearchAgent.research, "__wrapped__") else None
         # direct normalization path via a crafted llm-free call is covered by mock;
         # here validate the aggregation math through the same code path used in prod
         weights = {"VERIFIED": 1.0, "LIKELY": 0.7, "UNCERTAIN": 0.35, "CONFLICTING": 0.15}

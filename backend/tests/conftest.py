@@ -19,9 +19,9 @@ os.environ["MOCK_ANALYTICS"] = "true"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import pytest  # noqa: E402
+import pytest
 
-from tests import fakes as _fakes  # noqa: E402
+from tests import fakes as _fakes
 
 
 @pytest.fixture()

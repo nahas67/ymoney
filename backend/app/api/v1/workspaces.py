@@ -133,6 +133,13 @@ def put_settings(
     db=Depends(get_db),
 ):
     merged = dict(ws.settings_json or {})
+    if "safety" in (body.settings or {}):
+        # Safety limits have a validated endpoint (ge/le guards); the generic
+        # merge must not become a bypass around it.
+        raise HTTPException(
+            status_code=422,
+            detail="write safety limits via PUT /workspaces/{id}/safety (validated)",
+        )
     for k, v in (body.settings or {}).items():
         merged[k] = v
     ws.settings_json = merged

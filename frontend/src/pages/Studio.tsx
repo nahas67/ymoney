@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { wsApi } from "../lib/api";
 import { useFetch } from "../hooks/hooks";
-import { Badge, Card, PageHeader, Section, Tabs, statusTone } from "../components/ui";
+import { Badge, Card, PageHeader, SearchInput, Section, Tabs, statusTone } from "../components/ui";
 
 export default function Studio() {
   const [tab, setTab] = useState("all");
   const [search, setSearch] = useState("");
+  const [q, setQ] = useState("");
   const lib = useFetch(() => {
     const p = new URLSearchParams({ limit: "100" });
     if (tab !== "all") p.set("status", tab);
@@ -14,18 +15,27 @@ export default function Studio() {
     return wsApi.get(`/content?${p}`);
   }, [tab]);
   const nav = useNavigate();
-  const [q, setQ] = useState("");
+  const first = useRef(true);
 
-  function doSearch() {
-    setSearch(q);
-    lib.reload();
-  }
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    const t = setTimeout(() => {
+      if (q !== search) {
+        setSearch(q);
+        lib.reload();
+      }
+    }, 450);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
 
   return (
     <div className="space-y-4">
       <PageHeader title="Content Studio" subtitle={`${(lib.data as any)?.total ?? 0} items — every artifact the system produced, with QC and variants.`}
-        actions={<input className="input !w-56" placeholder="Search topics… (Enter)" value={q}
-          onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && doSearch()} aria-label="Search content" />} />
+        actions={<div className="w-[240px]"><SearchInput value={q} onChange={setQ} placeholder="Search topics…" /></div>} />
       <Tabs tabs={[
         { key: "all", label: "All" }, { key: "QC", label: "In QC" }, { key: "APPROVED", label: "Approval hold" },
         { key: "PUBLISHED", label: "Published" }, { key: "LEARNED", label: "Learned" }, { key: "FAILED", label: "Failed" },

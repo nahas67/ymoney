@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { wsApi } from "../lib/api";
 import { useFetch } from "../hooks/hooks";
-import { Badge, Card, Modal, PageHeader, Section, Tabs, WhyPanel, statusTone } from "../components/ui";
+import { Badge, Card, Modal, PageHeader, SearchInput, Section, Tabs, WhyPanel, statusTone, toast } from "../components/ui";
 import { fmtAgo, fmtDate, fmtUSD } from "../lib/format";
 
 const STAGES = ["FIND", "SCORE", "SELECT", "RESEARCH", "BUILD", "VERIFY", "UPLOAD", "MEASURE", "LEARN"];
@@ -11,6 +11,17 @@ export default function Autopilot() {
   const jobs = useFetch(() => wsApi.get("/jobs?limit=60"), []);
   const [tab, setTab] = useState<"cycles" | "jobs">("cycles");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+
+  async function cancelJob(id: string) {
+    try {
+      await wsApi.post(`/jobs/${id}/cancel`);
+      toast("Job cancelled", "warning");
+      jobs.reload();
+    } catch (e: any) {
+      toast(e.message, "error", "Cancel failed");
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -33,7 +44,12 @@ export default function Autopilot() {
         active={tab} onChange={setTab} />
 
       {tab === "cycles" && (
-        <Section data={(cycles.data as any)?.items} loading={cycles.loading} error={cycles.error} onRetry={cycles.reload}
+        <div className="max-w-[300px] mb-3"><SearchInput value={q} onChange={setQ} placeholder="Filter by topic or stage…" /></div>
+      )}
+      {tab === "cycles" && (
+        <Section data={((cycles.data as any)?.items ?? []).filter((c: any) =>
+          !q || `${c.topic ?? ""} ${c.stage ?? ""}`.toLowerCase().includes(q.toLowerCase())
+        )} loading={cycles.loading} error={cycles.error} onRetry={cycles.reload}
           empty="No cycles yet" emptyHint="Press START on the Command Center to run the first loop.">
           {(list) => (
             <Card pad={false} className="overflow-x-auto">
@@ -73,7 +89,7 @@ export default function Autopilot() {
                       <td className="max-w-[320px] truncate text-[12px]" style={{ color: "var(--text-muted)" }}>{j.last_error || "—"}</td>
                       <td>
                         {["QUEUED", "WAITING", "RETRYING", "RUNNING"].includes(j.status) && (
-                          <button className="btn-ghost !text-xs !py-1" onClick={async () => { await wsApi.post(`/jobs/${j.id}/cancel`); jobs.reload(); }}>Cancel</button>
+                          <button className="btn-ghost !text-xs !py-1" onClick={() => cancelJob(j.id)}>Cancel</button>
                         )}
                       </td>
                     </tr>

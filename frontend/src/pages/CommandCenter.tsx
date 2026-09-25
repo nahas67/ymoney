@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { wsApi, api } from "../lib/api";
 import { useFetch, useInterval, useActivityFeed } from "../hooks/hooks";
-import { Badge, Card, FeedList, Modal, PageHeader, Stat, WhyPanel, statusTone } from "../components/ui";
+import {
+  Badge, Card, FeedList, Modal, PageHeader, Progress, Stat, WhyPanel, statusTone, toast,
+} from "../components/ui";
 import { fmtUSD } from "../lib/format";
 
 export default function CommandCenter() {
   const status = useFetch(() => wsApi.get("/autopilot/status"), []);
-  const readiness = useFetch(() => api("GET", "/system/readiness"), []);
+  const doctor = useFetch(() => api("GET", "/system/doctor"), []);
   const costs = useFetch(() => wsApi.get("/costs"), []);
   const analytics = useFetch(() => wsApi.get("/analytics/overview"), []);
   const patterns = useFetch(() => wsApi.get("/analytics/patterns"), []);
@@ -26,17 +28,21 @@ export default function CommandCenter() {
 
   const st: any = status.data;
   const running = st?.state === "RUNNING" || st?.state === "STARTING";
-  const blocked: string[] = (readiness.data as any)?.blocking_failures ?? [];
-  const checks: any[] = (readiness.data as any)?.checks ?? [];
+  const doc: any = doctor.data;
+  const blocked: string[] = doc?.doctor?.blocking_failed ?? doc?.blocking_failures ?? [];
+  const checks: any[] = doc?.checks ?? [];
 
   async function act(kind: string, path: string, body?: any) {
     setBusy(kind);
     try {
-      await wsApi.post(path, body ?? {});
+      const r = await wsApi.post(path, body ?? {});
       status.reload();
-      readiness.reload();
+      doctor.reload();
+      if (kind === "start") toast("Autopilot started", "success");
+      if (kind === "stop") toast("Autopilot stopping — running steps finish", "warning");
+      return r;
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Action failed");
     } finally {
       setBusy("");
     }
@@ -53,16 +59,47 @@ export default function CommandCenter() {
   const cost: any = costs.data;
   const ana: any = analytics.data;
   const topPatterns: any[] = ((patterns.data as any)?.items ?? []).filter((p: any) => p.active).slice(0, 3);
+  const spendPct = cost?.daily_budget_usd ? Math.min(100, ((cost?.spent_last_24h_usd ?? 0) / cost.daily_budget_usd) * 100) : 0;
 
   return (
     <div className="space-y-5">
       <PageHeader
         title="Command Center"
         subtitle="START once — FIND → SCORE → PRODUCE → PUBLISH → LEARN runs itself inside budget and quality guardrails."
-        actions={
-          <>
+      />
+
+      {/* Hero control deck */}
+      <div className="card overflow-hidden" style={{ padding: 0 }}>
+        <div className="px-6 pt-6 pb-5 flex flex-wrap items-center gap-5">
+          <span className="grid place-items-center w-14 h-14 rounded-2xl text-[26px]"
+            style={{
+              background: running ? "linear-gradient(135deg, var(--accent-bright), var(--accent-deep))" : "var(--bg-subtle)",
+              boxShadow: running ? "0 0 28px -4px var(--accent-glow)" : undefined,
+              border: running ? undefined : "var(--seam)",
+            }}>
+            {running ? "◉" : "○"}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="text-[20px] font-bold tracking-tight">{st?.state ?? "…"}</span>
+              <Badge tone={running ? "success" : "muted"}>
+                {st?.cycles_completed ? `${st.cycles_completed} cycles` : "idle"}
+              </Badge>
+              <Badge tone={doc?.status === "ready" ? "success" : "warning"}>
+                {doc ? `Doctor: ${doc.status}` : "probing…"}
+              </Badge>
+            </div>
+            <div className="mt-2.5 max-w-[420px]">
+              <div className="flex justify-between text-[11.5px] mb-1.5" style={{ color: "var(--text-muted)" }}>
+                <span>24h spend {fmtUSD(cost?.spent_last_24h_usd)}</span>
+                <span>${(cost?.daily_budget_usd ?? 0).toFixed(2)} budget</span>
+              </div>
+              <Progress value={spendPct} />
+            </div>
+          </div>
+          <div className="flex gap-2 flex-wrap">
             {!running ? (
-              <button className="btn-primary !px-6 !py-2.5 !text-[15px]" disabled={busy === "start"} onClick={start}>
+              <button className="btn-primary !px-7 !py-3 !text-[15px]" disabled={busy === "start"} onClick={start}>
                 {busy === "start" ? "…" : "▶ START"}
               </button>
             ) : (
@@ -72,38 +109,54 @@ export default function CommandCenter() {
                 <button className="btn-danger" disabled={busy === "stop"} onClick={() => act("stop", "/autopilot/stop")}>■ Stop</button>
               </>
             )}
-          </>
-        }
-      />
-
-      {/* Status strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat label="Autopilot" value={<span style={{ color: running ? "var(--accent)" : undefined }}>{st?.state ?? "…"}</span>}
-          hint={st ? `${st.cycles_completed ?? 0} cycles completed` : undefined} />
-        <Stat label="Spent (24h)" value={fmtUSD(cost?.spent_last_24h_usd)}
-          hint={`$${(cost?.daily_budget_usd ?? 0).toFixed(2)} daily budget · $${(cost?.remaining_usd ?? 0).toFixed(2)} left`} />
-        <Stat label="Published posts" value={ana?.posts_published ?? 0} hint={`${ana?.totals?.views ?? 0} total views`} />
-        <Stat label="Readiness" value={(readiness.data as any)?.status === "ready" ? "Ready" : "Blocked"}
-          hint={blocked.length ? `blocked: ${blocked.join(", ")}` : "all dependencies verified"} />
+          </div>
+        </div>
       </div>
 
-      {/* Readiness gate */}
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Stat label="Published posts" value={ana?.posts_published ?? 0} hint={`${ana?.totals?.views ?? 0} total views`} />
+        <Stat label="Total spend" value={fmtUSD(ana?.cost_total_usd)} hint={ana?.mock_analytics ? "simulated analytics" : "measured spend"} />
+        <Stat label="Remaining today" value={fmtUSD(cost?.remaining_usd)} hint={cost?.within_budget === false ? "budget exhausted" : "within budget"} />
+        <Stat label="Blocking checks" value={blocked.length ? blocked.length : "0"}
+          hint={blocked.length ? blocked.join(", ") : "all dependencies verified"} />
+      </div>
+
+      {/* Production gate */}
       <Card>
         <div className="flex items-center justify-between mb-2">
           <b className="text-[14px]">Production gate</b>
-          <button className="btn-ghost !text-xs" onClick={() => readiness.reload()}>Re-check</button>
+          <button className="btn-ghost !text-xs" onClick={() => doctor.reload()}>Re-check</button>
         </div>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-6">
-          {checks.map((c: any) => (
-            <div key={c.id} className="flex justify-between gap-3 py-1.5 text-[13px]" style={{ borderBottom: "var(--seam)" }}>
-              <span className="capitalize" style={{ color: "var(--text-muted)" }}>{c.id.replace(/_/g, " ")}</span>
-              <span className="text-right truncate" title={c.detail} style={{ color: c.status === "passed" ? "var(--accent)" : c.blocking ? "var(--danger)" : "var(--warn)" }}>
-                {c.status === "passed" ? "●" : "●"} {c.detail?.slice(0, 60)}
-              </span>
+        {(["Built-in", "Configured"] as const).map((group) => {
+          const tier = group === "Built-in" ? 0 : 1;
+          const rows = checks.filter((c: any) => (c.tier ?? 1) === tier);
+          if (!rows.length) return null;
+          return (
+            <div key={group} className="mb-1">
+              <div className="panel-label mt-2 mb-1">{group}</div>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-6">
+                {rows.map((c: any) => (
+                  <div key={c.id} className="py-1.5 text-[13px]" style={{ borderBottom: "var(--seam)" }}>
+                    <div className="flex justify-between gap-3">
+                      <span className="capitalize" style={{ color: "var(--text-muted)" }}>{c.id.replace(/_/g, " ")}</span>
+                      <span className="text-right truncate" title={c.detail}
+                        style={{ color: c.status === "passed" ? "var(--accent)" : c.blocking ? "var(--danger)" : "var(--warn)" }}>
+                        {c.status === "passed" ? "●" : "●"} {c.detail?.slice(0, 60)}
+                      </span>
+                    </div>
+                    {c.status !== "passed" && c.remediation && (
+                      <div className="font-mono text-[11.5px] mt-0.5 truncate" title={c.remediation} style={{ color: "var(--text-faint)" }}>
+                        ↳ {c.remediation}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
-          {!checks.length && <span className="text-[13px]" style={{ color: "var(--text-faint)" }}>Probing…</span>}
-        </div>
+          );
+        })}
+        {!checks.length && <span className="text-[13px]" style={{ color: "var(--text-faint)" }}>Probing…</span>}
       </Card>
 
       <div className="grid lg:grid-cols-5 gap-4">

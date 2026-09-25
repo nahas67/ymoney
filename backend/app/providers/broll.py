@@ -344,6 +344,16 @@ def plan_scenes(topic: str, keywords: list[str], n_scenes: int,
             source="stock" if i % 2 == 0 else "ai",
             license="Pexels license (stock) / generated (ai)",
         ))
+    # Intelligence advisory (Work 05, Lane A): shadow-only; plan order stays authoritative.
+    try:
+        from app.engine.intelligence.integrations import advise_broll_rank
+
+        advise_broll_rank(
+            [{"query": p.query, "prompt": p.prompt} for p in plan],
+            workspace_id=workspace_id, topic=topic,
+        )
+    except Exception:
+        pass
     return plan
 
 

@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { wsApi } from "../lib/api";
 import { useFetch } from "../hooks/hooks";
-import { Badge, Card, Field, PageHeader, Tabs } from "../components/ui";
+import { Badge, Card, ConfirmButton, Field, PageHeader, Tabs, toast } from "../components/ui";
 
 const CONN_GROUPS: { title: string; keys: string[] }[] = [
   { title: "LLM (scripts, research, QC)", keys: ["llm.api_key", "llm.base_url", "llm.model", "llm.model_cheap", "llm.model_reasoning", "llm.model_verification"] },
   { title: "Publishing — OAuth apps", keys: ["google.client_id", "google.client_secret", "tiktok.client_key", "tiktok.client_secret", "meta.app_id", "meta.app_secret"] },
   { title: "Publishing — relay", keys: ["upload_post.api_key", "upload_post.username"] },
   { title: "Trend sources", keys: ["youtube.api_key", "newsdata.api_key", "coingecko.api_key", "pexels.api_key"] },
-  { title: "Voices & images", keys: ["tts.provider", "tts.kokoro_base_url", "tts.kokoro_api_key", "tts.chatterbox_base_url", "tts.qwen_base_url", "tts.qwen_instruct", "tts.qwen_api_key", "image.openai_base_url", "image.openai_api_key", "image.openai_model"] },
+  { title: "Voices & images", keys: ["tts.provider", "tts.kokoro_base_url", "tts.kokoro_api_key", "tts.chatterbox_base_url", "tts.qwen_base_url", "tts.qwen_instruct", "tts.qwen_api_key", "tts.elevenlabs_api_key", "image.openai_base_url", "image.openai_api_key", "image.openai_model"] },
   { title: "Telegram", keys: ["telegram.bot_token"] },
   { title: "Avatar", keys: ["avatar.backend", "avatar.base_url", "avatar.sadtalker_dir", "avatar.wavlip_dir"] },
   { title: "B-roll & AI video", keys: ["broll.ai_backend", "broll.ai_base_url"] },
@@ -61,8 +61,9 @@ function WorkspaceTab() {
       setSaved("Saved");
       setTimeout(() => setSaved(""), 2000);
       ws.reload();
+      toast("Workspace saved", "success");
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Save failed");
     }
   }
 
@@ -97,16 +98,19 @@ function ConnectionsTab() {
       setTimeout(() => setSaved(""), 2000);
       conns.reload();
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Save failed");
     }
   }
 
+  const [testOut, setTestOut] = useState("");
   async function test(kind: string) {
+    setTestOut("");
     try {
       const r = await wsApi.post(`/connections/test-${kind}`, {});
-      alert(JSON.stringify(r, null, 2).slice(0, 600));
+      setTestOut(JSON.stringify(r, null, 2).slice(0, 600));
+      toast("Test passed", "success");
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Test failed");
     }
   }
 
@@ -116,6 +120,7 @@ function ConnectionsTab() {
         <button className="btn-outline !text-xs" onClick={() => test("llm")}>Test LLM</button>
         <button className="btn-outline !text-xs" onClick={() => test("publishing")}>Test publishing paths</button>
       </div>
+      {testOut && <pre className="text-[11.5px] font-mono p-3 rounded-xl overflow-x-auto" style={{ background: "var(--bg-inset)" }}>{testOut}</pre>}
       {CONN_GROUPS.map((g) => (
         <Card key={g.title}>
           <b className="text-[13.5px]">{g.title}</b>
@@ -160,8 +165,9 @@ function SafetyTab() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
       s.reload();
+      toast("Safety limits saved", "success");
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Save failed");
     }
   }
 
@@ -207,8 +213,9 @@ function EngineTab() {
       setUrl(null);
       setTimeout(null);
       e.reload();
+      toast("Engine config saved", "success");
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message, "error", "Save failed");
     }
   }
 
@@ -241,18 +248,19 @@ function TrendsTab() {
       await wsApi.post("/trend-sources", { kind, name: name || kind, enabled: true, config: {} });
       setName("");
       t.reload();
+      toast(`Source added (${kind})`, "success");
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Add failed");
     }
   }
 
   async function remove(id: string) {
-    if (!confirm("Remove this trend source?")) return;
     try {
       await wsApi.del(`/trend-sources/${id}`);
+      toast("Source removed", "warning");
       t.reload();
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Remove failed");
     }
   }
 
@@ -264,14 +272,14 @@ function TrendsTab() {
           <div key={s.id} className="flex items-center gap-2 text-[13px]">
             <Badge tone={s.enabled ? "success" : "muted"}>{s.kind}</Badge>
             <span>{s.name}</span>
-            <button className="btn-ghost !text-[11px] !py-0.5 ml-auto" onClick={() => remove(s.id)}>Remove</button>
+            <span className="ml-auto"><ConfirmButton onConfirm={() => remove(s.id)} confirmText="Remove?" className="btn-ghost !text-[11px] !py-0.5">Remove</ConfirmButton></span>
           </div>
         ))}
         {!items.length && <div className="text-[12.5px]" style={{ color: "var(--text-faint)" }}>None configured — discovery falls back to Google Trends + Hacker News + keyless catalog.</div>}
       </div>
       <div className="flex gap-2 mt-4 flex-wrap">
         <select className="select !w-48" value={kind} onChange={(e) => setKind(e.target.value)}>
-          {["google_trends", "reddit", "hacker_news", "newsdata", "coingecko", "devto", "youtube_trending", "youtube_channel"].map((k) => <option key={k} value={k}>{k}</option>)}
+          {["google_trends", "reddit", "hacker_news", "newsdata", "coingecko", "devto", "youtube_trending", "youtube_channel", "bilibili"].map((k) => <option key={k} value={k}>{k}</option>)}
         </select>
         <input className="input !w-52" placeholder="Display name (optional)" value={name} onChange={(e) => setName(e.target.value)} />
         <button className="btn-primary !text-xs" onClick={add}>Add source</button>

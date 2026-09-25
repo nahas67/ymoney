@@ -14,7 +14,6 @@ remediation (same contract as the clip repurposer).
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import subprocess
@@ -22,8 +21,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from loguru import logger
-
-from app.services.storage import STORAGE_ROOT
 
 WORK_DIR = Path("data/motion")
 
@@ -220,7 +217,8 @@ def render_card(kind: str, title: str, workspace_id: str, subtitle: str = "",
     if not probe["browser"]:
         raise MotionError("no working Chrome for HyperFrames rendering (see: hyperframes browser ensure)")
     prefix = _npx()
-    assert prefix is not None
+    if not prefix:
+        raise MotionError("npx not found — install Node.js to render motion cards")
     job_dir = WORK_DIR / workspace_id
     job_dir.mkdir(parents=True, exist_ok=True)
     html = build_composition(kind, title, subtitle, accent, duration)

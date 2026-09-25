@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { fmtAgo } from "../lib/format";
 
@@ -182,8 +183,7 @@ export function WhyPanel({ why }: { why: any }) {
   );
 }
 
-export function FeedList({ items, limit = 30 }: { items: { kind: string; message: string; level: string; created_at?: string }[]; limit?: number }) {
-  const levelColor = (l: string) => (l === "error" ? "var(--danger)" : l === "warning" ? "var(--warn)" : l === "success" ? "var(--accent)" : "var(--text-faint)");
+export function FeedList({ items, limit = 30 }: { items: { kind: string; message: string; level: string; created_at?: string }[]; limit?: number }) {  const levelColor = (l: string) => (l === "error" ? "var(--danger)" : l === "warning" ? "var(--warn)" : l === "success" ? "var(--accent)" : "var(--text-faint)");
   return (
     <div className="space-y-0 max-h-[420px] overflow-y-auto">
       {items.slice(-limit).reverse().map((e, i) => (
@@ -197,5 +197,204 @@ export function FeedList({ items, limit = 30 }: { items: { kind: string; message
       ))}
       {!items.length && <div className="text-[12.5px] py-4 text-center" style={{ color: "var(--text-faint)" }}>No activity yet — press START.</div>}
     </div>
+  );
+}
+
+/* ---- Toasts: imperative, no provider needed (mount <Toasts/> once in Layout) ---- */
+
+export type ToastTone = "success" | "error" | "warning" | "info";
+
+export function toast(message: string, tone: ToastTone = "info", title?: string) {
+  window.dispatchEvent(
+    new CustomEvent("ym-toast", {
+      detail: { id: Math.random().toString(36).slice(2), message, tone, title },
+    })
+  );
+}
+
+const _toastDot: Record<ToastTone, string> = {
+  success: "var(--accent)",
+  error: "var(--danger)",
+  warning: "var(--warn)",
+  info: "var(--info)",
+};
+
+export function Toasts() {
+  const [items, setItems] = useState<{ id: string; message: string; tone: ToastTone; title?: string }[]>([]);
+  const [leaving, setLeaving] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const dismiss = (id: string) => {
+      setLeaving((s) => new Set(s).add(id));
+      setTimeout(() => {
+        setItems((l) => l.filter((t) => t.id !== id));
+        setLeaving((s) => {
+          const n = new Set(s);
+          n.delete(id);
+          return n;
+        });
+      }, 180);
+    };
+    const on = (e: any) => {
+      const t = e.detail;
+      setItems((l) => [...l.slice(-4), t]);
+      setTimeout(() => dismiss(t.id), 4200);
+    };
+    window.addEventListener("ym-toast", on);
+    return () => window.removeEventListener("ym-toast", on);
+  }, []);
+  if (!items.length) return null;
+  return (
+    <div className="toasts">
+      {items.map((t) => (
+        <div key={t.id} className={`toast${leaving.has(t.id) ? " out" : ""}`} role="status">
+          <span className="dot" style={{ background: _toastDot[t.tone] }} />
+          <div className="min-w-0">
+            {t.title && <div className="font-semibold text-[13px]">{t.title}</div>}
+            <div className="break-words" style={{ color: "var(--text-muted)" }}>{t.message}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ---- CopyButton: copies text, flashes confirmation ---- */
+
+export function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
+  const [ok, setOk] = useState(false);
+  return (
+    <button
+      className="btn-ghost !text-xs !py-1"
+      onClick={() => {
+        navigator.clipboard?.writeText(text).then(
+          () => {
+            setOk(true);
+            setTimeout(() => setOk(false), 1400);
+          },
+          () => toast("Copy failed — select the text manually", "warning")
+        );
+      }}
+    >
+      {ok ? "✓ Copied" : label}
+    </button>
+  );
+}
+
+/* ---- ConfirmButton: destructive actions need a second click ---- */
+
+export function ConfirmButton({
+  onConfirm,
+  children,
+  confirmText = "Sure?",
+  className = "btn-danger !text-xs",
+  disabled,
+}: {
+  onConfirm: () => void;
+  children: ReactNode;
+  confirmText?: string;
+  className?: string;
+  disabled?: boolean;
+}) {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), 3200);
+    return () => clearTimeout(t);
+  }, [armed]);
+  return (
+    <button
+      className={armed ? "btn-danger !text-xs" : className}
+      disabled={disabled}
+      onClick={() => {
+        if (armed) {
+          setArmed(false);
+          onConfirm();
+        } else setArmed(true);
+      }}
+    >
+      {armed ? confirmText : children}
+    </button>
+  );
+}
+
+/* ---- Accordion: collapsible detail sections ---- */
+
+export function Accordion({
+  title,
+  badge,
+  children,
+  defaultOpen = false,
+}: {
+  title: ReactNode;
+  badge?: ReactNode;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-xl" style={{ border: "var(--seam)", background: "var(--bg-inset)" }}>
+      <button className="w-full flex items-center gap-2 px-4 py-3 text-left text-[13px] font-semibold" onClick={() => setOpen(!open)}>
+        <span style={{ color: "var(--text-faint)", transition: "transform 150ms", transform: open ? "rotate(90deg)" : undefined }}>▸</span>
+        <span className="flex-1">{title}</span>
+        {badge}
+      </button>
+      {open && <div className="px-4 pb-4">{children}</div>}
+    </div>
+  );
+}
+
+/* ---- SearchInput: filter field with icon + esc-to-clear ---- */
+
+export function SearchInput({
+  value,
+  onChange,
+  placeholder = "Search…",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="relative">
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px]" style={{ color: "var(--text-faint)" }}>⌕</span>
+      <input
+        className="input !pl-8 !pr-8"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => e.key === "Escape" && onChange("")}
+      />
+      {value && (
+        <button className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[13px]" style={{ color: "var(--text-faint)" }}
+          onClick={() => onChange("")} aria-label="Clear search">✕</button>
+      )}
+    </div>
+  );
+}
+
+/* ---- Progress: thin instrument bar ---- */
+
+export function Progress({ value, max = 100 }: { value: number; max?: number }) {
+  const pct = Math.max(0, Math.min(100, (value / max) * 100));
+  return (
+    <div className="progress">
+      <div style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+/* ---- Avatar: initials medallion ---- */
+
+export function Avatar({ name, size = 32 }: { name: string; size?: number }) {
+  const initials = name
+    .split(/[\s_@.-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("");
+  return (
+    <span className="avatar" style={{ width: size, height: size, fontSize: size * 0.38 }}>
+      {initials || "•"}
+    </span>
   );
 }

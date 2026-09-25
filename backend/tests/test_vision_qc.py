@@ -11,6 +11,7 @@ import os
 import time
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
@@ -68,6 +69,7 @@ def _register(client):
     }
 
 
+@pytest.mark.slow
 def test_autopilot_verify_reads_video_path_and_caps_components():
     """Full single cycle: the verify stage reads the Video row's file path,
     runs the vision provider on real renders, and caps the QC components."""

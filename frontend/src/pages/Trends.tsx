@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { wsApi } from "../lib/api";
 import { useFetch } from "../hooks/hooks";
-import { Badge, Card, Modal, PageHeader, ScoreBar, Section, Tabs, lifecycleTone } from "../components/ui";
+import { Badge, Card, Modal, PageHeader, ScoreBar, SearchInput, Section, Tabs, lifecycleTone, toast } from "../components/ui";
 
 export default function Trends() {
   const [filter, setFilter] = useState("available");
   const [sort, setSort] = useState<"score" | "virality">("score");
+  const [q, setQ] = useState("");
   const opps = useFetch(() => wsApi.get(`/opportunities?status=${filter}&limit=100`), [filter]);
   const [open, setOpen] = useState<any>(null);
   const [busy, setBusy] = useState("");
@@ -15,18 +16,21 @@ export default function Trends() {
     try {
       if (kind === "select") await wsApi.post(`/opportunities/${o.id}/select`);
       else await wsApi.post(`/opportunities/${o.id}/skip`, { reason: "archived by operator" });
+      toast(kind === "select" ? "Sent to production" : "Skipped", kind === "select" ? "success" : "warning");
       opps.reload();
       setOpen(null);
     } catch (e: any) {
-      alert(e.message);
+      toast(e.message, "error", "Action failed");
     } finally {
       setBusy("");
     }
   }
 
-  const items: any[] = [...((opps.data as any)?.items ?? [])].sort((a, b) =>
-    sort === "virality" ? (b.virality ?? 0) - (a.virality ?? 0) : b.score - a.score
-  );
+  const items: any[] = [...((opps.data as any)?.items ?? [])]
+    .filter((o: any) => !q || (o.topic ?? "").toLowerCase().includes(q.toLowerCase()))
+    .sort((a, b) =>
+      sort === "virality" ? (b.virality ?? 0) - (a.virality ?? 0) : b.score - a.score
+    );
 
   return (
     <div className="space-y-4">
@@ -40,12 +44,13 @@ export default function Trends() {
       <Tabs tabs={[
         { key: "available", label: "Available" }, { key: "selected", label: "Selected" }, { key: "skipped", label: "Skipped" },
       ]} active={filter} onChange={setFilter} />
+      <div className="max-w-[300px] mb-3"><SearchInput value={q} onChange={setQ} placeholder="Filter topics…" /></div>
       <Section data={items} loading={opps.loading} error={opps.error} onRetry={opps.reload}
         empty="No opportunities here" emptyHint="Run the autopilot FIND stage or wait for the next discovery refresh.">
         {(list) => (
           <div className="grid md:grid-cols-2 gap-3">
             {list.map((o: any) => (
-              <Card key={o.id} className="cursor-pointer hover:opacity-95" style={{ padding: 15 }} >
+              <Card key={o.id} className="card-hover cursor-pointer" style={{ padding: 15 }} >
                 <div onClick={() => setOpen(o)}>
                   <div className="flex gap-2 items-center mb-1.5 flex-wrap">
                     <Badge tone={lifecycleTone(o.lifecycle)}>{o.lifecycle}</Badge>

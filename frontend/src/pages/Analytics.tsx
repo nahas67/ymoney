@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { wsApi } from "../lib/api";
 import { useFetch } from "../hooks/hooks";
-import { Badge, Card, PageHeader, Section, Tabs } from "../components/ui";
+import { Badge, Card, PageHeader, Progress, Section, Tabs } from "../components/ui";
 import { Bars } from "../components/charts";
 import { fmtCompact, fmtUSD } from "../lib/format";
 
@@ -68,6 +68,7 @@ export default function Analytics() {
                       <span className="truncate">{r.key}</span>
                       <span className="font-mono whitespace-nowrap">{fmtCompact(r.avg_views)} avg · {r.engagement_pct}%</span>
                     </div>
+                    <div className="mt-1"><Progress value={r.engagement_pct} /></div>
                     {r.mock_posts > 0 && <span className="font-mono text-[10.5px]" style={{ color: "var(--warn)" }}>{r.mock_posts} mock</span>}
                   </div>
                 ))}

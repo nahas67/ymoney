@@ -47,6 +47,88 @@ def ffmpeg_present() -> bool:
     return bool(shutil.which("ffmpeg"))
 
 
+def dry_run_dub(source: str, target_lang: str, voice: str = "",
+                srt: str = "", bilingual: bool = True, portrait: bool = True) -> dict:
+    """Validate a dub request without downloads, transcription, LLM, TTS or ffmpeg.
+
+    OpenCreator `--dry-run` pattern: check command shape + capability matrix
+    only. Never writes files, never calls providers. Returns per-step
+    passed/failed/warn rows plus an overall `ok`.
+    """
+    from pathlib import Path as _Path
+
+    checks: list[dict] = []
+
+    def _row(step: str, status: str, detail: str = "") -> None:
+        checks.append({"step": step, "status": status, "detail": detail})
+
+    lang = (target_lang or "").lower().strip()
+    if lang and lang in LANG_LOCALES:
+        _row("language", "passed", lang)
+    else:
+        _row("language", "failed", f"unsupported target language: {target_lang!r}")
+
+    src = (source or "").strip()
+    if src.startswith(("http://", "https://")):
+        from app.providers.clips import yt_dlp_available
+
+        if yt_dlp_available():
+            _row("source", "passed", "remote URL (download at run time)")
+        else:
+            _row("source", "failed", "yt-dlp not installed — URL sources unavailable")
+    elif src and _Path(src).exists():
+        _row("source", "passed", "local file present (media probed at run time)")
+    else:
+        _row("source", "failed", "source is neither a URL nor an existing file")
+
+    srt_text = (srt or "").strip()
+    if srt_text:
+        cues = parse_srt(srt_text)
+        if cues:
+            _row("subtitles", "passed", f"{len(cues)} supplied cue(s), transcription skipped")
+        else:
+            _row("subtitles", "failed", "supplied SRT has no parseable cues")
+    else:
+        from app.providers.clips import whisper_available
+
+        if whisper_available():
+            _row("subtitles", "passed", "transcription at run time (faster-whisper)")
+        else:
+            _row("subtitles", "failed", "no SRT supplied and faster-whisper unavailable")
+
+    from app.providers import llm as llm_mod
+
+    if llm_mod.llm_available():
+        _row("translation", "passed", f"{lang} via configured LLM")
+    else:
+        _row("translation", "failed", "LLM provider not configured")
+
+    if (voice or "").strip():
+        _row("voice", "passed", f"explicit voice '{voice.strip()[:60]}'")
+    else:
+        _row("voice", "warn", "auto-match at run time (voice list queried then)")
+
+    try:
+        from app.providers.tts import get_tts_provider
+
+        prov = get_tts_provider()
+        if prov.name == "mock":
+            _row("tts", "failed", "mock TTS resolves — simulation only")
+        else:
+            _row("tts", "passed", f"provider '{prov.name}' resolves")
+    except Exception as exc:
+        _row("tts", "failed", f"TTS provider unavailable: {exc}")
+
+    if ffmpeg_present():
+        _row("assemble", "passed", f"ffmpeg present (bilingual={bool(bilingual)}, portrait={bool(portrait)})")
+    else:
+        _row("assemble", "failed", "ffmpeg not found")
+
+    failed = [c for c in checks if c["status"] == "failed"]
+    return {"ok": not failed, "checks": checks,
+            "warns": [c for c in checks if c["status"] == "warn"]}
+
+
 def dub_status() -> dict:
     from app.providers import llm as llm_mod
     from app.providers.tts import get_tts_provider
@@ -261,7 +343,6 @@ def assemble_dubbed(source_video: Path, cues: list[SrtCue], dub_files: list[Path
     for p in dub_files:
         if p and Path(p).exists():
             inputs += ["-i", str(p)]
-    n_dub = sum(1 for p in dub_files if p and Path(p).exists())
 
     filt: list[str] = []
     if portrait:
@@ -307,6 +388,8 @@ __all__ = [
     "DubError",
     "SrtCue",
     "assemble_dubbed",
+    "dub_status",
+    "ffmpeg_present",
     "fit_ratio",
     "format_srt",
     "parse_srt",
@@ -314,6 +397,4 @@ __all__ = [
     "synthesize_segments",
     "to_bilingual",
     "translate_segments",
-    "dub_status",
-    "ffmpeg_present",
 ]

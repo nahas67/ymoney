@@ -19,6 +19,7 @@ dependencies = [
     "boto3>=1.35.0",
     "sentry-sdk>=2.15.0",
     "redis>=5.0.0",
+    "opentimelineio==0.18.1",
 ]
 
 [dependency-groups]
@@ -38,7 +39,8 @@ target-version = "py312"
 asyncio_mode = "auto"
 testpaths = ["tests"]
 # Skip live network tests by default; run with -m live to include them.
-addopts = "-m 'not live'"
+# Slow render-heavy tests are a separate CI step; run with -m slow.
+addopts = "-m 'not live and not slow'"
 # A hung test must fail visibly instead of stalling the whole suite (CI gate).
 # Generous ceiling: a healthy run of the full suite stays far below this.
 timeout = 240

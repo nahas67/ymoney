@@ -17,6 +17,38 @@ from app.providers.broll import (
 )
 
 
+def _maybe_sync_plan(ctx, plan: list) -> list[str]:
+    """Adapter: when the job carries a timeline_id, persist the visual plan as
+    Scene rows (even split across the timeline duration). Best-effort — the
+    pipeline result never depends on it."""
+    from loguru import logger
+
+    from app.db import session_scope
+
+    try:
+        payload = getattr(ctx, "payload", None) or {}
+        timeline_id = payload.get("timeline_id")
+        if not timeline_id or not ctx.workspace_id:
+            return []
+        from app.engine import scene_sync as sync_mod
+        from app.models import ContentTimeline
+
+        with session_scope() as s:
+            row = s.get(ContentTimeline, timeline_id)
+            if row is None or row.workspace_id != ctx.workspace_id:
+                return []
+            rows = sync_mod.sync_from_broll_plan(
+                s, workspace_id=ctx.workspace_id, timeline_id=timeline_id,
+                content_item_id=row.content_item_id,
+                plan=[{"prompt": p.prompt} for p in plan],
+                total_duration=row.duration_seconds or 0.0)
+            s.commit()
+            return [r.id for r in rows]
+    except Exception as exc:  # noqa: BLE001 — sync must never break planning
+        logger.debug(f"[broll] scene sync skipped: {type(exc).__name__}")
+        return []
+
+
 class BrollResearcherAgent(BaseAgent):
     meta = AgentMeta(
         key="broll_researcher",
@@ -35,6 +67,7 @@ class BrollResearcherAgent(BaseAgent):
             self.step("plan_scenes", f"{n_scenes} scene(s) for '{topic[:60]}'")
             plan = plan_scenes(topic, keywords or [], n_scenes, ctx.workspace_id or "")
             self.step_done("ok", f"{len(plan)} scene(s)")
+            scene_sync_ids = _maybe_sync_plan(ctx, plan)
             return {
                 "summary": f"planned {len(plan)} scene visual(s) for '{topic[:60]}'",
                 "scenes": [
@@ -42,6 +75,7 @@ class BrollResearcherAgent(BaseAgent):
                      "source": s.source, "license": s.license}
                     for s in plan
                 ],
+                "synced_scene_ids": scene_sync_ids,
             }
 
         return self.execute(ctx, "plan_visuals", input_summary=topic[:200], fn=work)

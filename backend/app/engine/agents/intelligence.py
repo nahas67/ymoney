@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from loguru import logger
 from sqlalchemy import select
 
 from app.db import session_scope
@@ -80,7 +81,8 @@ class AnalyticsCollectorAgent(BaseAgent):
                         stats = provider.fetch_stats(
                             {"remote_post_id": post.remote_post_id, "platform": post.platform}, account
                         )
-                    except Exception:
+                    except Exception as exc:
+                        logger.debug(f"[analytics] {post.platform} stats failed: {type(exc).__name__}")
                         continue  # provider outage must not break the cycle
                     s.add(
                         PostMetric(
@@ -212,7 +214,8 @@ class LearningAgent(BaseAgent):
                         if fn(p, m, aux):
                             hits += 1
                             mults.append(m.views / max(median_views, 1))
-                    except Exception:
+                    except Exception as exc:
+                        logger.debug(f"[learning] pattern check failed: {type(exc).__name__}")
                         continue
                 return hits, (sum(mults) / len(mults)) if mults else 0.0
 

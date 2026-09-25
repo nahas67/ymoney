@@ -36,12 +36,11 @@ from app.models import (
     Video,
     VideoVariant,
 )
-from app.models.base import (  # noqa: F401
+from app.models.base import (
     AutopilotState,
     ContentStatus,
     CycleStage,
     can_transition,
-    new_uuid,
     utcnow,
 )
 from app.services import cost as cost_service
@@ -189,7 +188,7 @@ _cycle_start_lock = __import__("threading").Lock()
 def handle_start_next_cycle(ctx):
     """Entry point: create a new cycle when autopilot should run."""
     ws = ctx.workspace_id
-    state, cfg = _run_state(ws)
+    state, _cfg = _run_state(ws)
     if state in (None,) or state in (AutopilotState.STOPPING.value):
         if state == AutopilotState.STOPPING.value:
             _finalize_stop(ws)
@@ -324,7 +323,6 @@ def handle_select(ctx):
                 }
                 content_id = content.id
                 topic = opp.topic
-                score = opp.score
         elif decision.action in ("SKIP", "HUMAN_REVIEW"):
             # Persist terminal supervisor decisions so the same candidate is
             # not selected again on the next cycle. HUMAN_REVIEW remains visible
@@ -361,7 +359,7 @@ def handle_select(ctx):
         record_event(
             ws,
             f"decision.{decision.action.lower()}",
-            f"{decision.action}: {(decision.topic or 'no candidate')[:70]} — {decision.reasons[0]}",
+            f"{decision.action}: {(decision.topic or 'no candidate')[:70]} — {decision.first_reason}",
             level=level,
             source="supervisor",
             data={"cycle_id": cycle_id, "why": why},
@@ -370,7 +368,7 @@ def handle_select(ctx):
             record_event(
                 ws,
                 "review.required",
-                f"Manual approval needed: '{(decision.topic or '')[:60]}' — {decision.reasons[0]}",
+                f"Manual approval needed: '{(decision.topic or '')[:60]}' — {decision.first_reason}",
                 level="warning",
                 source="safety",
                 data={"opportunity_id": decision.opportunity_id},
@@ -381,7 +379,7 @@ def handle_select(ctx):
     record_event(
         ws,
         "cycle.selected",
-        f"Selected '{topic[:60]}' (adjusted score {decision.score:.0f}) — {decision.reasons[0]}",
+        f"Selected '{topic[:60]}' (adjusted score {decision.score:.0f}) — {decision.first_reason}",
         level="success",
         source="supervisor",
         data={"cycle_id": cycle_id, "content_id": content_id, "why": why},
@@ -409,7 +407,7 @@ MAX_CONSECUTIVE_FAILURES = 3
 def on_cycle_failed(workspace_id: str, cycle_id: str, error: str) -> None:
     """Circuit breaker: stop the run after repeated dead cycles."""
     with session_scope() as s:
-        cycle = _get_cycle(s, cycle_id)
+        _get_cycle(s, cycle_id)  # existence guard; the row itself is unused below
         run = s.scalar(
             select(AutopilotRun)
             .where(AutopilotRun.workspace_id == workspace_id)

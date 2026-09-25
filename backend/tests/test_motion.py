@@ -39,6 +39,7 @@ def test_composition_unknown_kind_raises():
         build_composition("explosion", "t")
 
 
+@pytest.mark.slow
 def test_status_contract():
     status = motion_status()
     assert set(status) >= {"cli", "version", "browser", "ffmpeg", "ready", "kinds"}

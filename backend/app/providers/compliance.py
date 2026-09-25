@@ -144,10 +144,11 @@ def preflight(video_path: str, platform: str) -> dict:
 def reused_content_score(topic: str, script: str, workspace_id: str,
                          visual_keywords: list[str] | None = None) -> dict:
     """0-100 reused-content risk + level + reasons (higher = riskier)."""
+    from sqlalchemy import select
+
     from app.db import session_scope
     from app.engine.decision import topic_similarity
     from app.models import ContentItem
-    from sqlalchemy import select
 
     score = 8.0  # baseline: stock/AI pipeline carries inherent reuse risk
     reasons = ["AI/stock composite baseline"]

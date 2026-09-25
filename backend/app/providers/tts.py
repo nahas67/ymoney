@@ -5,6 +5,7 @@ Providers (selected via TTS_PROVIDER or per-request):
                 Free, no key, no local model. Default.
   kokoro      — self-hosted OpenAI-compatible /audio/speech server running the
                 Kokoro-82M model (Apache-2 weights). Fully local/offline.
+  elevenlabs  — cloud neural voices + voice library (paid API key).
   mock        — simulation-only; produces silence and is labeled everywhere.
 
 The provider returns raw audio bytes + a duration probe; callers decide how to
@@ -378,6 +379,7 @@ class ChatterboxTTSProvider(BaseTTSProvider):
     def _native_synth(self, text: str, voice: str, exaggeration: float, clone_from: str) -> TTSResult:
         try:
             import io as _io
+
             import torch
             from chatterbox.tts import ChatterboxTurbo
 
@@ -506,6 +508,116 @@ class QwenTTSProvider(BaseTTSProvider):
 
 
 # ---------------------------------------------------------------------------
+# elevenlabs — cloud neural voices + voice library (paid, API key)
+# ---------------------------------------------------------------------------
+
+
+class ElevenLabsTTSProvider(BaseTTSProvider):
+    """ElevenLabs cloud TTS (https://api.elevenlabs.io/v1).
+
+    Voice variety (including dashboard-cloned voices) via your ElevenLabs
+    voice_id library: pass any voice_id as the per-content `voice` override
+    (Settings → Connections → TTS lists them). Cloning itself happens in the
+    ElevenLabs dashboard — use the resulting voice_id here (`clone_from`
+    asset references are ignored by this provider per the synthesize
+    contract). Key via the `tts.elevenlabs_api_key` credential or
+    ELEVENLABS_API_KEY env. Paid per character (~$0.20/1k chars estimate —
+    actual billing per ElevenLabs plan); the Voice Designer records the
+    estimate so budgets stay honest.
+    """
+
+    name = "elevenlabs"
+
+    API = "https://api.elevenlabs.io/v1"
+    DEFAULT_VOICE = "21m00Tcm4TlvDq8ikWAM"  # Rachel (multilingual)
+    MODEL = "eleven_multilingual_v2"
+    EST_USD_PER_CHAR = 0.0002
+
+    def __init__(self, api_key: str = ""):
+        key = api_key or _cred("tts.elevenlabs_api_key", "elevenlabs_api_key")
+        if not key:
+            raise TTSError(
+                "elevenlabs TTS selected but no API key configured — set ELEVENLABS_API_KEY "
+                "or add tts.elevenlabs_api_key under Settings → Connections"
+            )
+        self.api_key = key
+
+    def _headers(self) -> dict:
+        return {
+            "xi-api-key": self.api_key,
+            "Content-Type": "application/json",
+            "Accept": "audio/mpeg",
+        }
+
+    def synthesize(self, text: str, *, voice: str = "", rate: float = 1.0,
+                   volume: float = 1.0, language: str = "",
+                   exaggeration: float = 0.5, clone_from: str = "") -> TTSResult:
+        import httpx
+
+        text = (text or "").strip()
+        if not text:
+            raise TTSError("text is empty")
+        voice_id = (voice or self.DEFAULT_VOICE).strip()
+        payload: dict = {
+            "text": text,
+            "model_id": self.MODEL,
+            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+        }
+        try:
+            speed = max(0.7, min(1.2, float(rate or 1.0)))
+        except (TypeError, ValueError):
+            speed = 1.0
+        if speed != 1.0:
+            payload["speed"] = speed
+        try:
+            resp = httpx.post(
+                f"{self.API}/text-to-speech/{voice_id}",
+                headers=self._headers(), json=payload, timeout=120.0,
+            )
+        except httpx.HTTPError as exc:
+            raise TTSError(f"elevenlabs unreachable: {type(exc).__name__}") from exc
+        if resp.status_code != 200:
+            raise TTSError(f"elevenlabs HTTP {resp.status_code}: {resp.text[:160]}")
+        if len(resp.content) < 512:
+            raise TTSError("elevenlabs returned suspiciously small audio")
+        return TTSResult(audio_bytes=resp.content, format="mp3", provider=self.name)
+
+    def voices(self, language: str = "") -> list[dict]:
+        import httpx
+
+        try:
+            resp = httpx.get(
+                f"{self.API}/voices", headers={"xi-api-key": self.api_key}, timeout=20.0
+            )
+            resp.raise_for_status()
+            items = resp.json().get("voices", [])
+        except Exception as exc:
+            raise TTSError(f"voice list unavailable: {exc}") from exc
+        out = []
+        for v in items or []:
+            labels = v.get("labels") or {}
+            if language and language not in str(labels.get("accent", "")):
+                continue
+            out.append({
+                "id": v.get("voice_id"),
+                "gender": labels.get("gender", ""),
+                "locale": labels.get("accent", ""),
+            })
+        return out or [{"id": self.DEFAULT_VOICE, "gender": "", "locale": ""}]
+
+    def health(self) -> bool:
+        import httpx
+
+        try:
+            resp = httpx.get(
+                f"{self.API}/user", headers={"xi-api-key": self.api_key}, timeout=10.0
+            )
+            return resp.status_code == 200
+        except Exception:
+            return False
+
+
+# ---------------------------------------------------------------------------
 # factory
 # ---------------------------------------------------------------------------
 
@@ -579,9 +691,11 @@ def get_tts_provider(name: str = "") -> BaseTTSProvider:
         return ChatterboxTTSProvider(base)
     if chosen in ("qwen3", "qwen", "qwen-tts"):
         return QwenTTSProvider(_qwen_base_url(), instruct=_qwen_instruct())
+    if chosen in ("elevenlabs", "eleven", "xi", "11labs"):
+        return ElevenLabsTTSProvider()
     if chosen in ("edge", ""):
         return EdgeTTSProvider()
-    raise TTSError(f"unknown TTS provider '{chosen}' (edge|kokoro|chatterbox|qwen3|mock)")
+    raise TTSError(f"unknown TTS provider '{chosen}' (edge|kokoro|chatterbox|qwen3|elevenlabs|mock)")
 
 
 def tts_provider_status() -> dict:

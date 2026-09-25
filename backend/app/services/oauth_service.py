@@ -116,7 +116,7 @@ def youtube_callback(workspace_id: str, code: str, state: str) -> dict:
         items = ch_resp.json().get("items", [])
         if items:
             ch_id = items[0].get("id", "")
-            ch_title = items[0].get("snippet", {}).get("title", "")
+            ch_title = (items[0].get("snippet") or {}).get("title", "")
     except httpx.HTTPError:
         pass
 

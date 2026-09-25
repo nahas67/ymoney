@@ -13,7 +13,7 @@ export default function Setup() {
   const [niche, setNiche] = useState("personal finance");
   const [wsId, setWsId] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const ready = useFetch(() => api("GET", "/system/readiness"), []);
+  const ready = useFetch(() => api("GET", "/system/doctor"), []);
 
   async function create() {
     setError("");
@@ -29,7 +29,7 @@ export default function Setup() {
   }
 
   const checks: any[] = (ready.data as any)?.checks ?? [];
-  const blocked: string[] = (ready.data as any)?.blocking_failures ?? [];
+  const blocked: string[] = (ready.data as any)?.doctor?.blocking_failed ?? (ready.data as any)?.blocking_failures ?? [];
 
   return (
     <div className="max-w-[640px] mx-auto">
@@ -61,11 +61,16 @@ export default function Setup() {
           <h3 className="font-semibold mb-3">Production readiness</h3>
           {ready.loading && <div className="text-[13px]" style={{ color: "var(--text-muted)" }}>Probing providers…</div>}
           {checks.map((c: any) => (
-            <div key={c.id} className="flex justify-between py-2 text-[13px]" style={{ borderBottom: "var(--seam)" }}>
-              <span className="capitalize">{c.id.replace(/_/g, " ")}</span>
-              <span style={{ color: c.status === "passed" ? "var(--accent)" : c.blocking ? "var(--danger)" : "var(--warn)" }}>
-                {c.status === "passed" ? "● ready" : `● ${c.detail}`} 
-              </span>
+            <div key={c.id} className="py-2 text-[13px]" style={{ borderBottom: "var(--seam)" }}>
+              <div className="flex justify-between gap-2">
+                <span className="capitalize">{c.id.replace(/_/g, " ")}</span>
+                <span style={{ color: c.status === "passed" ? "var(--accent)" : c.blocking ? "var(--danger)" : "var(--warn)" }}>
+                  {c.status === "passed" ? "● ready" : `● ${c.detail}`}
+                </span>
+              </div>
+              {c.status !== "passed" && c.remediation && (
+                <div className="font-mono text-[11.5px] mt-0.5" style={{ color: "var(--text-faint)" }}>↳ {c.remediation}</div>
+              )}
             </div>
           ))}
           <div className="flex gap-2 mt-4">

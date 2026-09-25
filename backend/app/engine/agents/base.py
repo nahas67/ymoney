@@ -130,7 +130,6 @@ class BaseAgent(ABC):
             # This prevents encrypted credentials from leaking across tenants.
             with provider_settings.workspace_scope(ws):
                 result = fn() if fn else None
-            duration_ms = int((time.monotonic() - self._started) * 1000)
             output_summary = _summarize(result)
             for rec in self._steps:
                 if rec["status"] == "running":

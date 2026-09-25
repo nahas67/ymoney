@@ -10,10 +10,9 @@ Lifespan responsibilities:
 from __future__ import annotations
 
 import asyncio
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-
-import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +27,9 @@ from app.engine import autopilot as autopilot_engine
 from app.migrations.runner import run_migrations
 from app.services import jobs as jobs_service
 from app.services import telegram_service
+from app.services import (
+    webhooks as webhook_service,  # noqa: F401 (registers webhook.dispatch handler)
+)
 
 _FILE_LOGGING_CONFIGURED = False
 

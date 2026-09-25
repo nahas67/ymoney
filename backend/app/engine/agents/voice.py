@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 
 from app.engine.agents.base import AgentMeta, BaseAgent
-from app.providers.tts import TTSError, get_tts_provider
+from app.providers.tts import ElevenLabsTTSProvider, TTSError, get_tts_provider
 from app.services.storage import get_storage, managed_path
 
 
@@ -62,8 +62,12 @@ class VoiceDesignerAgent(BaseAgent):
             stored = get_storage().save_media(ws, data=res.audio_bytes,
                                               filename=f"voice_{int(time.time())}.{ext}")
             self.step_done("ok", stored)
-            self.track_cost(ctx, "tts", 0.0, provider=res.provider,
-                            detail={"voice": voice or prov.name})
+            detail = {"voice": voice or prov.name}
+            est_usd = 0.0
+            if res.provider == ElevenLabsTTSProvider.name:
+                est_usd = round(len(text or "") * ElevenLabsTTSProvider.EST_USD_PER_CHAR, 6)
+                detail = {**detail, "chars": len(text or ""), "estimated": True}
+            self.track_cost(ctx, "tts", est_usd, provider=res.provider, detail=detail)
             return {
                 "summary": f"narrated {len((text or '').split())} word(s) via {res.provider}",
                 "audio_path": stored,
@@ -88,18 +92,26 @@ class VoiceDesignerAgent(BaseAgent):
             tmp.mkdir(parents=True, exist_ok=True)
             try:
                 files: list[Path] = []
+                est_usd = 0.0
                 for i, part in enumerate(parts):
                     _jobs.check_cancelled(ctx)
                     text = (part.get("text") or "").strip()
                     if not text:
                         continue
+                    try:
+                        rate = float(part.get("rate", 1.0))
+                        exaggeration = float(part.get("exaggeration", 0.5))
+                    except (TypeError, ValueError):
+                        raise TTSError(f"dialogue part {i} has non-numeric rate/exaggeration")
                     prov = get_tts_provider(part.get("provider", "")) if part.get("provider") else get_tts_provider()
                     res = prov.synthesize(
                         text, voice=part.get("voice", ""),
-                        rate=float(part.get("rate", 1.0)),
+                        rate=rate,
                         language=part.get("language", ""),
-                        exaggeration=float(part.get("exaggeration", 0.5)),
+                        exaggeration=exaggeration,
                     )
+                    if res.provider == ElevenLabsTTSProvider.name:
+                        est_usd += len(text) * ElevenLabsTTSProvider.EST_USD_PER_CHAR
                     ext = "wav" if res.format == "wav" else "mp3"
                     p = tmp / f"part_{i:03d}.{ext}"
                     p.write_bytes(res.audio_bytes)
@@ -111,8 +123,8 @@ class VoiceDesignerAgent(BaseAgent):
                 combined = self._concat(files, tmp / "dialogue.mp3")
                 stored = get_storage().save_media(ws, data=combined, filename=f"dialogue_{int(time.time())}.mp3")
                 self.step_done("ok", stored)
-                self.track_cost(ctx, "tts", 0.0, provider="voice_batch",
-                                detail={"parts": len(files)})
+                self.track_cost(ctx, "tts", round(est_usd, 6), provider="voice_batch",
+                                detail={"parts": len(files), "estimated": est_usd > 0})
                 return {
                     "summary": f"assembled {len(files)}-voice dialogue",
                     "audio_path": stored,

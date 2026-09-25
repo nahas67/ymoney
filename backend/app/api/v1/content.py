@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone, UTC
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field, field_validator
@@ -143,9 +143,11 @@ def list_content(
         q = q.where(ContentItem.campaign_id == campaign_id)
         count_q = count_q.where(ContentItem.campaign_id == campaign_id)
     if search:
-        like = f"%{search.lower()}%"
-        q = q.where(func.lower(ContentItem.topic).like(like))
-        count_q = count_q.where(func.lower(ContentItem.topic).like(like))
+        from app.db import escape_like
+
+        like = f"%{escape_like(search.lower())}%"
+        q = q.where(func.lower(ContentItem.topic).like(like, escape="\\"))
+        count_q = count_q.where(func.lower(ContentItem.topic).like(like, escape="\\"))
     total = db.scalar(count_q)
     rows = db.scalars(q.offset(offset).limit(limit)).all()
     return {
@@ -314,7 +316,7 @@ def content_audit(content_id: str, ws: Workspace = Depends(require_workspace_rol
     if c.cycle_id:
         cy = db.get(Cycle, c.cycle_id)
         if cy:
-            decision = (cy.summary_json or {}).get("select", {}).get("why")
+            decision = ((cy.summary_json or {}).get("select") or {}).get("why")
     events = db.scalars(
         select(EventLog).where(EventLog.workspace_id == ws.id)
         .order_by(EventLog.created_at.desc()).limit(400)
@@ -397,9 +399,11 @@ def content_action(
     c = db.get(ContentItem, content_id)
     if not c or c.workspace_id != ws.id:
         raise HTTPException(status_code=404, detail="content not found")
-    targets = {"approve": "APPROVED", "retry": "PRODUCTION", "skip": "SKIPPED"}
+    targets = {"approve": "APPROVED", "retry": "PRODUCTION", "skip": "SKIPPED", "reject": "FAILED"}
     if body.action == "approve":
         target = "APPROVED" if c.status == "QC" else ("PUBLISHED" if c.status == "SCHEDULED" else "APPROVED")
+    elif body.action == "reject":
+        target = "FAILED"
     else:
         target = targets[body.action]
     if not can_transition(c.status, target):
@@ -407,6 +411,18 @@ def content_action(
     c.status = target
     if body.action == "retry":
         c.error = ""
+    if body.action == "reject":
+        c.error = (body.reason or "rejected by operator")[:2000]
+        from app.services.events import record_event
+
+        record_event(
+            ws.id,
+            "content.rejected",
+            f"Operator rejected '{(c.topic or '')[:60]}'" + (f": {body.reason}" if body.reason else ""),
+            level="warning",
+            source="studio",
+            data={"content_id": content_id},
+        )
     db.commit()
     queued_upload = False
     if body.action == "approve" and target == "APPROVED":
@@ -433,6 +449,55 @@ def content_action(
             )
             queued_upload = job_id is not None
     return {"status": c.status, "queued_upload": queued_upload}
+
+
+class DeriveBody(BaseModel):
+    derivation_type: str = Field(default="short", max_length=30)
+    topic: str | None = Field(default=None, max_length=400)
+
+
+@content_router.get("/{content_id}/lineage", summary="Parent/child lineage for a content item")
+def content_lineage(
+    content_id: str,
+    ws: Workspace = Depends(require_workspace_role("viewer")),
+    db=Depends(get_db),
+):
+    from app.engine.content_graph import LineageError, lineage_chain
+
+    try:
+        return lineage_chain(db, content_id, workspace_id=ws.id)
+    except LineageError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@content_router.post("/{content_id}/derive", summary="Derive a child asset (short/variant/cut/translation)")
+def derive_content_item(
+    content_id: str,
+    body: DeriveBody,
+    ws: Workspace = Depends(require_workspace_role("member")),
+    db=Depends(get_db),
+):
+    from app.engine.content_graph import LineageError, derive_content, lineage_chain
+    from app.services.events import record_event
+
+    try:
+        child = derive_content(db, parent_id=content_id, workspace_id=ws.id,
+                               derivation_type=body.derivation_type, topic=body.topic)
+    except LineageError as exc:
+        raise HTTPException(
+            status_code=422 if "unknown derivation_type" in str(exc) else 404,
+            detail=str(exc),
+        ) from exc
+    db.commit()
+    record_event(
+        ws.id, "content.derived",
+        f"Derived {body.derivation_type} '{(child.topic or '')[:60]}'",
+        level="info", source="studio",
+        data={"content_id": child.id, "parent_id": content_id,
+              "derivation_type": body.derivation_type},
+    )
+    chain = lineage_chain(db, child.id, workspace_id=ws.id)
+    return {"id": child.id, **chain}
 
 
 # ---------------------------------------------------------------------------
@@ -568,6 +633,15 @@ class ThumbnailBody(BaseModel):
     at_seconds: float = Field(default=1.0, ge=0, le=600)
     cover_index: int | None = Field(default=None, ge=0, le=20,
                                     description="pick a generated cover candidate instead of a timestamp")
+    ai_cover_index: int | None = Field(default=None, ge=0, le=10,
+                                       description="pick a generative AI cover (POST ai-covers first)")
+
+
+def _ai_cover_filename(video_id: str, index: int) -> str:
+    import re as _re
+
+    safe = _re.sub(r"[^A-Za-z0-9_-]", "", video_id)[:64] or "video"
+    return f"ai-cover-{safe}-{int(index)}.png"
 
 
 @videos_router.post("/{video_id}/thumbnail", summary="Regenerate poster frame at a timestamp")
@@ -577,6 +651,15 @@ def remake_thumbnail(video_id: str, body: ThumbnailBody, ws: Workspace = Depends
         raise HTTPException(status_code=404, detail="video not found")
     from app.services.storage import LocalStorage, get_storage, managed_path
 
+    if body.ai_cover_index is not None:
+        from app.services.storage import STORAGE_ROOT
+
+        cand = managed_path(ws.id, str(STORAGE_ROOT / ws.id / _ai_cover_filename(video_id, body.ai_cover_index)))
+        if not cand or not cand.exists():
+            raise HTTPException(status_code=404, detail="AI cover not found — POST ai-covers first")
+        v.thumbnail_path = str(cand)
+        db.commit()
+        return {"thumbnail_path": v.thumbnail_path}
     src = managed_path(ws.id, v.file_path)
     if not src or not src.exists():
         raise HTTPException(status_code=404, detail="video file not found on disk")
@@ -646,6 +729,110 @@ def cover_file(video_id: str, index: int, request: Request, workspace_id: str, t
     return FileResponse(cand, media_type="image/jpeg", filename=cand.name)
 
 
+class AiCoversBody(BaseModel):
+    prompt: str | None = Field(default=None, max_length=500)
+    count: int = Field(default=3, ge=1, le=3)
+    size: str = Field(default="1280x720", max_length=20)
+
+
+@videos_router.post("/{video_id}/ai-covers", summary="Generate AI thumbnail candidates via image provider")
+def make_ai_covers(video_id: str, body: AiCoversBody, ws: Workspace = Depends(require_workspace_role("member")), db=Depends(get_db)):
+    v = db.get(Video, video_id)
+    if not v or v.workspace_id != ws.id:
+        raise HTTPException(status_code=404, detail="video not found")
+    prompt = (body.prompt or "").strip()
+    if not prompt:
+        try:
+            variant = db.get(VideoVariant, v.variant_id) if getattr(v, "variant_id", None) else None
+            item = db.get(ContentItem, variant.content_item_id) if variant and getattr(variant, "content_item_id", None) else None
+            topic = (getattr(item, "topic", "") or "").strip() if item else ""
+            hook = (getattr(variant, "hook", "") or "").strip() if variant else ""
+            prompt = f"{topic} — {hook}".strip(" —") if (topic or hook) else ""
+        except Exception:
+            prompt = ""
+    if not prompt:
+        prompt = "high-contrast YouTube thumbnail background, bold empty title area, no text"
+    prompt = prompt[:500]
+    import re as _re
+
+    m = _re.fullmatch(r"(\d+)x(\d+)", (body.size or "").strip().lower())
+    if not m:
+        raise HTTPException(status_code=422, detail="size must look like 1280x720")
+    w, h = max(16, min(1280, int(m.group(1)))), max(16, min(1280, int(m.group(2))))
+    size = f"{w}x{h}"
+    try:
+        from app.providers.images import (
+            ImageProviderError,
+            get_image_provider,
+            image_provider_status,
+        )
+
+        st = image_provider_status()
+        if not st.get("healthy"):
+            raise HTTPException(
+                status_code=503,
+                detail=f"image provider '{st.get('provider','images')}' unhealthy — set PEXELS_API_KEY or IMAGE_PROVIDER=pollinations (keyless)",
+            )
+        provider = get_image_provider()
+        provider_name = getattr(provider, "name", st.get("provider", "images"))
+        try:
+            blobs = provider.generate(prompt, size=size, n=body.count)
+        except ImageProviderError as exc:
+            raise HTTPException(status_code=503, detail=f"image generation failed: {exc}") from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"image provider unavailable: {type(exc).__name__}") from exc
+    if not blobs:
+        raise HTTPException(status_code=503, detail="image provider returned no candidates")
+    from app.services.storage import get_storage
+
+    out = []
+    for i, data in enumerate(blobs[: body.count]):
+        if not data or len(data) < 512:
+            continue
+        filename = _ai_cover_filename(video_id, i)
+        try:
+            stored = get_storage().save_media(ws.id, data, filename)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"storage failed: {type(exc).__name__}") from exc
+        out.append(
+            {
+                "index": i,
+                "path": stored,
+                "url": f"/api/v1/workspaces/{ws.id}/videos/{video_id}/ai-covers/{i}/file",
+            }
+        )
+    if not out:
+        raise HTTPException(status_code=503, detail="image provider returned no usable candidates")
+    return {"covers": out, "prompt": prompt, "provider": provider_name, "size": size}
+
+
+@videos_router.get("/{video_id}/ai-covers/{index}/file", summary="Serve one AI cover candidate")
+def ai_cover_file(video_id: str, index: int, request: Request, workspace_id: str, token: str | None = None, db=Depends(get_db)):
+    from fastapi.responses import FileResponse
+
+    from app.services.auth_service import resolve_workspace
+
+    if index < 0 or index > 10:
+        raise HTTPException(status_code=404, detail="AI cover not found")
+    ws = resolve_workspace(request, db, workspace_id, token)
+    v = db.get(Video, video_id)
+    if not v or v.workspace_id != ws.id:
+        raise HTTPException(status_code=404, detail="video not found")
+    from app.services.storage import STORAGE_ROOT, managed_path
+
+    cand = managed_path(ws.id, str(STORAGE_ROOT / ws.id / _ai_cover_filename(video_id, index)))
+    if not cand or not cand.exists():
+        raise HTTPException(status_code=404, detail="AI cover not found — POST ai-covers first")
+    try:
+        head = cand.read_bytes()[:4]
+    except OSError:
+        raise HTTPException(status_code=404, detail="AI cover not found")
+    media_type = "image/png" if head.startswith(b"\x89PNG") else ("image/jpeg" if head.startswith(b"\xff\xd8") else "image/png")
+    return FileResponse(cand, media_type=media_type, filename=cand.name)
+
+
 @videos_router.get("/{video_id}/file", summary="Stream the rendered file (mock artifacts served as JSON)")
 def video_file(video_id: str, request: Request, workspace_id: str, token: str | None = None, db=Depends(get_db)):
     from fastapi.responses import FileResponse, PlainTextResponse
@@ -691,7 +878,7 @@ def list_cycles(ws: Workspace = Depends(require_workspace_role("viewer")), db=De
                 "stage": cy.stage,
                 "status": cy.status,
                 "cost_usd": cy.cost_usd,
-                "topic": next((cy.summary_json or {}).get(k, {}).get("opportunity") for k in ("select",) if k in (cy.summary_json or {})),
+                "topic": (cy.summary_json or {}).get("select", {}).get("opportunity"),
                 "started_at": cy.started_at.isoformat() + "Z" if cy.started_at else None,
                 "finished_at": cy.finished_at.isoformat() + "Z" if cy.finished_at else None,
                 "error": cy.error,
@@ -716,7 +903,6 @@ def cycle_detail(
     jobs = db.scalars(
         select(Job).where(Job.cycle_id == cy.id).order_by(Job.created_at.asc())
     ).all()
-    job_ids = [j.id for j in jobs]
     runs = (
         db.scalars(
             select(AgentRun)
@@ -764,7 +950,7 @@ def cycle_detail(
         stages.setdefault(dto["stage"] or "OTHER", []).append(dto)
 
     summary = cy.summary_json or {}
-    decision = summary.get("decision") or summary.get("select", {}).get("decision")
+    decision = summary.get("decision") or (summary.get("select") or {}).get("decision")
     return {
         "id": cy.id,
         "number": cy.number,
@@ -1102,6 +1288,128 @@ def list_assets(ws: Workspace = Depends(require_workspace_role("viewer")), db=De
     }
 
 
+class MediaRegisterBody(BaseModel):
+    type: str = Field(default="other", max_length=20)
+    origin: str = Field(default="upload", max_length=20)
+    provider: str = Field(default="", max_length=60)
+    storage_key: str = Field(default="", max_length=2000)
+    mime_type: str = Field(default="", max_length=100)
+    duration_seconds: float | None = None
+    width: int | None = None
+    height: int | None = None
+    checksum: str = Field(default="", max_length=128)
+
+
+def _media_dto(a) -> dict:
+    return {
+        "id": a.id, "workspace_id": a.workspace_id, "type": a.type,
+        "origin": a.origin, "provider": a.provider, "storage_key": a.storage_key,
+        "mime_type": a.mime_type, "duration_seconds": a.duration_seconds,
+        "width": a.width, "height": a.height, "checksum": a.checksum,
+        "created_at": a.created_at.isoformat() + "Z",
+    }
+
+
+@assets_router.post("/media", summary="Register a typed media asset reference")
+def register_media(
+    body: MediaRegisterBody,
+    ws: Workspace = Depends(require_workspace_role("member")),
+    db=Depends(get_db),
+):
+    from app.models.assets import ASSET_ORIGINS, ASSET_TYPES, MediaAsset
+    from app.services.events import record_event
+    from app.services.storage import validate_storage_key
+
+    if body.type not in ASSET_TYPES:
+        raise HTTPException(status_code=422, detail=f"unknown asset type '{body.type}'")
+    if body.origin not in ASSET_ORIGINS:
+        raise HTTPException(status_code=422, detail=f"unknown asset origin '{body.origin}'")
+    key = validate_storage_key(ws.id, body.storage_key)
+    if key is None:
+        raise HTTPException(
+            status_code=422,
+            detail="storage_key must be a workspace-relative path (no absolute paths, no '..')",
+        )
+    row = MediaAsset(workspace_id=ws.id, type=body.type, origin=body.origin,
+                     provider=body.provider, storage_key=key, mime_type=body.mime_type,
+                     duration_seconds=body.duration_seconds, width=body.width,
+                     height=body.height, checksum=body.checksum)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    record_event(ws.id, "asset.registered", f"Registered {body.type} asset '{key}'",
+                 level="info", source="assets", data={"asset_id": row.id, "type": body.type})
+    return _media_dto(row)
+
+
+@assets_router.get("/media", summary="List registered media assets")
+def list_media(
+    ws: Workspace = Depends(require_workspace_role("viewer")),
+    db=Depends(get_db),
+    type: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=200),
+):
+    from app.models.assets import MediaAsset
+
+    q = select(MediaAsset).where(MediaAsset.workspace_id == ws.id)
+    if type:
+        q = q.where(MediaAsset.type == type)
+    rows = db.scalars(q.order_by(MediaAsset.created_at.desc()).limit(limit)).all()
+    return {"total": len(rows), "items": [_media_dto(a) for a in rows]}
+
+
+@assets_router.get("/media/{asset_id}", summary="Media asset detail")
+def get_media(
+    asset_id: str,
+    ws: Workspace = Depends(require_workspace_role("viewer")),
+    db=Depends(get_db),
+):
+    from app.models.assets import MediaAsset
+
+    row = db.get(MediaAsset, asset_id)
+    if row is None or row.workspace_id != ws.id:
+        raise HTTPException(status_code=404, detail="asset not found")
+    return _media_dto(row)
+
+
+@assets_router.get("/media/{asset_id}/file", summary="Serve a registered media file")
+def serve_media_file(
+    asset_id: str,
+    request: Request,
+    workspace_id: str,
+    token: str | None = None,
+    db=Depends(get_db),
+):
+    """Workspace-guarded file serve for editor preview/proxy use.
+
+    The storage_key is resolved strictly inside the workspace directory;
+    absolute keys and escapes were already rejected at registration, and are
+    re-checked here (defense in depth for legacy rows).
+    """
+    import mimetypes
+
+    from fastapi.responses import FileResponse
+
+    from app.models.assets import MediaAsset
+    from app.services.auth_service import resolve_workspace
+    from app.services.storage import STORAGE_ROOT
+
+    ws = resolve_workspace(request, db, workspace_id, token)
+    row = db.get(MediaAsset, asset_id)
+    if row is None or row.workspace_id != ws.id or not row.storage_key:
+        raise HTTPException(status_code=404, detail="asset not found")
+    root = (STORAGE_ROOT / ws.id).resolve()
+    cand = (root / row.storage_key.lstrip("/")).resolve()
+    try:
+        cand.relative_to(root)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="asset not found")
+    if not cand.exists() or not cand.is_file():
+        raise HTTPException(status_code=404, detail="asset file missing on disk")
+    media_type = row.mime_type or mimetypes.guess_type(cand.name)[0] or "application/octet-stream"
+    return FileResponse(cand, media_type=media_type, filename=cand.name)
+
+
 @assets_router.post("/upload", summary="Upload an MP4/image asset")
 def upload_asset(
     ws: Workspace = Depends(require_workspace_role("member")),
@@ -1201,6 +1509,20 @@ def clip_status(ws: Workspace = Depends(require_workspace_role("viewer"))):
     return get_repurposer().status()
 
 
+class ProbeBody(BaseModel):
+    url: str = Field(min_length=1, max_length=2000)
+
+
+@assets_router.post("/repurpose/probe", summary="Pre-flight source quality check (never blocks)")
+def probe_repurpose(body: ProbeBody, ws: Workspace = Depends(require_workspace_role("viewer"))):
+    """Fast yt-dlp/local probe before burning a cycle (openshorts quality_probe
+    pattern). Always 200 — unknown sources degrade to probe="unknown" with a
+    warning instead of failing."""
+    from app.providers.clips import probe_source_quality
+
+    return probe_source_quality(body.url)
+
+
 class MotionCardBody(BaseModel):
     kind: str = Field(default="hook", description="hook|stat|cta|lower")
     title: str = Field(min_length=1, max_length=200)
@@ -1253,10 +1575,64 @@ def list_templates(ws: Workspace = Depends(require_workspace_role("viewer")),
 
     overrides = workspace_overrides(ws.id)
     items = []
-    for t in _list(module):
+    for t in _list(module, workspace_id=ws.id):
         key = f"{t['module']}/{t['id']}"
         items.append({**t, "overridden": key in overrides})
     return {"items": items}
+
+
+class CustomTemplateBody(BaseModel):
+    template: dict = Field(description="full template object (validated)")
+
+
+@assets_router.post("/templates", summary="Add a workspace template (credited authorship)")
+def add_custom_template(body: CustomTemplateBody,
+                        ws: Workspace = Depends(require_workspace_role("admin")),
+                        db=Depends(get_db)):
+    """Community pattern: workspaces author their own templates with attribution
+    (+ optional source link) instead of only patching built-ins. Collisions
+    with built-in ids are rejected — customize those via override patches."""
+    from app.services.templates import CUSTOM_KEY, validate_template
+    from app.services.templates import list_templates as _list
+
+    tpl = body.template if isinstance(body.template, dict) else {}
+    problems = validate_template(tpl)
+    if problems:
+        raise HTTPException(status_code=422, detail="; ".join(problems))
+    if any((t["module"], t["id"]) == (tpl["module"], tpl["id"]) for t in _list()):
+        raise HTTPException(
+            status_code=422,
+            detail=f"built-in '{tpl['module']}/{tpl['id']}' exists — customize it via settings templates patch",
+        )
+    stored = dict(tpl)
+    stored.setdefault("attribution", "workspace custom")
+    stored.setdefault("source", "")
+    customs = [c for c in ((ws.settings_json or {}).get(CUSTOM_KEY) or []) if isinstance(c, dict)]
+    customs = [c for c in customs
+               if (c.get("module"), c.get("id")) != (stored["module"], stored["id"])]
+    customs.append(stored)
+    merged_settings = dict(ws.settings_json or {})
+    merged_settings[CUSTOM_KEY] = customs
+    ws.settings_json = merged_settings
+    db.commit()
+    return {**stored, "custom": True}
+
+
+@assets_router.delete("/templates/{module}/{tid}", summary="Delete a workspace template")
+def delete_custom_template(module: str, tid: str,
+                           ws: Workspace = Depends(require_workspace_role("admin")),
+                           db=Depends(get_db)):
+    from app.services.templates import CUSTOM_KEY
+
+    customs = [c for c in ((ws.settings_json or {}).get(CUSTOM_KEY) or []) if isinstance(c, dict)]
+    kept = [c for c in customs if (c.get("module"), c.get("id")) != (module, tid)]
+    if len(kept) == len(customs):
+        raise HTTPException(status_code=404, detail="workspace template not found")
+    merged_settings = dict(ws.settings_json or {})
+    merged_settings[CUSTOM_KEY] = kept
+    ws.settings_json = merged_settings
+    db.commit()
+    return {"deleted": True}
 
 
 @assets_router.get("/templates/{module}/{tid}", summary="Template detail (resolved)")
@@ -1268,7 +1644,7 @@ def template_detail(module: str, tid: str, ws: Workspace = Depends(require_works
         resolved = resolve_template(module, tid, ws.id, version)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    return {**resolved, "versions": versions_of(module, tid)}
+    return {**resolved, "versions": versions_of(module, tid, ws.id)}
 
 
 class DubBody(BaseModel):
@@ -1325,6 +1701,16 @@ def dub_status(ws: Workspace = Depends(require_workspace_role("viewer"))):
     from app.providers.dubbing import dub_status as _status
 
     return _status()
+
+
+@assets_router.post("/dub/dry-run", summary="Validate a dub request (no downloads, no AI calls)")
+def dub_dry_run(body: DubBody, ws: Workspace = Depends(require_workspace_role("viewer"))):
+    """OpenCreator `--dry-run` pattern: command-shape + capability matrix only.
+    Always 200 — failures come back as check rows, never exceptions."""
+    from app.providers.dubbing import dry_run_dub
+
+    return dry_run_dub(body.source, body.target_lang, voice=body.voice,
+                       srt=body.srt, bilingual=body.bilingual, portrait=body.portrait)
 
 
 @assets_router.post("/dub", summary="Translate and re-voice a video into another language")
@@ -1625,6 +2011,10 @@ class RepurposeBody(BaseModel):
     clip_seconds: float = Field(default=45.0, ge=5, le=300)
     max_clips: int = Field(default=5, ge=1, le=20)
     vertical: bool = Field(default=True)
+    webhook_url: str = Field(default="", max_length=2000,
+                             description="optional one-shot completion POST (no subscription needed)")
+    webhook_secret: str = Field(default="", max_length=500,
+                                description="optional HMAC secret for the one-shot POST")
 
 
 @content_router.post("/repurpose", summary="Repurpose a long-form URL into short-form clip drafts")
@@ -1640,6 +2030,14 @@ def repurpose_url(
     rather than silently producing nothing.
     """
     from app.providers.clips import ClipError, ClipRepurposer
+
+    if body.webhook_url:
+        from app.services.webhooks import validate_url
+
+        try:
+            validate_url(body.webhook_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     repurposer = ClipRepurposer()
     cap = repurposer.status()
@@ -1693,9 +2091,44 @@ def repurpose_url(
         })
 
     db.commit()
+    from app.services.events import record_event
+
+    record_event(
+        ws.id, "repurpose.completed",
+        f"Repurposed '{source.title[:60]}' into {len(created)} clip draft(s)",
+        level="success", source="repurpose",
+        data={"content_ids": [c["id"] for c in created], "source_url": body.url},
+    )
+    webhook: dict = {"enqueued": False}
+    if body.webhook_url:
+        import uuid as _uuid
+
+        from app.core import security as _security
+        from app.services import jobs as _jobs
+
+        job_id = _jobs.enqueue(
+            "webhook.dispatch",
+            {
+                "url": body.webhook_url.strip(),
+                "secret_enc": _security.encrypt_secret(body.webhook_secret) if body.webhook_secret else "",
+                "event_id": f"repurpose-{_uuid.uuid4().hex[:8]}",
+                "kind": "repurpose.completed",
+                "message": f"Repurposed '{source.title[:60]}' into {len(created)} clip draft(s)",
+                "level": "success",
+                "source": "repurpose",
+                "data": {"content_ids": [c["id"] for c in created]},
+                "created_at": "",
+            },
+            workspace_id=ws.id,
+            priority=100,
+            max_retries=5,
+            idempotency_key=f"wh-repurpose-{_uuid.uuid4().hex[:8]}",
+        )
+        webhook = {"enqueued": job_id is not None, "job_id": job_id}
     return {
         "items": created,
         "source": {"title": source.title, "duration": source.duration},
         "capabilities": cap,
+        "webhook": webhook,
     }
 

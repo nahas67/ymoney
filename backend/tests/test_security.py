@@ -49,5 +49,5 @@ def test_encrypt_produces_unique_ciphertexts():
 def test_decrypt_garbage_raises():
     import pytest
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):  # binascii.Error on malformed payloads
         decrypt_secret("v1:not-valid-base64!!!")

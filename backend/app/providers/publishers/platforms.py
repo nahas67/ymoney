@@ -159,7 +159,8 @@ class YouTubePublisher(BasePublisher):
             scheduled = (meta.extra or {}).get("scheduled_publish_time")
             if scheduled:
                 try:
-                    from datetime import UTC, datetime as _dt
+                    from datetime import UTC
+                    from datetime import datetime as _dt
 
                     ts = float(scheduled)
                     if ts > _dt.now(UTC).timestamp() + 300:
@@ -196,7 +197,6 @@ class YouTubePublisher(BasePublisher):
                 return PublishResult(success=False, error=f"YouTube upload error: {exc}", retryable=retryable)
             vid = data["id"]
             logger.info(f"youtube published: {vid}")
-            extra_note = f" ({shorts_note})" if shorts_note else ""
             self._post_extras(access_token, vid, meta)
             return PublishResult(
                 success=True,
@@ -628,7 +628,6 @@ class UploadPostRelay(BasePublisher):
 
     def publish(self, video_path: str, meta: PublishMetadata, account: dict) -> PublishResult:
         platforms = account.get("platforms") or [account.get("platform") or "tiktok"]
-        platforms = [p for p in platforms if p != "instagram" or True]
         try:
             path = Path(video_path)
             ai_flag = str((meta.extra or {}).get("is_ai_generated", True)).lower() not in ("false", "0", "no")

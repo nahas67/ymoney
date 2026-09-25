@@ -94,3 +94,100 @@ def test_templates_api_lists_and_details():
 
     r = client.get(f"/api/v1/workspaces/{ws_id}/assets/templates/nope/nope", headers=headers)
     assert r.status_code == 404
+
+
+def test_workspace_custom_templates_credited_and_isolated():
+    import uuid
+
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+    from app.services import templates as tpl
+
+    client = TestClient(create_app(), raise_server_exceptions=False)
+
+    def _register():
+        email = f"tpl{uuid.uuid4().hex[:8]}@test.local"
+        r = client.post("/api/v1/auth/register",
+                        json={"email": email, "password": "supersecret123"})
+        assert r.status_code == 200, r.text
+        data = r.json()
+        return data["workspace"]["id"], {"Authorization": f"Bearer {data['access_token']}"}
+
+    ws1, h1 = _register()
+    ws2, h2 = _register()
+    mine = {"module": "hooks", "id": "mine", "version": "v1", "title": "Mine",
+            "payload": {"template": "Look: {topic}"}, "attribution": "A. Creator",
+            "source": "https://example.com/creator"}
+
+    # invalid rejected with reasons
+    r = client.post(f"/api/v1/workspaces/{ws1}/assets/templates", headers=h1,
+                    json={"template": {"module": "hooks"}})
+    assert r.status_code == 422, r.text
+
+    # colliding with a built-in rejected (override path instead)
+    r = client.post(f"/api/v1/workspaces/{ws1}/assets/templates", headers=h1,
+                    json={"template": {**mine, "id": "question"}})
+    assert r.status_code == 422, r.text
+
+    # add + credited + resolvable
+    r = client.post(f"/api/v1/workspaces/{ws1}/assets/templates", headers=h1,
+                    json={"template": mine})
+    assert r.status_code == 200, r.text
+    assert r.json()["custom"] is True
+
+    r = client.get(f"/api/v1/workspaces/{ws1}/assets/templates", headers=h1)
+    items = r.json()["items"]
+    assert len(items) == 13
+    custom = next(i for i in items if i["id"] == "mine")
+    assert custom["custom"] is True and custom["attribution"] == "A. Creator"
+    assert custom["source"] == "https://example.com/creator"
+
+    r = client.get(f"/api/v1/workspaces/{ws1}/assets/templates/hooks/mine", headers=h1)
+    assert r.status_code == 200, r.text
+    assert r.json()["payload"]["template"] == "Look: {topic}"
+
+    # service-level resolve prefers the custom + keeps built-ins intact
+    assert tpl.resolve_template("hooks", "mine", ws1)["custom"] is True
+    assert "custom" not in tpl.resolve_template("hooks", "question", ws1)
+
+    # other workspaces never see it
+    r = client.get(f"/api/v1/workspaces/{ws2}/assets/templates", headers=h2)
+    assert len(r.json()["items"]) == 12
+    r = client.get(f"/api/v1/workspaces/{ws2}/assets/templates/hooks/mine", headers=h2)
+    assert r.status_code == 404
+
+    # delete removes; repeat 404s
+    r = client.delete(f"/api/v1/workspaces/{ws1}/assets/templates/hooks/mine", headers=h1)
+    assert r.status_code == 200, r.text
+    r = client.delete(f"/api/v1/workspaces/{ws1}/assets/templates/hooks/mine", headers=h1)
+    assert r.status_code == 404
+    assert len(tpl.list_templates("hooks", ws1)) == 5
+
+
+def test_custom_template_defaults_attribution_and_validates_source():
+    import uuid
+
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+    from app.services import templates as tpl
+
+    assert tpl.validate_template({"module": "m", "id": "i", "version": "v1",
+                                  "title": "t", "payload": {},
+                                  "source": "x" * 501}) != []
+
+    client = TestClient(create_app(), raise_server_exceptions=False)
+    email = f"tpl{uuid.uuid4().hex[:8]}@test.local"
+    r = client.post("/api/v1/auth/register",
+                    json={"email": email, "password": "supersecret123"})
+    assert r.status_code == 200, r.text
+    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    ws_id = r.json()["workspace"]["id"]
+
+    r = client.post(f"/api/v1/workspaces/{ws_id}/assets/templates", headers=headers,
+                    json={"template": {"module": "hooks", "id": "anon", "version": "v1",
+                                       "title": "Anon", "payload": {"template": "Hi {topic}"}}})
+    assert r.status_code == 200, r.text
+    assert r.json()["attribution"] == "workspace custom"
+    assert tpl.resolve_template("hooks", "anon", ws_id)["custom"] is True

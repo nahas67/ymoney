@@ -15,13 +15,10 @@ Everything fails closed with remediation — never a silent still image.
 
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-
-from loguru import logger
 
 from app.services.storage import STORAGE_ROOT
 
@@ -330,9 +327,9 @@ def _probe_duration(path: Path) -> float:
 
 
 __all__ = [
+    "WAVLIP_LICENSE_NOTE",
     "AvatarClip",
     "AvatarError",
-    "WAVLIP_LICENSE_NOTE",
     "avatar_backend",
     "avatar_base_url",
     "avatar_status",

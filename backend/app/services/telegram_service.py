@@ -406,7 +406,7 @@ def handle_update(update: dict) -> None:
         elif cmd == "/cycle":
             from app.engine import autopilot as autopilot_engine
 
-            result = autopilot_engine.run_single_cycle(ws_id)
+            autopilot_engine.run_single_cycle(ws_id)
             reply = f"🔄 Cycle complete.\n{_workspace_brief(ws_id)}"
         elif cmd == "/cost":
             reply = _cost_brief(ws_id)

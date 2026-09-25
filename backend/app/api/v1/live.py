@@ -18,7 +18,7 @@ from app.services.auth_service import require_workspace_role
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/live", tags=["live"])
 
-from app.engine.agents.registry import AGENT_META  # noqa: E402
+from app.engine.agents.registry import AGENT_META
 
 # The pipeline order used by the agent work-graph (FIND→…→LEARN).
 PIPELINE_ORDER = [

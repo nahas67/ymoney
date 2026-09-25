@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     youtube_api_key: str = ""            # Data API key (trending + analytics reads, ~1 unit/call)
 
     # ---- TTS / Images ----
-    tts_provider: str = "edge"           # edge | kokoro | chatterbox | qwen3 | mock
+    tts_provider: str = "edge"           # edge | kokoro | chatterbox | qwen3 | elevenlabs | mock
     image_provider: str = "pexels"       # pexels | xkiro | pollinations | openai_compat | mock
     pexels_api_key: str = ""             # Pexels stock-photo API key (api.pexels.com)
     # avatar_image: static presenter image for the ffmpeg_avatar engine (path or URL)
@@ -93,6 +93,7 @@ class Settings(BaseSettings):
     chatterbox_base_url: str = ""        # OpenAI-compat server for Chatterbox-Turbo (else native pip package)
     qwen_base_url: str = ""              # vLLM-Omni (or compat) server for Qwen3-TTS
     qwen_tts_instruct: str = ""          # default delivery direction, e.g. "speak cheerfully"
+    elevenlabs_api_key: str = ""         # ElevenLabs cloud TTS key (or tts.elevenlabs_api_key credential)
 
     # ---- Avatar (talking-head clips) ----
     avatar_backend: str = "server"       # server | sadtalker | wavlip | mock

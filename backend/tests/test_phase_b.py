@@ -76,7 +76,6 @@ def test_pollinations_prompt_is_path_encoded():
 
 
 @pytest.mark.live
-@pytest.mark.live
 def test_pollinations_live_generation():
     """Live network test — real image bytes from the keyless endpoint.
     Skips (never fakes) when the free service itself is erroring."""

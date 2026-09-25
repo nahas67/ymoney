@@ -13,6 +13,7 @@ API: GET https://api.pexels.com/v1/search with `Authorization: <key>`.
 from __future__ import annotations
 
 import re
+from typing import ClassVar
 
 from app.providers.images import BaseImageProvider, ImageProviderError
 
@@ -21,7 +22,7 @@ class PexelsImageProvider(BaseImageProvider):
     name = "pexels"
     is_mock = False
 
-    _STOPWORDS = {
+    _STOPWORDS: ClassVar[set[str]] = {
         "a", "an", "the", "of", "in", "on", "at", "for", "with", "and", "or",
         "scene", "shot", "style", "photo", "image", "picture", "rendering",
         "keywords", "close-up", "wide", "landscape", "portrait",

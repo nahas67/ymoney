@@ -18,9 +18,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.db import get_db, session_scope
+from app.db import get_db
 from app.engine.campaign.publish_flow import register_publish_handlers
-from app.models import Campaign, ContentItem, ContentTimeline, QualityCheck, Video, VideoVariant
+from app.models import Campaign, ContentItem, QualityCheck, Video, VideoVariant
 from app.services import jobs as jobs_service
 from app.services.auth_service import require_workspace_role
 

@@ -78,7 +78,8 @@ def test_pollinations_prompt_is_path_encoded():
 @pytest.mark.live
 def test_pollinations_live_generation():
     """Live network test — real image bytes from the keyless endpoint.
-    Skips (never fakes) when the free service itself is erroring."""
+    Skips (never fakes) when the free service itself is erroring, unreachable,
+    or no longer serving free requests — none of those are YMONEY defects."""
     import pytest as _pytest
 
     from app.providers.images import ImageProviderError, PollinationsImageProvider
@@ -88,8 +89,17 @@ def test_pollinations_live_generation():
         blobs = p.generate("a colorful robot reading a book, flat illustration",
                            size="512x288", n=1)
     except ImageProviderError as exc:
-        if "500 Internal Server Error" in str(exc):
-            _pytest.skip("pollinations free service is erroring (5xx) — not a YMONEY defect")
+        import httpx as _httpx
+
+        cause = exc.__cause__
+        status = getattr(getattr(cause, "response", None), "status_code", None)
+        if (isinstance(cause, (_httpx.HTTPStatusError, _httpx.TransportError))
+                or "Internal Server Error" in str(exc)):
+            detail = f"HTTP {status}" if status else type(cause).__name__
+            _pytest.skip(
+                f"pollinations free service unavailable ({detail}) "
+                "— not a YMONEY defect"
+            )
         raise
     assert len(blobs[0]) > 1000
     assert blobs[0][:4] == b"\x89PNG" or blobs[0][:3] == b"\xff\xd8\xff"

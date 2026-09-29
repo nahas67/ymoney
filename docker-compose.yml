@@ -1,16 +1,14 @@
 name: ymoney
 
 services:
-  # Video engine (MoneyPrinterTurbo) — YMONEY talks to it over HTTP.
-  video-engine:
-    build:
-      context: ./MoneyPrinterTurbo
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/ping')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+  # MoneyPrinterTurbo was removed as a vendored copy (commit 5fddf48); the only
+  # integration left is the HTTP adapter in providers/video_engine/mpt.py, which
+  # is used only when VIDEO_ENGINE=moneyprinterturbo. The default
+  # VIDEO_ENGINE=ffmpeg_avatar renders in-process and needs no sidecar.
+  #
+  # To run that optional lane, point an existing MPT deployment at this stack:
+  #   MPT_BASE_URL=http://<mpt-host>:8080
+  # and start it yourself — it is deliberately not built from this repo.
 
   backend:
     build:
@@ -22,7 +20,9 @@ services:
       YMONEY_SECRET_KEY: ${YMONEY_SECRET_KEY:?set a strong secret}
       DATABASE_URL: sqlite:////data/ymoney.db
       VIDEO_ENGINE: ${VIDEO_ENGINE:-ffmpeg_avatar}
-      MPT_BASE_URL: http://video-engine:8080
+      # Only read by the moneyprinterturbo adapter; harmless when unset.
+      MPT_BASE_URL: ${MPT_BASE_URL:-}
+      MONEYPRINTERTURBO_BASE_URL: ${MPT_BASE_URL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
       MOCK_TRENDS: ${MOCK_TRENDS:-false}
@@ -34,9 +34,6 @@ services:
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost}
     volumes:
       - ymoney-data:/data
-    depends_on:
-      video-engine:
-        condition: service_started
 
   web:
     image: caddy:2-alpine

@@ -120,9 +120,8 @@ def main() -> int:
     _tmp = tempfile.mkdtemp(prefix="ymoney-postman-")
     os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/postman.db"
     os.environ.setdefault("VIDEO_ENGINE", "mock")
-    from fastapi.testclient import TestClient
-
     from app.main import create_app
+    from fastapi.testclient import TestClient
 
     client = TestClient(create_app(), raise_server_exceptions=False)
     r = client.get("/openapi.json")

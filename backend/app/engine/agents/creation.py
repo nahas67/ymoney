@@ -3,10 +3,69 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import ClassVar
 
 from app.engine.agents.base import AgentMeta, BaseAgent
+from app.engine.knowledge.context_bridge import build_memory_context
 from app.providers import llm
+
+logger = logging.getLogger("ymoney.agents.creation")
+
+_MEMORY_HEADER = "## Known (provenance-tracked) audience/context memory"
+
+
+def _memory_block(db, ws, topic, *, out=None) -> str:
+    """Render provenance-tracked knowledge memories as a prompt block (Lane E).
+
+    Calls ``build_memory_context(db=db, task=topic, topic=topic, max_results=5,
+    max_tokens=600)`` and renders one bullet per kept memory in the retriever's
+    deterministic order (newline-prefixed so it slots into an existing prompt
+    without touching surrounding bytes)::
+
+        \\n## Known (provenance-tracked) audience/context memory
+        - <content> [confidence <x>, <effective_status>, <n> sources]
+
+    FAILURE ISOLATION: a falsy ``ws`` or ANY exception (empty/broken
+    memory system, bridge failure) returns ``""`` and logs — a memory-system
+    failure must never break research or strategize. When ``out`` is a dict it
+    is filled in place with ``{"retrieved": int, "used_memory_ids": [...]}``
+    from the build result (zeroed on failure) — that is the summary embedded
+    as ``output["memory"]`` by the agents.
+    """
+    summary: dict = {"retrieved": 0, "used_memory_ids": []}
+    block = ""
+    try:
+        if ws:
+            result = build_memory_context(
+                ws, db=db, task=topic, topic=topic, max_results=5, max_tokens=600
+            )
+            items = [
+                item
+                for item in (result.get("items") or [])
+                if str(item.get("content") or "").strip()
+            ]
+            if items:
+                lines = [
+                    f"- {item['content']} "
+                    f"[confidence {item.get('confidence')}, "
+                    f"{item.get('effective_status') or item.get('status', '')}, "
+                    f"{len(item.get('evidence_ids') or [])} sources]"
+                    for item in items
+                ]
+                block = "\n" + _MEMORY_HEADER + "\n" + "\n".join(lines) + "\n"
+            summary = {
+                "retrieved": int((result.get("metrics") or {}).get("retrieved") or 0),
+                "used_memory_ids": list(result.get("used_memory_ids") or []),
+            }
+    except Exception:  # noqa: BLE001 — memory is context, never a dependency
+        logger.exception("knowledge memory block unavailable for topic %r", str(topic)[:80])
+        block = ""
+        summary = {"retrieved": 0, "used_memory_ids": []}
+    if out is not None:
+        out.clear()
+        out.update(summary)
+    return block
 
 
 class ResearchAgent(BaseAgent):
@@ -41,6 +100,15 @@ class ResearchAgent(BaseAgent):
             except Exception:
                 pass  # memory is context, never a dependency
 
+        # Work 10 knowledge memory (Lane E): provenance-tracked audience/context
+        # grounding. Failure-isolated: _memory_block swallows any memory-system
+        # error and returns "" so research never breaks; the summary is embedded
+        # into the output as output["memory"] below.
+        known_out: dict = {"retrieved": 0, "used_memory_ids": []}
+        known_block = _memory_block(
+            getattr(ctx, "db", None), ctx.workspace_id or "", topic, out=known_out
+        )
+
         res = llm.complete_json(
             system=(
                 "You are a meticulous short-form video researcher. Produce a compact research "
@@ -51,7 +119,7 @@ class ResearchAgent(BaseAgent):
                 "(short string). Only include verifiable general knowledge; mark anything "
                 "unverifiable as UNCERTAIN."
             ),
-            user=f'Topic: "{topic}"{memory_block}\nReturn JSON only.',
+            user=f'Topic: "{topic}"{memory_block}{known_block}\nReturn JSON only.',
             workspace_id=ctx.workspace_id or "",
                         tier="cheap",
             model=self.model_for(ctx.workspace_id) if ctx.workspace_id else None,
@@ -95,6 +163,10 @@ class ResearchAgent(BaseAgent):
             "claims": claims,
             "factual_confidence": round(factual_confidence, 2),
             "fact_status": fact_status,
+            "memory": {
+                "retrieved": known_out["retrieved"],
+                "used_memory_ids": list(known_out["used_memory_ids"]),
+            },
         }
 
     def run(self, ctx, topic: str) -> dict:
@@ -118,6 +190,37 @@ def _style_memory_block(workspace_id: str | None) -> str:
         return ""
 
 
+def _brand_gate(workspace_id: str | None, *, platform: str = "",
+                artifact: dict | None = None) -> dict | None:
+    """Brand hard-constraint gate (Work 08 Lane C).
+
+    Lazily resolves Lane A's effective policy through
+    ``engine.brand_templates`` and NEVER raises: when the brand module is
+    absent (mid-merge) or the workspace is unknown, callers get ``None`` and
+    behave exactly as before.
+    """
+    try:
+        from app.engine.brand_templates import brand_gate
+
+        return brand_gate(None, workspace_id or "", platform=platform,
+                          artifact=artifact)
+    except Exception:  # noqa: BLE001 — brand must never break creation
+        return None
+
+
+# template default -> strategy key (template fills gaps; the model still wins)
+_TEMPLATE_STRATEGY_MAP = (
+    ("aspect_ratio", "aspect_ratio"),
+    ("hook_style", "hook_type"),
+    ("tone", "tone"),
+    ("pacing", "pacing"),
+    ("caption_preset", "caption_preset"),
+    ("cta_style", "cta_style"),
+    ("broll_density", "broll_density"),
+    ("music_preference", "music_preference"),
+)
+
+
 class StrategistAgent(BaseAgent):
     meta = AgentMeta(
         key="strategist",
@@ -139,6 +242,18 @@ class StrategistAgent(BaseAgent):
 
     def strategize(self, ctx, topic: str, research: dict) -> dict:
         style_block = _style_memory_block(ctx.workspace_id)
+        # Brand hard constraints (Work 08 Lane C): resolved BEFORE the model
+        # call so tone/vocabulary/forbidden-phrase rules are prompt inputs;
+        # the model never sees them as its own choices.
+        gate = _brand_gate(ctx.workspace_id)
+        style_block += str((gate or {}).get("instructions") or "")
+
+        # Work 10 knowledge memory (Lane E): same failure-isolated block as the
+        # Research Agent; summary embedded into the strategy output below.
+        known_out: dict = {"retrieved": 0, "used_memory_ids": []}
+        known_block = _memory_block(
+            getattr(ctx, "db", None), ctx.workspace_id or "", topic, out=known_out
+        )
 
         res = llm.complete_json(
             system=(
@@ -151,6 +266,7 @@ class StrategistAgent(BaseAgent):
                 "balance educate/entertain/inspire across the plan; titles must work with the "
                 "thumbnail as one micro-story (curiosity or extreme value, never clickbait)."
                 + style_block
+                + known_block
             ),
             user=json.dumps({"topic": topic, "research": research}, ensure_ascii=False),
             workspace_id=ctx.workspace_id or "",
@@ -158,11 +274,55 @@ class StrategistAgent(BaseAgent):
             model=self.model_for(ctx.workspace_id) if ctx.workspace_id else None,
         )
         merged = {**self.DEFAULT_STRATEGY, **{k: v for k, v in res.items() if v}}
+        # Template inheritance (Work 08 Lane C): creative defaults fill the
+        # keys the model did not return; brand still wins over the template.
+        try:
+            from app.engine.brand_templates import attach_template
+
+            platforms = res.get("platforms") or self.DEFAULT_STRATEGY["platforms"]
+            platform = str(platforms[0]) if platforms else ""
+            attach_template(gate if gate is not None else {}, platform=platform,
+                            artifact={"content_format": "short"},
+                            default="shorts", short_form=True)
+            defaults = (gate or {}).get("defaults") or {}
+            for src, dst in _TEMPLATE_STRATEGY_MAP:
+                value = defaults.get(src)
+                if value and dst not in res:
+                    merged[dst] = value
+        except Exception:  # noqa: BLE001 — templates are defaults, never gates
+            pass
         try:
             merged["duration_seconds"] = int(max(20, min(90, merged.get("duration_seconds", 32))))
         except (TypeError, ValueError):
             # LLM returned a non-numeric duration — fall back, don't kill the stage
             merged["duration_seconds"] = 32
+        # Performance lessons (Work 06 Lane C): advisory recommendations only,
+        # gated by the workspace `learning_assist` flag (default off). Guards
+        # (duration clamp above, QC downstream) stay authoritative.
+        try:
+            from app.engine.performance import learning as _lessons
+
+            merged = _lessons.maybe_apply_strategy_lessons(
+                ctx.workspace_id or "", topic, merged)
+        except Exception:
+            pass
+        # Brand HARD constraints beat template, model and lessons (Work 08).
+        try:
+            from app.engine.brand_templates import lineage_markers
+
+            if gate and gate.get("applied_brand") and gate.get("tone"):
+                merged["tone"] = gate["tone"]
+            merged["brand"] = lineage_markers(gate)
+        except Exception:  # noqa: BLE001
+            # brand module unavailable — lineage must still be explicit:
+            # applied_brand False + degraded marker, never silently absent.
+            merged["brand"] = {"applied_brand": False,
+                               "degraded": "brand_module_unavailable"}
+        # Work 10 Lane E: memory grounding summary (never touches other keys).
+        merged["memory"] = {
+            "retrieved": known_out["retrieved"],
+            "used_memory_ids": list(known_out["used_memory_ids"]),
+        }
         return merged
 
     def run(self, ctx, topic: str, research: dict) -> dict:
@@ -260,6 +420,11 @@ class ScriptWriterAgent(BaseAgent):
     def write_script(self, ctx, topic: str, strategy: dict, research: dict) -> str:
         duration = strategy.get("duration_seconds", 30)
         style_block = _style_memory_block(ctx.workspace_id)
+        # Brand hard constraints (Work 08 Lane C): tone/vocabulary/forbidden
+        # phrases are prompt INPUTS; the deterministic post-check below is the
+        # enforcement (the model can still slip — the text never does).
+        gate = _brand_gate(ctx.workspace_id, artifact={"content_format": "short"})
+        style_block += str((gate or {}).get("instructions") or "")
 
         res = llm.complete(
             system=(
@@ -296,6 +461,17 @@ class ScriptWriterAgent(BaseAgent):
                     trimmed = trimmed[: idx + 1]
                     break
             script = trimmed.strip()
+        # Deterministic brand post-check (Work 08 Lane C): forbidden phrases
+        # are stripped from the script itself; hits are recorded on the
+        # caller's per-run strategy copy for the variant/lineage audit trail.
+        try:
+            from app.engine.brand_templates import enforce_forbidden_phrases
+
+            script, stripped = enforce_forbidden_phrases(script, gate)
+            if stripped and isinstance(strategy, dict):
+                strategy["brand_stripped"] = stripped
+        except Exception:  # noqa: BLE001 — brand never breaks scriptwriting
+            pass
         return script
 
     def run_variations(self, ctx, topic: str, strategy: dict, research: dict, count: int = 3,
@@ -310,12 +486,30 @@ class ScriptWriterAgent(BaseAgent):
 
         def work():
             eff_strategy = dict(strategy)
+            # Performance lessons (Work 06 Lane C): scope-matched guidance is
+            # folded into a strategy copy when `learning_assist` is enabled
+            # (default off); the caller's strategy dict is never mutated.
+            lesson_keys: list[str] = []
+            try:
+                from app.engine.performance import learning as _lessons
+
+                eff_strategy, lesson_keys = _lessons.script_guidance(
+                    ctx.workspace_id or "", topic, eff_strategy)
+            except Exception:
+                eff_strategy, lesson_keys = dict(strategy), []
             if regeneration_instruction:
                 base_prompt = str(eff_strategy.get("custom_system_prompt") or "")
                 eff_strategy["custom_system_prompt"] = (
                     f"{base_prompt}\nIMPORTANT — QC regeneration notes: {regeneration_instruction}"
                 ).strip()
             self.step("generate_variants", f"writing {count} variant(s) for '{topic[:60]}'")
+            try:
+                from app.engine.brand_templates import lineage_markers
+
+                brand_markers = lineage_markers(
+                    _brand_gate(ctx.workspace_id, artifact={"content_format": "short"}))
+            except Exception:  # noqa: BLE001
+                brand_markers = {}
             for i in range(count):
                 jobs_service_check_cancelled(ctx)
                 script = self.write_script(ctx, topic, eff_strategy, research)
@@ -332,7 +526,15 @@ class ScriptWriterAgent(BaseAgent):
                         f"This changes how you think about it — and most people miss why. "
                         f"Follow for more on {topic}."
                     )
-                variants.append({"label": f"v{i + 1}", "script": script})
+                variant: dict = {"label": f"v{i + 1}", "script": script}
+                if lesson_keys:
+                    variant["applied_lessons"] = list(lesson_keys)
+                if brand_markers:
+                    variant["brand"] = dict(brand_markers)
+                stripped = (eff_strategy or {}).pop("brand_stripped", None)
+                if stripped:
+                    variant["brand_stripped"] = list(stripped)
+                variants.append(variant)
             self.step_done("ok", f"{len(variants)} variant(s) written")
             return variants
 
@@ -377,11 +579,18 @@ class HookOptimizerAgent(BaseAgent):
     }
     NUMBER_BONUS = 4.0
 
-    def run(self, ctx, variants: list[dict], patterns: list[dict] | None = None) -> list[dict]:
-        return self.rank_hooks(ctx, variants, patterns)
+    def run(self, ctx, variants: list[dict], patterns: list[dict] | None = None,
+            scope: dict | None = None) -> list[dict]:
+        return self.rank_hooks(ctx, variants, patterns, scope=scope)
 
-    def rank_hooks(self, ctx, variants: list[dict], patterns: list[dict] | None = None) -> list[dict]:
-        """Attach predicted hook strength to each variant and sort desc."""
+    def rank_hooks(self, ctx, variants: list[dict], patterns: list[dict] | None = None,
+                   scope: dict | None = None) -> list[dict]:
+        """Attach predicted hook strength to each variant and sort desc.
+
+        When the workspace enables `learning_assist` and a scope is given,
+        scope-matched lessons add a small deterministic prior bonus and audit
+        tags; otherwise scoring is byte-identical to the legacy rubric.
+        """
 
         def work():
             pattern_hook_bonus = 0.0
@@ -403,7 +612,38 @@ class HookOptimizerAgent(BaseAgent):
                     base += self.NUMBER_BONUS
                 v["predicted_score"] = round(min(100.0, base + pattern_hook_bonus), 1)
             variants.sort(key=lambda v: -(v.get("predicted_score") or 0))
-            return variants
+            # Performance lessons (Work 06 Lane C): thin, default-off.
+            ranked = variants
+            if scope:
+                try:
+                    from app.engine.performance import learning as _lessons
+
+                    ranked = _lessons.apply_hook_lesson_bonus(
+                        ctx.workspace_id or "", scope, ranked)
+                except Exception:
+                    pass
+            # Brand hard constraints (Work 08 Lane C): a hook carrying a
+            # forbidden phrase can NEVER win — it is scored 0 and flagged
+            # (kept in the list for auditability, always sorted last).
+            try:
+                from app.engine.brand_templates import hook_rejection_reason, lineage_markers
+
+                gate = _brand_gate(ctx.workspace_id,
+                                   artifact={"content_format": "short"})
+            except Exception:  # noqa: BLE001
+                gate = None
+            if gate and gate.get("brand_available"):
+                markers = lineage_markers(gate)
+                for v in ranked:
+                    opening = str(v.get("hook") or v.get("script") or "")[:240]
+                    reason = hook_rejection_reason(opening, gate)
+                    if reason:
+                        v["predicted_score"] = 0.0
+                        v["brand_blocked"] = True
+                        v["brand_rejection_reason"] = reason
+                    v["brand"] = dict(markers)
+                ranked.sort(key=lambda v: -(v.get("predicted_score") or 0))
+            return ranked
 
         return self.execute(ctx, "rank_hooks", input_summary=f"{len(variants)} candidates", fn=work)
 

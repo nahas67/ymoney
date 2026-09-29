@@ -16,6 +16,7 @@ import Publishing from "./pages/Publishing";
 import Inbox from "./pages/Inbox";
 import Analytics from "./pages/Analytics";
 import Intelligence from "./pages/Intelligence";
+import Knowledge from "./pages/Knowledge";
 import Memory from "./pages/Memory";
 import Agents from "./pages/Agents";
 import Approvals from "./pages/Approvals";
@@ -24,12 +25,16 @@ import Webhooks from "./pages/Webhooks";
 import Templates from "./pages/Templates";
 import Campaigns from "./pages/Campaigns";
 import Brand from "./pages/Brand";
+import Brands from "./pages/Brands";
 import Assets from "./pages/Assets";
 import SystemHealth from "./pages/SystemHealth";
 import Settings from "./pages/Settings";
 import Setup from "./pages/Setup";
 import Integrations from "./pages/Integrations";
+import Performance from "./pages/Performance";
 import LiveMonitor from "./pages/LiveMonitor";
+import Localization from "./pages/Localization";
+import Ugc from "./pages/Ugc";
 
 function Ideas() {
   const nav = useNavigate();
@@ -81,12 +86,17 @@ export default function App() {
         <Route path="publishing" element={<Publishing />} />
         <Route path="inbox" element={<Inbox />} />
         <Route path="analytics" element={<Analytics />} />
+        <Route path="performance" element={<Performance />} />
+        <Route path="localization" element={<Localization />} />
+        <Route path="ugc" element={<Ugc />} />
         <Route path="intelligence" element={<Intelligence />} />
+        <Route path="knowledge" element={<Knowledge />} />
         <Route path="memory" element={<Memory />} />
         <Route path="agents" element={<Agents />} />
         <Route path="campaigns" element={<Campaigns />} />
         <Route path="campaigns/:id" element={<Campaigns />} />
         <Route path="brand" element={<Brand />} />
+        <Route path="brands" element={<Brands />} />
         <Route path="assets" element={<Assets />} />
         <Route path="health" element={<SystemHealth />} />
         <Route path="integrations" element={<Integrations />} />

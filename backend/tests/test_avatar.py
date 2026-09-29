@@ -122,7 +122,7 @@ def test_avatar_skill_agent_registered():
     assert get_skill("avatar_direction").required_tools == ("render_avatar",)
     assert "media:render" in get_tool("render_avatar").permissions
     assert AGENTS["avatar_director"].meta.title == "Avatar Director"
-    assert len(AGENTS) == 22
+    assert len(AGENTS) == 23
 
 
 def test_status_lists_lanes_and_license():

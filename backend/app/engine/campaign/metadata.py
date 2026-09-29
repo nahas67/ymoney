@@ -80,6 +80,34 @@ _PLATFORM_VOICE: dict[str, dict] = {
             "NONE": "",
         },
     },
+    "linkedin": {
+        "hook": "The numbers behind this move, explained",
+        "closer": "Full analysis in the document above.",
+        "tags": ["#finance", "#markets", "#wealthbuilding"],
+        "cta_text": {
+            "FOLLOW": "Follow for weekly market breakdowns.",
+            "COMMENT": "Share your take in the comments.",
+            "LEARN_MORE": "Read the full analysis in the post.",
+            "WATCH_FULL_VIDEO": "Watch the full breakdown on our page.",
+            "VISIT_PROFILE": "See more analysis on our page.",
+            "SUBSCRIBE": "Subscribe for the full series.",
+            "NONE": "",
+        },
+    },
+    "x": {
+        "hook": "Here's the part everyone misses",
+        "closer": "Full breakdown on the timeline.",
+        "tags": ["#fintwit", "#money", "#investing"],
+        "cta_text": {
+            "FOLLOW": "Follow for one money idea a day.",
+            "COMMENT": "Reply with your number.",
+            "LEARN_MORE": "Full guide linked in the post.",
+            "WATCH_FULL_VIDEO": "Full video on our channel.",
+            "VISIT_PROFILE": "More breakdowns on our profile.",
+            "SUBSCRIBE": "Subscribe for the deep dive.",
+            "NONE": "",
+        },
+    },
 }
 
 

@@ -235,4 +235,4 @@ def test_brain_agents_registered():
     assert AGENTS["scheduler"].meta.title == "Scheduler"
     assert get_skill("schedule_planning").required_tools == ("plan_schedule",)
     assert "schedule:write" in get_tool("plan_schedule").permissions
-    assert len(AGENTS) == 22
+    assert len(AGENTS) == 23

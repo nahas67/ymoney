@@ -65,7 +65,19 @@ class BrollResearcherAgent(BaseAgent):
 
         def work():
             self.step("plan_scenes", f"{n_scenes} scene(s) for '{topic[:60]}'")
-            plan = plan_scenes(topic, keywords or [], n_scenes, ctx.workspace_id or "")
+            # Performance lessons (Work 06 Lane C): scope-matched queries bias
+            # a keyword copy when `learning_assist` is enabled (default off).
+            lesson_keys: list[str] = []
+            lesson_recs: list[dict] = []
+            kw_list = list(keywords or [])
+            try:
+                from app.engine.performance import learning as _lessons
+
+                kw_list, lesson_keys, lesson_recs = _lessons.broll_keyword_boost(
+                    ctx.workspace_id or "", topic, kw_list)
+            except Exception:
+                kw_list, lesson_keys, lesson_recs = list(keywords or []), [], []
+            plan = plan_scenes(topic, kw_list, n_scenes, ctx.workspace_id or "")
             self.step_done("ok", f"{len(plan)} scene(s)")
             scene_sync_ids = _maybe_sync_plan(ctx, plan)
             return {
@@ -76,6 +88,8 @@ class BrollResearcherAgent(BaseAgent):
                     for s in plan
                 ],
                 "synced_scene_ids": scene_sync_ids,
+                "applied_lessons": lesson_keys,
+                "lesson_recommendations": lesson_recs,
             }
 
         return self.execute(ctx, "plan_visuals", input_summary=topic[:200], fn=work)

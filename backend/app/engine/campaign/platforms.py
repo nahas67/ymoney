@@ -65,6 +65,32 @@ PLATFORM_PROFILES: dict[str, dict] = {
         "cta": ["FOLLOW", "COMMENT", "LEARN_MORE", "WATCH_FULL_VIDEO"],
         "posting_windows": [12, 18, 19],
     },
+    # Work 09: LinkedIn feed posts (native video ≤15 min / 5 GB, text ≤3000
+    # chars, 9:16 uploads play as vertical feed video on mobile).
+    "linkedin": {
+        "aspects": ["9:16", "1:1", "16:9"],
+        "preferred_duration": [20.0, 60.0],
+        "max_duration": 900.0,
+        "safe_zones": {"top": 0.08, "bottom": 0.20, "left": 0.05, "right": 0.05},
+        "caption": {"max_lines": 3, "max_chars_per_line": 34, "style": "clean-lower"},
+        "metadata": {"title_max": 150, "description_max": 3000, "hashtag_max": 30, "hashtag_limit": 5},
+        "thumbnail": {"behavior": "poster-frame", "cover_text_max": 40},
+        "cta": ["LEARN_MORE", "COMMENT", "VISIT_PROFILE", "FOLLOW"],
+        "posting_windows": [9, 12, 17],
+    },
+    # Work 09: X in-feed video ≤140s (2m20s) on standard access; posts ≤280
+    # chars. The short cap matches what the standard API plan accepts.
+    "x": {
+        "aspects": ["9:16", "16:9", "1:1"],
+        "preferred_duration": [20.0, 60.0],
+        "max_duration": 140.0,
+        "safe_zones": {"top": 0.08, "bottom": 0.24, "left": 0.05, "right": 0.05},
+        "caption": {"max_lines": 2, "max_chars_per_line": 30, "style": "clean-lower"},
+        "metadata": {"title_max": 100, "description_max": 280, "hashtag_max": 30, "hashtag_limit": 4},
+        "thumbnail": {"behavior": "poster-frame", "cover_text_max": 40},
+        "cta": ["COMMENT", "FOLLOW", "VISIT_PROFILE", "LEARN_MORE"],
+        "posting_windows": [9, 13, 19],
+    },
     # Minimal long-form profile so master validation shares one code path.
     "youtube_longform": {
         "aspects": ["16:9"],
@@ -85,6 +111,9 @@ CAMPAIGN_PLATFORMS: tuple[str, ...] = (
     "tiktok",
     "instagram_reels",
     "facebook_reels",
+    # Work 09: LinkedIn/X campaign keys (account namespaces are linkedin|x).
+    "linkedin",
+    "x",
 )
 
 #: Campaign platform -> SocialAccount/publisher namespace.
@@ -94,6 +123,8 @@ ACCOUNT_PLATFORM: dict[str, str] = {
     "instagram_reels": "instagram",
     "facebook_reels": "facebook",
     "youtube_longform": "youtube",
+    "linkedin": "linkedin",
+    "x": "x",
 }
 
 

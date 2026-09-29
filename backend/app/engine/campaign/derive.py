@@ -4,6 +4,18 @@ The ``campaign.derive`` job handler in ``app/api/v1/campaigns.py`` stays thin
 (auth/request/response + enqueue); the resumable discovery -> select ->
 shorts -> variants -> plan chain lives here as the testable
 :func:`run_derive_campaign` function.
+
+Transaction discipline (Work 06, Lane A): every stage commits at its
+boundary — discovery / select / each short / each variant / plan / schedule /
+QC — and campaign events are emitted only AFTER the commit that durably
+stores what they announce. Nested-session writers (event emission, webhook
+fan-out, intelligence advisory persists, LLM cost tracking) must never run
+while this session holds an open write transaction: on SQLite that stalls
+each nested write on a ~5s busy wait (the 242s E2E). Crash safety is
+preserved: each short/variant commits atomically (savepoint per unit, so a
+failed unit rolls back alone), committed prefixes resume-skip via the
+existing idempotency (covered ranges, variant upserts, idempotent
+scheduling), and half-written units are never committed.
 """
 
 from __future__ import annotations
@@ -20,6 +32,9 @@ def run_derive_campaign(session, campaign, plan: dict, ctx, *,
     context. ``jobs_service`` (cancellation checks) and ``emit`` (campaign
     events) default to the real implementations when omitted so the API
     handler stays a one-line call.
+
+    Commits at each stage boundary; safe to call inside an outer
+    ``session_scope`` (the scope's exit commit becomes a no-op).
     """
     from sqlalchemy import select
 
@@ -57,6 +72,34 @@ def run_derive_campaign(session, campaign, plan: dict, ctx, *,
     if plan is None:
         plan = {}
 
+    # -- stage-commit plumbing ------------------------------------------------
+    # Events are queued and flushed only after the commit that durably stores
+    # what they announce, so nested-session writers never contend this
+    # session's write transaction.
+    pending_events: list[tuple] = []
+
+    def _queue_emit(workspace_id: str, kind: str, message: str, **data) -> None:
+        pending_events.append((workspace_id, kind, message, data))
+
+    def _checkpoint() -> None:
+        """Commit stage work, then emit queued events outside the transaction."""
+        s.commit()
+        while pending_events:
+            workspace_id, kind, message, data = pending_events.pop(0)
+            emit(workspace_id, kind, message, **data)
+
+    def _atomic(work):
+        """Run one unit atomically: failure rolls back the unit alone."""
+        save = s.begin_nested()
+        try:
+            out = work()
+        except Exception:
+            save.rollback()
+            raise
+        else:
+            save.commit()
+            return out
+
     def _progress(stage: str, done: int, total: int) -> None:
         plan["status"] = "RUNNING"
         plan["progress"] = {"stage": stage, "completed": done, "total": total}
@@ -73,6 +116,7 @@ def run_derive_campaign(session, campaign, plan: dict, ctx, *,
         except Exception:
             pass
         s.flush()
+        _checkpoint()
 
     from app.models import ContentItem, ContentTimeline
 
@@ -83,14 +127,18 @@ def run_derive_campaign(session, campaign, plan: dict, ctx, *,
 
     _progress("discovery", 0, max(desired * len(platforms), 1))
     jobs_service.check_cancelled(ctx)
+    # Committed above: the LLM cost-tracking nested write inside discovery
+    # no longer contends this session.
     moments = _discover_moments(s, campaign.workspace_id, master, max(desired * 3, desired + 2))
     _progress("discovery", len(moments), max(desired * len(platforms), 1))
     jobs_service.check_cancelled(ctx)
+    # Committed above: the intelligence advisory persist inside selection
+    # runs outside this session's write transaction.
     selected = _select_moments(s, campaign, moments, desired)
     _progress("select", len(selected), max(desired, 1))
 
     # shorts (resumable: reuse existing campaign shorts, derive the rest;
-    # one bad moment never kills the campaign)
+    # one bad moment never kills the campaign; each short commits atomically)
     existing = s.scalars(
         select(ContentItem).where(
             ContentItem.workspace_id == campaign.workspace_id,
@@ -108,12 +156,14 @@ def run_derive_campaign(session, campaign, plan: dict, ctx, *,
             continue
         jobs_service.check_cancelled(ctx)
         try:
-            (child,) = _derive_moment(s, campaign, master, moment, plan)
+            (child,) = _atomic(
+                lambda: _derive_moment(s, campaign, master, moment, plan))
             shorts.append(child)
             covered.append((float(moment["start"]), float(moment["end"])))
-            emit(campaign.workspace_id, "campaign.short_created",
-                 f"Short {child.id} derived", campaign_id=campaign.id,
-                 short_content_id=child.id)
+            _queue_emit(campaign.workspace_id, "campaign.short_created",
+                        f"Short {child.id} derived", campaign_id=campaign.id,
+                        short_content_id=child.id)
+            _checkpoint()
         except Exception as exc:
             derived_errors.append({
                 "moment": {k: moment.get(k) for k in ("start", "end", "hook")},
@@ -123,9 +173,26 @@ def run_derive_campaign(session, campaign, plan: dict, ctx, *,
         plan["derived_errors"] = derived_errors
     _progress("shorts", len(shorts), max(desired, len(shorts)))
 
-    # variants + metadata (metadata-only shares the base timeline)
+    # variants + metadata (metadata-only shares the base timeline).
+    # Each variant commits atomically; resume upserts idempotently.
     gen = PlatformMetadataGenerator()
     store = default_store(s)
+    # Brand DNA (Work 08 Lane C): one policy resolution PER PLATFORM, reused
+    # for every short — variant metadata carries required disclaimers,
+    # platform-level overrides and the effective_config_id provenance.
+    brand_meta: dict[str, dict] = {}
+    try:
+        from app.engine.brand_templates import brand_gate, brand_variant_metadata
+
+        for _platform in platforms:
+            _gate = brand_gate(s, campaign.workspace_id, campaign_id=campaign.id,
+                               platform=_platform,
+                               artifact={"content_format": "short"})
+            _fragment = brand_variant_metadata(_gate, platform=_platform)
+            if _fragment:
+                brand_meta[_platform] = _fragment
+    except Exception:  # noqa: BLE001 — brand never breaks derivation
+        brand_meta = {}
     total_variants = len(shorts) * len(platforms)
     made = 0
     for short in shorts:
@@ -134,14 +201,25 @@ def run_derive_campaign(session, campaign, plan: dict, ctx, *,
             metadata = gen.generate(topic=short.topic, platform=platform,
                                     cta_kind=cta_kind,
                                     master_content_id=master.id if master else "")
-            build_variant(s, campaign.workspace_id, short.id, platform, None,
-                          cta_kind, campaign_id=campaign.id, metadata=metadata,
-                          store=store)
+            if brand_meta.get(platform):
+                metadata = {**metadata, **brand_meta[platform]}
+
+            def _one_variant(
+                short_id: str = short.id, platform_name: str = platform,
+                bundle: dict = metadata,
+            ):
+                return build_variant(s, campaign.workspace_id, short_id,
+                                     platform_name, None, cta_kind,
+                                     campaign_id=campaign.id, metadata=bundle,
+                                     store=store)
+
+            _atomic(_one_variant)
             made += 1
-            emit(campaign.workspace_id, "campaign.variant_created",
-                 f"Variant for {short.id} on {platform}",
-                 campaign_id=campaign.id, short_content_id=short.id,
-                 platform=platform)
+            _queue_emit(campaign.workspace_id, "campaign.variant_created",
+                        f"Variant for {short.id} on {platform}",
+                        campaign_id=campaign.id, short_content_id=short.id,
+                        platform=platform)
+            _checkpoint()
     _progress("variants", made, max(total_variants, 1))
 
     # plan (stored in sidecar until Lane A table lands)
@@ -177,10 +255,13 @@ def run_derive_campaign(session, campaign, plan: dict, ctx, *,
             existing_pp.status = "READY"
     except Exception:
         pass
+    s.flush()
+    _checkpoint()
     from app.engine.campaign.publish_flow import schedule_plan
 
     sched = schedule_plan(session=s, workspace_id=campaign.workspace_id,
                           campaign_id=campaign.id, items=items)
+    _checkpoint()
     plan["schedule"] = sched
     from app.engine.campaign.qc import campaign_qc, short_qc
 
@@ -199,13 +280,16 @@ def run_derive_campaign(session, campaign, plan: dict, ctx, *,
     plan["short_qc"] = short_results
     camp_qc = campaign_qc(s, campaign.id)
     plan["campaign_qc"] = camp_qc
+    sidecar["campaign_plan"] = plan
+    campaign.kpis_json = dict(sidecar)
     from app.engine.campaign.costs import track_campaign_cost
 
     track_campaign_cost(s, campaign.workspace_id, campaign.id,
                         "derivation", 0.0,
                         detail={"shorts": len(shorts), "variants": made})
     s.flush()
-    emit(campaign.workspace_id, "campaign.ready",
-         f"Campaign {campaign.id} ready ({made} variants)",
-         campaign_id=campaign.id)
+    _queue_emit(campaign.workspace_id, "campaign.ready",
+                f"Campaign {campaign.id} ready ({made} variants)",
+                campaign_id=campaign.id)
+    _checkpoint()
     return {"shorts": len(shorts), "variants": made, "stages": stages}

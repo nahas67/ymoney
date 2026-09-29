@@ -2132,3 +2132,28 @@ def repurpose_url(
         "webhook": webhook,
     }
 
+
+# Ranked response windows (Work 10 Lane D): serialized exactly as the
+# scheduler computes them — ``activity_policy`` is the honesty switch
+# (``action_allowed`` only with the explicit settings_json
+# ["schedule_automation"] opt-in, ``recommendation_only`` otherwise) and
+# best-time data is never invented.
+@calendar_router.get("/response-windows", summary="Ranked response windows (recommendation)")
+def response_windows(
+    platform: str | None = Query(default=None, max_length=40),
+    ws: Workspace = Depends(require_workspace_role("viewer")),
+):
+    import logging
+
+    try:
+        from app.engine.agents.scheduler import SchedulerAgent
+
+        return SchedulerAgent.recommend_response_windows(ws.id, platform=platform)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)[:160]) from None
+    except HTTPException:
+        raise
+    except Exception:
+        logging.getLogger("ymoney.knowledge").exception("response windows failed")
+        raise HTTPException(status_code=500, detail="internal error") from None
+

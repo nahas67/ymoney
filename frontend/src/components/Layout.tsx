@@ -23,6 +23,9 @@ const NAV: { group: string; items: { to: string; label: string; icon: string; ke
     { to: "/composer", label: "Composer", icon: "✎", desc: "Manual post composer" },
     { to: "/assets", label: "Assets", icon: "◈", desc: "Videos, images, voice lab" },
     { to: "/brand", label: "Brand", icon: "◐", desc: "Voice, niche, identity" },
+    { to: "/brands", label: "Brand DNA", icon: "◇", desc: "Brand identities, policy, verifier" },
+    { to: "/localization", label: "Localization", icon: "文", desc: "Translate content, glossary, QC" },
+    { to: "/ugc", label: "UGC Studio", icon: "🎬", desc: "UGC presets, avatars, lip-sync" },
   ]},
   { group: "Distribute", items: [
     { to: "/publishing", label: "Publishing", icon: "↥", keys: "p", desc: "Accounts, jobs, delivery" },
@@ -30,7 +33,9 @@ const NAV: { group: string; items: { to: string; label: string; icon: string; ke
   ]},
   { group: "Understand", items: [
     { to: "/analytics", label: "Analytics", icon: "◫", keys: "n", desc: "Performance + cost efficiency" },
+    { to: "/performance", label: "Performance", icon: "⬣", desc: "Retention, creative tests, lessons" },
     { to: "/intelligence", label: "Intelligence", icon: "☰", keys: "g", desc: "Patterns, decisions, strategy" },
+    { to: "/knowledge", label: "Knowledge", icon: "◈", desc: "Memory graph, sources, community signals" },
     { to: "/memory", label: "Memory", icon: "◍", desc: "Semantic + style memory" },
   ]},
   { group: "Developers", items: [

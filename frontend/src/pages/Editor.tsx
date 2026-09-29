@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import WaveSurfer from "wavesurfer.js";
 import { getToken, mediaFileUrl, videoFileUrl, wsApi } from "../lib/api";
 import { Badge, Card, PageHeader, toast } from "../components/ui";
+import CreativeDirector from "../components/CreativeDirector";
 import {
   TRACK_FAMILY, applyOpsLocal, clipEnd, findClip, inverseOps, snapTime, sortedTracks,
 } from "../editor/adapters/timelineAdapter";
@@ -490,6 +491,9 @@ export default function Editor() {
           <Badge tone={saveState === "Saved" ? "success" : saveState === "Conflict" ? "error" : "warning"}>{saveState}</Badge>
         </div>
       </Card>
+
+      {/* Creative Director: NL → parse → preview → apply → undo */}
+      {timelineId && <CreativeDirector timelineId={timelineId} onApplied={load} />}
 
       {/* Tracks */}
       <Card>

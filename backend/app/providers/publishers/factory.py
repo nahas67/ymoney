@@ -11,6 +11,7 @@ There is NO mock publisher in the product. Tests inject their own doubles.
 from __future__ import annotations
 
 from app.providers.publishers.base import BasePublisher, PublishMetadata, PublishResult
+from app.providers.publishers.linkedin import LinkedInPublisher
 from app.providers.publishers.platforms import (
     FacebookPagePublisher,
     InstagramPublisher,
@@ -18,12 +19,16 @@ from app.providers.publishers.platforms import (
     UploadPostRelay,
     YouTubePublisher,
 )
+from app.providers.publishers.x import XPublisher
 
 _registry: dict[str, BasePublisher] = {
     "youtube": YouTubePublisher(),
     "tiktok": TikTokPublisher(),
     "facebook": FacebookPagePublisher(),
     "instagram": InstagramPublisher(),
+    # Work 09: native LinkedIn/X publishers (no relay required).
+    "linkedin": LinkedInPublisher(),
+    "x": XPublisher(),
 }
 
 

@@ -78,6 +78,7 @@ async function request<T = any>(method: string, path: string, body?: unknown, al
       const data = await res.json();
       detail = data.detail ?? JSON.stringify(data);
       if (Array.isArray(detail)) detail = detail.map((d: any) => d.msg).join(", ");
+      else if (detail && typeof detail === "object") detail = JSON.stringify(detail);
     } catch {}
     const err = new ApiError(res.status, String(detail));
     if (res.status === 401 && allowRefresh && !NO_AUTO_REFRESH.includes(path) && (await tryRefreshSession())) {

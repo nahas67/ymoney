@@ -1564,6 +1564,462 @@
       ]
     },
     {
+      "name": "avatars",
+      "item": [
+        {
+          "name": "Authorize a portrait (source + evidence required)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/avatars/:profile_id/authorize",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "avatars",
+                ":profile_id",
+                "authorize"
+              ],
+              "query": []
+            },
+            "description": "Authorize a portrait (source + evidence required)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Avatar profile detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/avatars/:profile_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "avatars",
+                ":profile_id"
+              ],
+              "query": []
+            },
+            "description": "Avatar profile detail"
+          }
+        },
+        {
+          "name": "Avatar provider health + consent policy",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/avatars/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "avatars",
+                "health"
+              ],
+              "query": []
+            },
+            "description": "Avatar provider health + consent policy"
+          }
+        },
+        {
+          "name": "Create an avatar profile (consent starts pending)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/avatars",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "avatars"
+              ],
+              "query": []
+            },
+            "description": "Create an avatar profile (consent starts pending)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List workspace avatar profiles",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/avatars",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "avatars"
+              ],
+              "query": []
+            },
+            "description": "List workspace avatar profiles"
+          }
+        },
+        {
+          "name": "Render an avatar (authorized consent only)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/avatars/render",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "avatars",
+                "render"
+              ],
+              "query": []
+            },
+            "description": "Render an avatar (authorized consent only)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "brands",
+      "item": [
+        {
+          "name": "Brand consistency report for an artifact",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/brands/:brand_id/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "brands",
+                ":brand_id",
+                "verify"
+              ],
+              "query": []
+            },
+            "description": "Brand consistency report for an artifact",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Brand detail (DNA editor payload)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/brands/:brand_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "brands",
+                ":brand_id"
+              ],
+              "query": []
+            },
+            "description": "Brand detail (DNA editor payload)"
+          }
+        },
+        {
+          "name": "Create a brand (+ optional BrandDNA)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/brands",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "brands"
+              ],
+              "query": []
+            },
+            "description": "Create a brand (+ optional BrandDNA)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Creative template presets for this workspace",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/brands/presets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "brands",
+                "presets"
+              ],
+              "query": []
+            },
+            "description": "Creative template presets for this workspace"
+          }
+        },
+        {
+          "name": "Link a MediaAsset to a brand role",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/brands/:brand_id/assets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "brands",
+                ":brand_id",
+                "assets"
+              ],
+              "query": []
+            },
+            "description": "Link a MediaAsset to a brand role",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List workspace brands (with DNA payload)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/brands",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "brands"
+              ],
+              "query": []
+            },
+            "description": "List workspace brands (with DNA payload)"
+          }
+        },
+        {
+          "name": "Resolved effective policy + provenance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/brands/effective",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "brands",
+                "effective"
+              ],
+              "query": [
+                {
+                  "key": "campaign_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "content_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "platform",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "brand_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Resolved effective policy + provenance"
+          }
+        },
+        {
+          "name": "Unlink a MediaAsset from a brand",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/brands/:brand_id/assets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "brands",
+                ":brand_id",
+                "assets"
+              ],
+              "query": [
+                {
+                  "key": "media_asset_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                },
+                {
+                  "key": "asset_role",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Unlink a MediaAsset from a brand"
+          }
+        },
+        {
+          "name": "Update brand name/status/default/DNA",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/brands/:brand_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "brands",
+                ":brand_id"
+              ],
+              "query": []
+            },
+            "description": "Update brand name/status/default/DNA",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "calendar",
       "item": [
         {
@@ -1695,6 +2151,36 @@
               "query": []
             },
             "description": "List Schedule"
+          }
+        },
+        {
+          "name": "Ranked response windows (recommendation)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/calendar/response-windows",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "calendar",
+                "response-windows"
+              ],
+              "query": [
+                {
+                  "key": "platform",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Ranked response windows (recommendation)"
           }
         },
         {
@@ -2450,6 +2936,228 @@
       ]
     },
     {
+      "name": "creative",
+      "item": [
+        {
+          "name": "Apply commands via the canonical version system",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/creative/apply",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "creative",
+                "apply"
+              ],
+              "query": []
+            },
+            "description": "Apply commands via the canonical version system",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Approved command types + component catalog",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/creative/catalog",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "creative",
+                "catalog"
+              ],
+              "query": []
+            },
+            "description": "Approved command types + component catalog"
+          }
+        },
+        {
+          "name": "Audit ledger (parse/preview/apply history)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/creative/commands",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "creative",
+                "commands"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "timeline_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Audit ledger (parse/preview/apply history)"
+          }
+        },
+        {
+          "name": "Diff + estimates (timeline untouched)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/creative/preview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "creative",
+                "preview"
+              ],
+              "query": []
+            },
+            "description": "Diff + estimates (timeline untouched)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Generative-UI schema gate (never executed)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/creative/validate-schema",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "creative",
+                "validate-schema"
+              ],
+              "query": []
+            },
+            "description": "Generative-UI schema gate (never executed)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Natural language \u2192 typed creative commands",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/creative/parse",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "creative",
+                "parse"
+              ],
+              "query": []
+            },
+            "description": "Natural language \u2192 typed creative commands",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Restore the version apply replaced",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/creative/undo/:timeline_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "creative",
+                "undo",
+                ":timeline_id"
+              ],
+              "query": []
+            },
+            "description": "Restore the version apply replaced"
+          }
+        }
+      ]
+    },
+    {
       "name": "cycles",
       "item": [
         {
@@ -2529,6 +3237,1757 @@
               "query": []
             },
             "description": "Next Best Action Preview\n\nLive NEXT BEST ACTION with the complete WHY breakdown."
+          }
+        }
+      ]
+    },
+    {
+      "name": "dubbing",
+      "item": [
+        {
+          "name": "Build (and optionally analyze) a dubbing plan",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/dubbing/plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "dubbing",
+                "plans"
+              ],
+              "query": []
+            },
+            "description": "Build (and optionally analyze) a dubbing plan",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List saved dubbing plans",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/dubbing/plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "dubbing",
+                "plans"
+              ],
+              "query": []
+            },
+            "description": "List saved dubbing plans"
+          }
+        }
+      ]
+    },
+    {
+      "name": "experiments",
+      "item": [
+        {
+          "name": "Analyze an experiment",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/experiments/:experiment_id/analyze",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "experiments",
+                ":experiment_id",
+                "analyze"
+              ],
+              "query": []
+            },
+            "description": "Analyze an experiment"
+          }
+        },
+        {
+          "name": "Cancel an experiment",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/experiments/:experiment_id/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "experiments",
+                ":experiment_id",
+                "cancel"
+              ],
+              "query": []
+            },
+            "description": "Cancel an experiment"
+          }
+        },
+        {
+          "name": "Create a creative experiment (DRAFT)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/experiments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "experiments"
+              ],
+              "query": []
+            },
+            "description": "Create a creative experiment (DRAFT)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Experiment detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/experiments/:experiment_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "experiments",
+                ":experiment_id"
+              ],
+              "query": []
+            },
+            "description": "Experiment detail"
+          }
+        },
+        {
+          "name": "List workspace experiments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/experiments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "experiments"
+              ],
+              "query": []
+            },
+            "description": "List workspace experiments"
+          }
+        },
+        {
+          "name": "Start an experiment",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/experiments/:experiment_id/start",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "experiments",
+                ":experiment_id",
+                "start"
+              ],
+              "query": []
+            },
+            "description": "Start an experiment"
+          }
+        }
+      ]
+    },
+    {
+      "name": "inbox",
+      "item": [
+        {
+          "name": "Aggregated insights + content suggestions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/insights",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "insights"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Aggregated insights + content suggestions"
+          }
+        },
+        {
+          "name": "Aggregated insights + content suggestions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/insights",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "insights"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Aggregated insights + content suggestions"
+          }
+        },
+        {
+          "name": "Approve a queued action",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/actions/:action_id/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "actions",
+                ":action_id",
+                "approve"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Approve a queued action"
+          }
+        },
+        {
+          "name": "Approve a queued action",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/actions/:action_id/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "actions",
+                ":action_id",
+                "approve"
+              ],
+              "query": []
+            },
+            "description": "Approve a queued action"
+          }
+        },
+        {
+          "name": "Bulk triage (read/unread/spam/ignore \u2014 never a send)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/bulk",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "bulk"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Bulk triage (read/unread/spam/ignore \u2014 never a send)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Bulk triage (read/unread/spam/ignore \u2014 never a send)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/bulk",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "bulk"
+              ],
+              "query": []
+            },
+            "description": "Bulk triage (read/unread/spam/ignore \u2014 never a send)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Community autonomy configuration",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/autonomy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "autonomy"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Community autonomy configuration"
+          }
+        },
+        {
+          "name": "Community autonomy configuration",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/autonomy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "autonomy"
+              ],
+              "query": []
+            },
+            "description": "Community autonomy configuration"
+          }
+        },
+        {
+          "name": "Community metrics (community engine)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/analytics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "analytics"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Community metrics (community engine)"
+          }
+        },
+        {
+          "name": "Community metrics (community engine)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/analytics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "analytics"
+              ],
+              "query": []
+            },
+            "description": "Community metrics (community engine)"
+          }
+        },
+        {
+          "name": "Conversation + thread",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/conversations/:conversation_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "conversations",
+                ":conversation_id"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Conversation + thread"
+          }
+        },
+        {
+          "name": "Conversation + thread",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/conversations/:conversation_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "conversations",
+                ":conversation_id"
+              ],
+              "query": []
+            },
+            "description": "Conversation + thread"
+          }
+        },
+        {
+          "name": "Conversation list + unread + preview",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/conversations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "conversations"
+              ],
+              "query": [
+                {
+                  "key": "platform",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "unread",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "30",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Conversation list + unread + preview"
+          }
+        },
+        {
+          "name": "Conversation list + unread + preview",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/conversations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "conversations"
+              ],
+              "query": [
+                {
+                  "key": "platform",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "unread",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "30",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Conversation list + unread + preview"
+          }
+        },
+        {
+          "name": "Convert an opportunity into a content idea",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/opportunities/:opportunity_id/convert",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "opportunities",
+                ":opportunity_id",
+                "convert"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Convert an opportunity into a content idea"
+          }
+        },
+        {
+          "name": "Convert an opportunity into a content idea",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/opportunities/:opportunity_id/convert",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "opportunities",
+                ":opportunity_id",
+                "convert"
+              ],
+              "query": []
+            },
+            "description": "Convert an opportunity into a content idea"
+          }
+        },
+        {
+          "name": "Dismiss an opportunity",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/opportunities/:opportunity_id/dismiss",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "opportunities",
+                ":opportunity_id",
+                "dismiss"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Dismiss an opportunity"
+          }
+        },
+        {
+          "name": "Dismiss an opportunity",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/opportunities/:opportunity_id/dismiss",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "opportunities",
+                ":opportunity_id",
+                "dismiss"
+              ],
+              "query": []
+            },
+            "description": "Dismiss an opportunity"
+          }
+        },
+        {
+          "name": "Draft a reply + brand check (community engine)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/interactions/:interaction_id/draft",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "interactions",
+                ":interaction_id",
+                "draft"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Draft a reply + brand check (community engine)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Draft a reply + brand check (community engine)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/interactions/:interaction_id/draft",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "interactions",
+                ":interaction_id",
+                "draft"
+              ],
+              "query": []
+            },
+            "description": "Draft a reply + brand check (community engine)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Enqueue a community sync job",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/sync",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "sync"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Enqueue a community sync job",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Enqueue a community sync job",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/sync",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "sync"
+              ],
+              "query": []
+            },
+            "description": "Enqueue a community sync job",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Interaction detail + thread",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/interactions/:interaction_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "interactions",
+                ":interaction_id"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Interaction detail + thread"
+          }
+        },
+        {
+          "name": "Interaction detail + thread",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/interactions/:interaction_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "interactions",
+                ":interaction_id"
+              ],
+              "query": []
+            },
+            "description": "Interaction detail + thread"
+          }
+        },
+        {
+          "name": "Lead / partnership / request signals",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/opportunities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "opportunities"
+              ],
+              "query": [
+                {
+                  "key": "state",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Lead / partnership / request signals"
+          }
+        },
+        {
+          "name": "Lead / partnership / request signals",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/opportunities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "opportunities"
+              ],
+              "query": [
+                {
+                  "key": "state",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Lead / partnership / request signals"
+          }
+        },
+        {
+          "name": "List platform interactions (filtered)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/interactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "interactions"
+              ],
+              "query": [
+                {
+                  "key": "platform",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "classification",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "priority",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "unread",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "conversation_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "cursor",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "25",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "List platform interactions (filtered)"
+          }
+        },
+        {
+          "name": "List platform interactions (filtered)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/interactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "interactions"
+              ],
+              "query": [
+                {
+                  "key": "platform",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "classification",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "priority",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "unread",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "conversation_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "cursor",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "25",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List platform interactions (filtered)"
+          }
+        },
+        {
+          "name": "Mark read / unread",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/interactions/:interaction_id/read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "interactions",
+                ":interaction_id",
+                "read"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Mark read / unread",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Mark read / unread",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/interactions/:interaction_id/read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "interactions",
+                ":interaction_id",
+                "read"
+              ],
+              "query": []
+            },
+            "description": "Mark read / unread",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Platform registry specs + capabilities",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/platforms",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "platforms"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Platform registry specs + capabilities"
+          }
+        },
+        {
+          "name": "Platform registry specs + capabilities",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/platforms",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "platforms"
+              ],
+              "query": []
+            },
+            "description": "Platform registry specs + capabilities"
+          }
+        },
+        {
+          "name": "Policy-gated send (edited text becomes origin=human_edited)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/actions/:action_id/send",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "actions",
+                ":action_id",
+                "send"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Policy-gated send (edited text becomes origin=human_edited)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Policy-gated send (edited text becomes origin=human_edited)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/actions/:action_id/send",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "actions",
+                ":action_id",
+                "send"
+              ],
+              "query": []
+            },
+            "description": "Policy-gated send (edited text becomes origin=human_edited)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Queue a reply draft (send=true goes through the policy gate)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/conversations/:conversation_id/reply",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "conversations",
+                ":conversation_id",
+                "reply"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Queue a reply draft (send=true goes through the policy gate)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Queue a reply draft (send=true goes through the policy gate)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/conversations/:conversation_id/reply",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "conversations",
+                ":conversation_id",
+                "reply"
+              ],
+              "query": []
+            },
+            "description": "Queue a reply draft (send=true goes through the policy gate)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Queued / sent community actions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/actions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "actions"
+              ],
+              "query": [
+                {
+                  "key": "state",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "action_type",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "interaction_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Queued / sent community actions"
+          }
+        },
+        {
+          "name": "Queued / sent community actions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/actions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "actions"
+              ],
+              "query": [
+                {
+                  "key": "state",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "action_type",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "interaction_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Queued / sent community actions"
+          }
+        },
+        {
+          "name": "Reject a queued action",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/actions/:action_id/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "actions",
+                ":action_id",
+                "reject"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Reject a queued action"
+          }
+        },
+        {
+          "name": "Reject a queued action",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/actions/:action_id/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "actions",
+                ":action_id",
+                "reject"
+              ],
+              "query": []
+            },
+            "description": "Reject a queued action"
+          }
+        },
+        {
+          "name": "Run AI classification (community engine)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/interactions/:interaction_id/classify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "interactions",
+                ":interaction_id",
+                "classify"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Run AI classification (community engine)"
+          }
+        },
+        {
+          "name": "Run AI classification (community engine)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/interactions/:interaction_id/classify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "interactions",
+                ":interaction_id",
+                "classify"
+              ],
+              "query": []
+            },
+            "description": "Run AI classification (community engine)"
+          }
+        },
+        {
+          "name": "Update community autonomy (admin only)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/inbox/autonomy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "inbox",
+                "autonomy"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Update community autonomy (admin only)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Update community autonomy (admin only)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/inbox/autonomy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "inbox",
+                "autonomy"
+              ],
+              "query": []
+            },
+            "description": "Update community autonomy (admin only)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           }
         }
       ]
@@ -2997,6 +5456,1201 @@
       ]
     },
     {
+      "name": "knowledge",
+      "item": [
+        {
+          "name": "Disable a memory (idempotent)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/knowledge/memories/:memory_id/disable",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "memories",
+                ":memory_id",
+                "disable"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Disable a memory (idempotent)"
+          }
+        },
+        {
+          "name": "Disable a memory (idempotent)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/knowledge/memories/:memory_id/disable",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "knowledge",
+                "memories",
+                ":memory_id",
+                "disable"
+              ],
+              "query": []
+            },
+            "description": "Disable a memory (idempotent)"
+          }
+        },
+        {
+          "name": "Disconnect a connector",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/knowledge/sources/:connector_id/disconnect",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "sources",
+                ":connector_id",
+                "disconnect"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Disconnect a connector"
+          }
+        },
+        {
+          "name": "Disconnect a connector",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/knowledge/sources/:connector_id/disconnect",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "knowledge",
+                "sources",
+                ":connector_id",
+                "disconnect"
+              ],
+              "query": []
+            },
+            "description": "Disconnect a connector"
+          }
+        },
+        {
+          "name": "Documents ingested by one connector",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/knowledge/sources/:connector_id/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "sources",
+                ":connector_id",
+                "documents"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Documents ingested by one connector"
+          }
+        },
+        {
+          "name": "Documents ingested by one connector",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/knowledge/sources/:connector_id/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "knowledge",
+                "sources",
+                ":connector_id",
+                "documents"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Documents ingested by one connector"
+          }
+        },
+        {
+          "name": "Filtered workspace memories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/knowledge/memories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "memories"
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "scope",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "topic",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "q",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Filtered workspace memories"
+          }
+        },
+        {
+          "name": "Filtered workspace memories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/knowledge/memories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "knowledge",
+                "memories"
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "scope",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "topic",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "q",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Filtered workspace memories"
+          }
+        },
+        {
+          "name": "Knowledge-graph nodes + internal edges",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/knowledge/graph",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "graph"
+              ],
+              "query": [
+                {
+                  "key": "node_type",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "200",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Knowledge-graph nodes + internal edges"
+          }
+        },
+        {
+          "name": "Knowledge-graph nodes + internal edges",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/knowledge/graph",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "knowledge",
+                "graph"
+              ],
+              "query": [
+                {
+                  "key": "node_type",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "200",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Knowledge-graph nodes + internal edges"
+          }
+        },
+        {
+          "name": "Promote threshold insights to memory",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/knowledge/promote-insights",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "promote-insights"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Promote threshold insights to memory"
+          }
+        },
+        {
+          "name": "Promote threshold insights to memory",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/knowledge/promote-insights",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "knowledge",
+                "promote-insights"
+              ],
+              "query": []
+            },
+            "description": "Promote threshold insights to memory"
+          }
+        },
+        {
+          "name": "Queue a SOURCE_SYNC job",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/knowledge/sources/:connector_id/sync",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "sources",
+                ":connector_id",
+                "sync"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Queue a SOURCE_SYNC job"
+          }
+        },
+        {
+          "name": "Queue a SOURCE_SYNC job",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/knowledge/sources/:connector_id/sync",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "knowledge",
+                "sources",
+                ":connector_id",
+                "sync"
+              ],
+              "query": []
+            },
+            "description": "Queue a SOURCE_SYNC job"
+          }
+        },
+        {
+          "name": "Ranked memory recall for one task",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/knowledge/retrieve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "task",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "topic",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "platform",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "max_results",
+                  "value": "10",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Ranked memory recall for one task"
+          }
+        },
+        {
+          "name": "Ranked memory recall for one task",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/knowledge/retrieve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "knowledge",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "task",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "topic",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "platform",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "max_results",
+                  "value": "10",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Ranked memory recall for one task"
+          }
+        },
+        {
+          "name": "Record a human verification",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/knowledge/memories/:memory_id/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "memories",
+                ":memory_id",
+                "verify"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Record a human verification"
+          }
+        },
+        {
+          "name": "Record a human verification",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/knowledge/memories/:memory_id/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "knowledge",
+                "memories",
+                ":memory_id",
+                "verify"
+              ],
+              "query": []
+            },
+            "description": "Record a human verification"
+          }
+        },
+        {
+          "name": "Register a source connector",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/knowledge/sources",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "sources"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Register a source connector",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Register a source connector",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/knowledge/sources",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "knowledge",
+                "sources"
+              ],
+              "query": []
+            },
+            "description": "Register a source connector",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Registered source connectors (redacted)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/knowledge/sources",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "sources"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Registered source connectors (redacted)"
+          }
+        },
+        {
+          "name": "Registered source connectors (redacted)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/knowledge/sources",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "knowledge",
+                "sources"
+              ],
+              "query": []
+            },
+            "description": "Registered source connectors (redacted)"
+          }
+        },
+        {
+          "name": "Repeated community themes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/knowledge/community-signals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "community-signals"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Repeated community themes"
+          }
+        },
+        {
+          "name": "Repeated community themes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/knowledge/community-signals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "knowledge",
+                "community-signals"
+              ],
+              "query": []
+            },
+            "description": "Repeated community themes"
+          }
+        },
+        {
+          "name": "Store one typed memory",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/knowledge/memories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "memories"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Store one typed memory",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Store one typed memory",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/knowledge/memories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "knowledge",
+                "memories"
+              ],
+              "query": []
+            },
+            "description": "Store one typed memory",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Supersede a memory",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/knowledge/memories/:memory_id/supersede",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "knowledge",
+                "memories",
+                ":memory_id",
+                "supersede"
+              ],
+              "query": [
+                {
+                  "key": "workspace_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Supersede a memory",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Supersede a memory",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/knowledge/memories/:memory_id/supersede",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "knowledge",
+                "memories",
+                ":memory_id",
+                "supersede"
+              ],
+              "query": []
+            },
+            "description": "Supersede a memory",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "lessons",
+      "item": [
+        {
+          "name": "Disable a lesson (history preserved)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/lessons/:lesson_id/disable",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "lessons",
+                ":lesson_id",
+                "disable"
+              ],
+              "query": []
+            },
+            "description": "Disable a lesson (history preserved)"
+          }
+        },
+        {
+          "name": "Lesson evidence trail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/lessons/:lesson_id/evidence",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "lessons",
+                ":lesson_id",
+                "evidence"
+              ],
+              "query": []
+            },
+            "description": "Lesson evidence trail"
+          }
+        },
+        {
+          "name": "List scoped performance lessons",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/lessons",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "lessons"
+              ],
+              "query": [
+                {
+                  "key": "platform",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "topic",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "content_format",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "kind",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List scoped performance lessons"
+          }
+        }
+      ]
+    },
+    {
+      "name": "lipsync",
+      "item": [
+        {
+          "name": "Cancel a queued/running job",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/lipsync/jobs/:job_id/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "lipsync",
+                "jobs",
+                ":job_id",
+                "cancel"
+              ],
+              "query": []
+            },
+            "description": "Cancel a queued/running job"
+          }
+        },
+        {
+          "name": "Lip-sync job detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/lipsync/jobs/:job_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "lipsync",
+                "jobs",
+                ":job_id"
+              ],
+              "query": []
+            },
+            "description": "Lip-sync job detail"
+          }
+        },
+        {
+          "name": "Lip-sync provider + queue health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/lipsync/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "lipsync",
+                "health"
+              ],
+              "query": []
+            },
+            "description": "Lip-sync provider + queue health"
+          }
+        },
+        {
+          "name": "List workspace lip-sync jobs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/lipsync/jobs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "lipsync",
+                "jobs"
+              ],
+              "query": []
+            },
+            "description": "List workspace lip-sync jobs"
+          }
+        },
+        {
+          "name": "Submit a lip-sync job (fails closed when unavailable)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/lipsync/jobs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "lipsync",
+                "jobs"
+              ],
+              "query": []
+            },
+            "description": "Submit a lip-sync job (fails closed when unavailable)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "live",
       "item": [
         {
@@ -3044,6 +6698,191 @@
               "query": []
             },
             "description": "Per-minute metric buckets for the last 60 minutes\n\nBucket agent runs, failures, events and cost into 1-minute slots.\n\nEmpty buckets are returned as zeros so the chart can render a continuous\naxis (60 points) without client-side gap-filling."
+          }
+        }
+      ]
+    },
+    {
+      "name": "localization",
+      "item": [
+        {
+          "name": "Add a glossary term",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/localization/glossary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "localization",
+                "glossary"
+              ],
+              "query": []
+            },
+            "description": "Add a glossary term",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete a glossary term",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/localization/glossary/:term_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "localization",
+                "glossary",
+                ":term_id"
+              ],
+              "query": []
+            },
+            "description": "Delete a glossary term"
+          }
+        },
+        {
+          "name": "Kick off a localization run",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/localization/run",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "localization",
+                "run"
+              ],
+              "query": []
+            },
+            "description": "Kick off a localization run",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List localization runs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/localization",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "localization"
+              ],
+              "query": []
+            },
+            "description": "List localization runs"
+          }
+        },
+        {
+          "name": "List workspace glossary terms",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/localization/glossary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "localization",
+                "glossary"
+              ],
+              "query": []
+            },
+            "description": "List workspace glossary terms"
+          }
+        },
+        {
+          "name": "Localization status + QC",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/localization/:localized_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "localization",
+                ":localized_id"
+              ],
+              "query": []
+            },
+            "description": "Localization status + QC"
+          }
+        },
+        {
+          "name": "QC report for a run",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/localization/:localized_id/qc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "localization",
+                ":localized_id",
+                "qc"
+              ],
+              "query": []
+            },
+            "description": "QC report for a run"
           }
         }
       ]
@@ -3612,6 +7451,113 @@
                 }
               }
             }
+          }
+        }
+      ]
+    },
+    {
+      "name": "performance",
+      "item": [
+        {
+          "name": "Campaign performance rollup",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/performance/overview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "performance",
+                "overview"
+              ],
+              "query": [
+                {
+                  "key": "campaign_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Campaign performance rollup"
+          }
+        },
+        {
+          "name": "Compare groups by creative dimension",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/performance/compare",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "performance",
+                "compare"
+              ],
+              "query": [
+                {
+                  "key": "campaign_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                },
+                {
+                  "key": "group_by",
+                  "value": "hook",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Compare groups by creative dimension"
+          }
+        },
+        {
+          "name": "Retention curve + timeline mapping",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/performance/retention",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "performance",
+                "retention"
+              ],
+              "query": [
+                {
+                  "key": "post_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "short_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Retention curve + timeline mapping"
           }
         }
       ]
@@ -4824,6 +8770,147 @@
               "query": []
             },
             "description": "Version history for a timeline"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ugc",
+      "item": [
+        {
+          "name": "Create (and run) a UGC project",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/ugc/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "ugc",
+                "projects"
+              ],
+              "query": []
+            },
+            "description": "Create (and run) a UGC project",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List workspace UGC projects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/ugc/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "ugc",
+                "projects"
+              ],
+              "query": []
+            },
+            "description": "List workspace UGC projects"
+          }
+        },
+        {
+          "name": "Render the generated timeline (QC-gated)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/ugc/projects/:project_id/render",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "ugc",
+                "projects",
+                ":project_id",
+                "render"
+              ],
+              "query": []
+            },
+            "description": "Render the generated timeline (QC-gated)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "The nine registered UGC presets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/ugc/presets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "ugc",
+                "presets"
+              ],
+              "query": []
+            },
+            "description": "The nine registered UGC presets"
+          }
+        },
+        {
+          "name": "UGC project detail (QC + lineage)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/ugc/projects/:project_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "ugc",
+                "projects",
+                ":project_id"
+              ],
+              "query": []
+            },
+            "description": "UGC project detail (QC + lineage)"
           }
         }
       ]

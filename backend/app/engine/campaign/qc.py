@@ -155,13 +155,33 @@ def campaign_qc(session, campaign_id: str) -> dict:
     complete = sum(1 for v in variants if v.metadata_json)
     total = len(variants)
 
-    if not shorts or overlap_max > OVERLAP_FAIL:
+    # Brand consistency (Work 08 Lane C): Lane A's verifier folded into the
+    # rollup as a `brand` check. A verifier crash maps to a WARNING (it can
+    # never fail a cycle on its own); when the brand module is absent the
+    # check is omitted entirely and QC is byte-identical to pre-brand QC.
+    brand_check: dict | None = None
+    try:
+        from app.engine.brand_templates import brand_qc_check
+
+        corpus = " ".join(texts)
+        brand_check = brand_qc_check(
+            session, ws_id, campaign_id=campaign_id,
+            artifact={"text": corpus, "artifact_kind": "short"})
+    except Exception as exc:  # noqa: BLE001 — never fail a cycle here
+        brand_check = {"status": "warning",
+                       "detail": f"brand QC unavailable: {type(exc).__name__}: {exc}"}
+    brand_status = (brand_check or {}).get("status") or ""
+
+    if not shorts or overlap_max > OVERLAP_FAIL or brand_status == "fail":
         result = "FAIL"
-    elif missing or complete < total or len(timelines) < len(shorts):
+    elif brand_status == "review":
+        result = "REVIEW_REQUIRED"
+    elif missing or complete < total or len(timelines) < len(shorts) \
+            or brand_status == "warning":
         result = "PASS_WITH_WARNINGS"
     else:
         result = "PASS"
-    return {
+    out = {
         "result": result,
         "counts": {"shorts": len(shorts), "timelines": len(timelines),
                    "variants": total, "platforms": len(present)},
@@ -173,6 +193,9 @@ def campaign_qc(session, campaign_id: str) -> dict:
         "metadata_completeness": {"complete": complete, "total": total,
                                   "ratio": round(complete / total, 3) if total else 0.0},
     }
+    if brand_check:
+        out["checks"] = {"brand": brand_check}
+    return out
 
 
 def _track_clips(doc: dict, kind: str) -> list[dict]:

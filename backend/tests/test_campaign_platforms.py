@@ -63,6 +63,8 @@ def test_profiles_validate_bad_aspect_and_duration():
 
     assert set(CAMPAIGN_PLATFORMS) == {
         "youtube_shorts", "tiktok", "instagram_reels", "facebook_reels",
+        # Work 09 §15: LinkedIn/X joined the campaign target set
+        "linkedin", "x",
     }
     good = {"title": "Save 20% of every paycheck", "description": "A simple habit.",
             "hashtags": ["#money"]}
@@ -100,17 +102,25 @@ def test_unknown_platform_raises():
 
 def test_metadata_differs_per_platform():
     from app.engine.campaign.metadata import PlatformMetadataGenerator
+    from app.engine.campaign.platforms import CAMPAIGN_PLATFORMS
 
     gen = PlatformMetadataGenerator()
     bundles = gen.generate_all(topic="Save 20% of every paycheck",
                                script_excerpt="pay yourself first every month")
-    assert len(bundles) == 4
-    titles = [b["title"] for b in bundles.values()]
-    assert len(set(titles)) == 4, titles
-    captions = [b["caption"] for b in bundles.values()]
-    assert len(set(captions)) == 4
-    tag_sets = [tuple(b["hashtags"]) for b in bundles.values()]
-    assert len(set(tag_sets)) == 4
+    # Work 09 §15: one bundle per campaign platform (now 6 incl. linkedin/x)
+    assert set(bundles) == set(CAMPAIGN_PLATFORMS)
+    assert len(bundles) == 6
+    assert {b["platform"] for b in bundles.values()} == set(CAMPAIGN_PLATFORMS)
+
+    # Work 09: every campaign platform has its own voice, so all 6 bundles
+    # are pairwise distinct (titles, captions AND hashtag sets).
+    all_plats = list(CAMPAIGN_PLATFORMS)
+    titles = [bundles[p]["title"] for p in all_plats]
+    assert len(set(titles)) == len(all_plats), titles
+    captions = [bundles[p]["caption"] for p in all_plats]
+    assert len(set(captions)) == len(all_plats), captions
+    tag_sets = [tuple(bundles[p]["hashtags"]) for p in all_plats]
+    assert len(set(tag_sets)) == len(all_plats), tag_sets
 
 
 def test_watch_full_video_has_master_ref_not_url():
@@ -300,7 +310,8 @@ def test_publish_idempotency_same_key_one_job(workspace_with_user):
     assert second is None
     with session_scope() as s:
         rows = s.scalars(
-            select(Job).where(Job.idempotency_key == "camp-var-1-tiktok")).all()
+            select(Job).where(Job.idempotency_key == "camp-var-1-tiktok",
+                              Job.workspace_id == ws_id)).all()
         assert len(rows) == 1
 
 

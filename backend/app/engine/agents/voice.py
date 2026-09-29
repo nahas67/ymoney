@@ -19,6 +19,35 @@ from app.providers.tts import ElevenLabsTTSProvider, TTSError, get_tts_provider
 from app.services.storage import get_storage, managed_path
 
 
+def _brand_gate(ws_id: str):
+    """Resolve the workspace brand gate (``None`` when unavailable)."""
+    try:
+        from app.engine.brand_templates import brand_gate
+
+        return brand_gate(None, ws_id)
+    except Exception:  # noqa: BLE001 — brand must never break TTS
+        return None
+
+
+def _brand_voice(ws_id: str, requested: str, gate=None) -> str:
+    """Filter a voice request through the brand-approved list (never raises).
+
+    Brand hard constraint (Work 08 Lane C): when the effective policy pins
+    ``approved_voices`` a non-approved request is swapped for the first
+    approved voice; with no policy (or no brand module) the request passes
+    through unchanged. Pass a pre-resolved ``gate`` in batch loops so the
+    policy is resolved once per call site, not once per part.
+    """
+    try:
+        from app.engine.brand_templates import approved_voice
+
+        return approved_voice(
+            gate if gate is not None else _brand_gate(ws_id),
+            str(requested or ""))
+    except Exception:  # noqa: BLE001 — brand must never break TTS
+        return str(requested or "")
+
+
 class VoiceDesignerAgent(BaseAgent):
     meta = AgentMeta(
         key="voice_designer",
@@ -36,7 +65,9 @@ class VoiceDesignerAgent(BaseAgent):
 
         def work():
             ws = ctx.workspace_id or ""
-            self.step("cast_voice", f"provider={provider or 'default'} voice={voice or 'default'}")
+            # Brand hard constraint: non-approved voices are swapped out.
+            resolved_voice = _brand_voice(ws, voice)
+            self.step("cast_voice", f"provider={provider or 'default'} voice={resolved_voice or 'default'}")
             try:
                 prov = get_tts_provider(provider) if provider else get_tts_provider()
             except TTSError as exc:
@@ -53,7 +84,7 @@ class VoiceDesignerAgent(BaseAgent):
             self.step_done("ok", prov.name)
             self.step("synthesize", f"{len((text or '').split())} word(s)")
             try:
-                res = prov.synthesize(text, voice=voice, rate=rate, language=language,
+                res = prov.synthesize(text, voice=resolved_voice, rate=rate, language=language,
                                       exaggeration=exaggeration, clone_from=clone_ref)
             except TTSError as exc:
                 self.step_failed(str(exc)[:150])
@@ -62,7 +93,7 @@ class VoiceDesignerAgent(BaseAgent):
             stored = get_storage().save_media(ws, data=res.audio_bytes,
                                               filename=f"voice_{int(time.time())}.{ext}")
             self.step_done("ok", stored)
-            detail = {"voice": voice or prov.name}
+            detail = {"voice": resolved_voice or prov.name}
             est_usd = 0.0
             if res.provider == ElevenLabsTTSProvider.name:
                 est_usd = round(len(text or "") * ElevenLabsTTSProvider.EST_USD_PER_CHAR, 6)
@@ -72,7 +103,7 @@ class VoiceDesignerAgent(BaseAgent):
                 "summary": f"narrated {len((text or '').split())} word(s) via {res.provider}",
                 "audio_path": stored,
                 "provider": res.provider,
-                "voice": voice or getattr(prov, "DEFAULT_VOICE", ""),
+                "voice": resolved_voice or getattr(prov, "DEFAULT_VOICE", ""),
                 "is_mock": res.is_mock,
             }
 
@@ -87,6 +118,9 @@ class VoiceDesignerAgent(BaseAgent):
             if not parts:
                 raise TTSError("no dialogue parts provided")
             ws = ctx.workspace_id or ""
+            # Brand hard constraint: every part's voice is filtered through
+            # approved_voices (gate resolved once for the whole batch).
+            brand_gate = _brand_gate(ws)
             self.step("synthesize_parts", f"{len(parts)} part(s)")
             tmp = Path(f"data/videos/{ws}/_voice_tmp")
             tmp.mkdir(parents=True, exist_ok=True)
@@ -105,7 +139,7 @@ class VoiceDesignerAgent(BaseAgent):
                         raise TTSError(f"dialogue part {i} has non-numeric rate/exaggeration")
                     prov = get_tts_provider(part.get("provider", "")) if part.get("provider") else get_tts_provider()
                     res = prov.synthesize(
-                        text, voice=part.get("voice", ""),
+                        text, voice=_brand_voice(ws, part.get("voice", ""), gate=brand_gate),
                         rate=rate,
                         language=part.get("language", ""),
                         exaggeration=exaggeration,

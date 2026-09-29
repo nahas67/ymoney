@@ -104,7 +104,7 @@ def test_compliance_skill_agent_registered():
     assert get_skill("compliance_review").required_tools == ("review_compliance",)
     assert "compliance:review" in get_tool("review_compliance").permissions
     assert AGENTS["compliance"].meta.title == "Compliance Officer"
-    assert len(AGENTS) == 22
+    assert len(AGENTS) == 23
 
 
 def test_approve_enqueues_upload_and_audit_exports(tmp_path, monkeypatch):

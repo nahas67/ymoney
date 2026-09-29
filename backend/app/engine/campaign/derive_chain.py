@@ -189,6 +189,16 @@ def derive_moment(session, campaign, master, moment: dict, plan: dict):
     enriched["min_duration"] = 20.0
     enriched["topic"] = str(moment.get("topic") or moment.get("title")
                             or hooked["optimized_hook"] or f"short from {campaign.name}")[:400]
+    # Performance lessons (Work 06 Lane C): advisory annotation on the moment
+    # copy when `learning_assist` is enabled (default off). Derivation floors
+    # (min_duration) and timeline building below stay authoritative.
+    try:
+        from app.engine.performance import learning as _lessons
+
+        enriched = _lessons.annotate_derive_moment(
+            ws_id, str(master.topic if master else campaign.name), enriched)
+    except Exception:
+        pass
     (child,) = derive_shorts(session, ws_id, campaign.id,
                              master.id if master else "",
                              [enriched], plan)

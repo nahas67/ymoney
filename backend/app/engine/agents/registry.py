@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.engine.agents.avatar import AvatarDirectorAgent
 from app.engine.agents.base import AgentMeta, BaseAgent
 from app.engine.agents.broll import BrollResearcherAgent
+from app.engine.agents.community import CommunityManagerAgent
 from app.engine.agents.competitor import CompetitorAnalystAgent
 from app.engine.agents.compliance import ComplianceOfficerAgent
 from app.engine.agents.creation import (
@@ -46,6 +47,7 @@ AGENTS: dict[str, type[BaseAgent]] = {
     "compliance": ComplianceOfficerAgent,
     "competitor_analyst": CompetitorAnalystAgent,
     "scheduler": SchedulerAgent,
+    "community_manager": CommunityManagerAgent,
 }
 
 AGENT_META: dict[str, AgentMeta] = {k: v.meta for k, v in AGENTS.items()}

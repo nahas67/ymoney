@@ -11,6 +11,26 @@ from __future__ import annotations
 from app.engine.campaign.platforms import caption_safe_box, get_profile
 
 
+def brand_cover_hint(session, workspace_id: str, *, platform: str = "",
+                     campaign_id: str = "") -> dict:
+    """Brand colors / style / logo-safe-zone hint for a cover (never raises).
+
+    Returns the :func:`brand_cover_style` fragment (``brand_colors``,
+    ``style_hint``, ``logo_safe_zone``, ``tone`` + lineage markers) or ````
+    when the brand module or policy is unavailable — covers stay polish,
+    never a hard dependency.
+    """
+    try:
+        from app.engine.brand_templates import brand_cover_style, brand_gate
+
+        gate = brand_gate(session, workspace_id, campaign_id=campaign_id,
+                          platform=platform,
+                          artifact={"content_format": "short"})
+        return brand_cover_style(gate)
+    except Exception:  # noqa: BLE001 — brand must never break covers
+        return {}
+
+
 def build_cover_spec(
     *,
     topic: str,
@@ -19,11 +39,14 @@ def build_cover_spec(
     thumbnail_path: str = "",
     width: int = 1080,
     height: int = 1920,
+    brand: dict | None = None,
 ) -> dict:
     """Pure cover spec: source image + safe-zone-aware text box.
 
     Returns a dict the video engine / thumbnail flow can consume; never
-    generates image bytes itself.
+    generates image bytes itself. ``brand`` is the optional
+    :func:`brand_cover_hint` fragment — when present the spec carries brand
+    colors / style / logo safe zone for the renderer.
     """
     profile = get_profile(platform)
     cover_text = (title or topic or "Untitled").strip()
@@ -38,7 +61,7 @@ def build_cover_spec(
         "w": box["w"],
         "h": text_h,
     }
-    return {
+    spec = {
         "platform": platform,
         "behavior": profile["thumbnail"]["behavior"],
         "source_thumbnail": thumbnail_path or "",
@@ -47,6 +70,9 @@ def build_cover_spec(
         "text_box": text_box,
         "canvas": {"width": width, "height": height},
     }
+    if brand:
+        spec["brand"] = dict(brand)
+    return spec
 
 
 def resolve_thumbnail(session, *, workspace_id: str, content_item_id: str) -> str:

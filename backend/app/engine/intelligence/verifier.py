@@ -6,9 +6,12 @@
 - execution_status: COMPLETED | FAILED | RUNNING | UNKNOWN
 - verification_status: VERIFIED | PARTIALLY_VERIFIED | NOT_VERIFIED | BLOCKED
 
-Checkers (video / publication / campaign / research) record per-check
-{name, passed, detail} evidence and append to the ledger. MOCK-labeled
-publication results verify ONLY as mock, never live.
+Checkers (video / publication / campaign / research / community_reply) record
+per-check {name, passed, detail} evidence and append to the ledger.
+MOCK-labeled publication results verify ONLY as mock, never live; MOCK/fixture
+community-reply receipts NEVER verify (no VERIFIED status at all) — a live
+reply is proven by four independent proofs: provider receipt, remote reply id,
+a persisted CommunityAction row, and account/platform agreement.
 """
 
 from __future__ import annotations
@@ -18,7 +21,7 @@ from pathlib import Path
 
 VERIFICATION_STATUSES = ("VERIFIED", "PARTIALLY_VERIFIED", "NOT_VERIFIED", "BLOCKED")
 EXECUTION_STATUSES = ("COMPLETED", "FAILED", "RUNNING", "UNKNOWN")
-KINDS = ("video", "publication", "campaign", "research")
+KINDS = ("video", "publication", "campaign", "research", "community_reply")
 
 BLOCKED_CROSS_WORKSPACE = "cross-workspace subject (isolation)"
 
@@ -287,11 +290,91 @@ def check_research(session, workspace_id: str,
     return execution, _verdict(checks), [c.as_dict() for c in checks]
 
 
+def check_reply(action, receipt: dict, account_id: str,
+                platform: str) -> tuple[str, str, list[dict]]:
+    """Community-reply proof (kind ``community_reply``).
+
+    Four independent proofs must hold for VERIFIED: a provider receipt, a
+    remote reply id, a persisted ``CommunityAction`` row, and account/platform
+    agreement (the action's own values, reconciled with anything the receipt
+    declares). MOCK/fixture receipts NEVER verify — at most NOT_VERIFIED,
+    never VERIFIED, regardless of how complete they look.
+    """
+    from sqlalchemy.orm import object_session
+
+    from app.models.community import CommunityAction
+
+    receipt = dict(receipt or {})
+    remote_reply_id = ""
+    for key in ("remote_reply_id", "reply_id", "new_reply_id", "id"):
+        value = receipt.get(key)
+        if value:
+            remote_reply_id = str(value)
+            break
+    execution = "COMPLETED" if remote_reply_id else "FAILED"
+    checks: list[CheckResult] = []
+
+    checks.append(CheckResult(
+        "provider_receipt", bool(receipt),
+        f"{len(receipt)} receipt field(s): "
+        + (", ".join(sorted(receipt)[:6])[:120] or "none")))
+    checks.append(CheckResult(
+        "remote_reply_id", bool(remote_reply_id),
+        f"remote_reply_id={remote_reply_id[:80]}"))
+
+    session = object_session(action)
+    row = session.get(CommunityAction, getattr(action, "id", None)) \
+        if session is not None and getattr(action, "id", None) else None
+    checks.append(CheckResult(
+        "action_row_persisted", row is not None,
+        f"community_actions {getattr(action, 'id', None)} "
+        f"{'found' if row is not None else 'not found'} in DB"))
+
+    expected_account = str(account_id or "")
+    expected_platform = str(platform or "")
+    action_account = str(getattr(action, "account_id", "") or "")
+    action_platform = str(getattr(action, "platform", "") or "")
+    declared_account = str(receipt.get("account_id") or "")
+    declared_platform = str(receipt.get("platform") or "")
+    account_ok = bool(expected_account) and action_account == expected_account
+    if declared_account:
+        account_ok = account_ok and declared_account == expected_account
+    platform_ok = bool(expected_platform) and action_platform == expected_platform
+    if declared_platform:
+        platform_ok = platform_ok and declared_platform == expected_platform
+    checks.append(CheckResult(
+        "account_platform_match", account_ok and platform_ok,
+        f"action=({action_account},{action_platform}) "
+        f"expected=({expected_account},{expected_platform}) "
+        f"receipt=({declared_account},{declared_platform})"))
+
+    is_mock = bool(receipt.get("mock") or receipt.get("is_mock")) or bool(
+        getattr(action, "is_mock", False))
+    if is_mock:
+        checks.append(CheckResult(
+            "live_proof", False,
+            "MOCK/fixture receipt: verifies as mock only, never live"))
+        return execution, "NOT_VERIFIED", [c.as_dict() for c in checks]
+    return execution, _verdict(checks), [c.as_dict() for c in checks]
+
+
+def _check_reply_contract(session, workspace_id: str,
+                          contract: CompletionContract) -> tuple[str, str, list[dict]]:
+    from app.models.community import CommunityAction
+
+    action = session.get(CommunityAction, contract.subject_id)
+    if action is None or action.workspace_id != workspace_id:
+        return "UNKNOWN", *_blocked(BLOCKED_CROSS_WORKSPACE)
+    return check_reply(action, action.provider_receipt_json or {},
+                       action.account_id, action.platform)
+
+
 _CHECKERS = {
     "video": check_video,
     "publication": check_publication,
     "campaign": check_campaign,
     "research": check_research,
+    "community_reply": _check_reply_contract,
 }
 
 

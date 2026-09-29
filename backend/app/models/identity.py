@@ -82,7 +82,7 @@ class SocialAccount(Base, PKMixin, TimestampMixin):
 
     __tablename__ = "social_accounts"
 
-    PLATFORMS = ("youtube", "tiktok", "facebook", "instagram")
+    PLATFORMS = ("youtube", "tiktok", "facebook", "instagram", "linkedin", "x")
 
     workspace_id: Mapped[str] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), index=True

@@ -200,6 +200,29 @@ def derive_shorts(
     if plan is not None and getattr(plan, "diversity_config", None):
         default_style = (plan.diversity_config or {}).get("caption_style", "karaoke")
 
+    # Brand DNA (Work 08 Lane C): one policy resolution for the whole batch.
+    # The brand caption preset and required disclaimers are hard-ish inputs
+    # and outrank the campaign plan's default style.
+    brand_gate_dict: dict = {}
+    brand_caption_preset = ""
+    try:
+        from app.engine.brand_templates import brand_gate, lineage_markers
+
+        brand_gate_dict = brand_gate(
+            session, ws_id, campaign_id=campaign_id,
+            artifact={"content_format": "short"}) or {}
+        brand_preset = str(
+            (brand_gate_dict.get("caption_style") or {}).get("preset")
+            or (brand_gate_dict.get("caption_style") or {}).get("style") or "").strip()
+        if brand_preset:
+            brand_caption_preset = brand_preset.lower()
+            default_style = brand_caption_preset
+    except Exception:  # noqa: BLE001 — brand never breaks derivation
+        # module unavailable: keep a degraded marker so the short still
+        # records explicit brand lineage (applied_brand False) below.
+        brand_gate_dict = {"applied_brand": False, "brand_available": False,
+                           "degraded": "brand_module_unavailable"}
+
     master_scenes = session.query(Scene).filter(
         Scene.content_item_id == master_content_id,
         Scene.workspace_id == ws_id,
@@ -241,8 +264,33 @@ def derive_shorts(
         doc = build_short_timeline(
             session, ws_id, master_doc, start, end,
             hook_text=hook_text, cta_text=cta_text,
-            caption_style=str(moment.get("caption_style") or default_style),
+            # brand caption preset outranks the plan/moment default style
+            caption_style=str(brand_caption_preset
+                              or moment.get("caption_style") or default_style),
         )
+        if brand_gate_dict:
+            try:
+                from app.engine.brand_templates import brand_variant_metadata, lineage_markers
+
+                camp = dict(doc.get("campaign") or {})
+                meta = brand_variant_metadata(brand_gate_dict)
+                if meta:
+                    camp["required_disclaimers"] = meta["required_disclaimers"]
+                    camp["brand"] = {k: meta[k] for k in
+                                     ("applied_brand", "effective_config_id",
+                                      "brand_template") if k in meta}
+                elif brand_gate_dict.get("brand_available"):
+                    camp["brand"] = lineage_markers(brand_gate_dict)
+                if camp:
+                    doc["campaign"] = camp
+            except Exception:  # noqa: BLE001 — brand never breaks derivation
+                # module unavailable mid-flight: still record degraded lineage
+                # so brand absence stays explicit and auditable.
+                if brand_gate_dict.get("degraded"):
+                    camp = dict(doc.get("campaign") or {})
+                    camp["brand"] = {"applied_brand": False,
+                                     "degraded": str(brand_gate_dict["degraded"])}
+                    doc["campaign"] = camp
         child = derive_content(
             session, parent_id=master.id, workspace_id=ws_id,
             derivation_type="short", topic=topic, campaign_id=campaign_id,

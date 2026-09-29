@@ -47,9 +47,10 @@ Status convention: ✅ COMPLETE · 🟢 WORKING · 🟡 PARTIAL · 🔵 NEXT · 
 ## Evidence (Work 01 + Work 02 + Work 03 + Work 04 + Work 05 + Work 06 + Work 07 + Work 08 + Work 09 + Work 10 + Work 11, 2026-09-23/29)
 
 ### Work 11 (this slice) — Collaboration + Review + Export + Enterprise Ops
-- Full suite: fast lane **1283 passed, 4 skipped, 13 deselected** (586s);
-  slow lane **13 passed** (431s). Total **1296 tests, 0 failed**
-  (+190 vs Work 10's 1106).
+- Full suite: fast lane **1283 passed, 4 skipped, 13 deselected** (508s);
+  slow lane **13 passed** (409s). Total **1296 tests, 0 failed**
+  (+190 vs Work 10's 1106). Evidence: `$env:TEMP\opencode\fast11b.txt`
+  / `slow11.txt` (both `*_EXIT=0`).
 - Delivered in 8 lanes, each verified standalone then integrated:
   **F** foundation — `models/collab.py` (13 tables) + migration **0028**
   (fresh replay **28 applied / 0028_collaboration / REPLAY_NOOP**, 89 tables,
@@ -63,7 +64,8 @@ Status convention: ✅ COMPLETE · 🟢 WORKING · 🟡 PARTIAL · 🔵 NEXT · 
   comments}.py` — exact-version binding, approve re-verifies and 409s with
   `stale:true`, lazy staleness refresh, full state machine, anchored
   threaded comments (anchor/mention 422s, root-only resolve), revisions
-  with **no auto-transition on edit**; **32 tests**;
+  with **no auto-transition on edit**; **42 tests** (reviews 20 +
+  comments 12 + revisions 10);
   **X** `engine/exporter/{profiles,formats,verify,jobs}.py` +
   `api/v1/exports.py` — 8 builtin profiles, **14-format registry** with
   honest ffmpeg/encoder probes, verified exports (sha256 + ffprobe census),
@@ -113,7 +115,8 @@ Status convention: ✅ COMPLETE · 🟢 WORKING · 🟡 PARTIAL · 🔵 NEXT · 
   types, and the 200-row activity limit.
 - Gates: fast **1283/0 failed** + slow **13/0 failed**; fresh migration
   replay **28 applied / 0028_collaboration / REPLAY_NOOP**; Postman regen
-  (drift test green); npm build **exit 0, 93 modules**; ruff
+  **52 folders / 377 requests** (drift test green); npm build **exit 0,
+  93 modules**; ruff
   `F,I,SIM,UP` clean in all Work 11 files; OpenAPI **330 paths**
   (53 new).
 - Git state: uncommitted working tree (no commits made).
@@ -386,3 +389,26 @@ Status convention: ✅ COMPLETE · 🟢 WORKING · 🟡 PARTIAL · 🔵 NEXT · 
 - Work 10: memory confidence labels map to fixed numbers (low→0.3,
   medium→0.6, high→0.9) — numeric confidence has three levels of
   granularity, not continuous.
+- Work 11: `can_assign` is implemented and tested server-side, but the
+  Reviews UI has no assignment control (list is read-only).
+- Work 11: `lib/format.ts::statusTone` lacks the `COMPLETE` token — the
+  Exports page patches it locally; any other page using the shared
+  helper would render a completed export job muted.
+- Work 11: the Comments panel fans out one GET per scene (N+1 for
+  scene-heavy timelines) and a single failing bucket rejects the whole
+  list — unreachable for a healthy timeline, but no partial rendering.
+- Work 11: workspace-viewers (even with a project REVIEWER cap) are
+  hidden from decision buttons by the UI, which is stricter than the
+  backend (server honors project caps); backend stays authoritative.
+- Work 11: cross-workspace project *transfer* is not implemented —
+  PORTABLE_ARCHIVE is the sanctioned relocation path (cross-ws FK data
+  migration deferred).
+- Work 11: PORTABLE_ARCHIVE carries an asset manifest (size + checksum)
+  but not media binaries — restoring on a fresh host requires
+  re-fetching media from the original storage root.
+- Work 11: `audit_retention_days` is stored and reported, but the sweep
+  never hard-deletes events/audit rows (evidence preservation by
+  design) — no expiry-marking UI exists either.
+- Work 11: `caption`/`asset` comment anchor types are backend-supported
+  but not offered by the editor Comments panel (no such objects are in
+  view there).

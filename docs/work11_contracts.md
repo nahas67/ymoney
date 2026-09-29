@@ -576,5 +576,27 @@ Engine `engine/exporter/`:
 
 ## Wave status + deltas (newest first)
 
+- **2026-09-29 W11 CLOSED** — all 8 lanes verified (D, F, R, X, L,
+  FE-A, FE-B, FE-A2 + main-thread integration). Gates: fast **1283
+  passed / 0 failed** (508s), slow **13 passed / 0 failed** (409s),
+  replay **28 applied / REPLAY_NOOP**, ruff `F,I,SIM,UP` = 19 repo
+  baseline / **0 in Work 11 files**, Postman regen **52 folders /
+  377 requests** + drift test, npm build **exit 0**, OpenAPI **330
+  paths** (+53). Tests: **190** across the 11 new files (project_auth
+  8, projects_api 12, reviews 20, comments 12, revisions 10,
+  timeline_diff 14, exports 58 [2 slow], activity_ledger 10, archive 8,
+  ops_retention 21, notifications 17).
+  Contract deltas (documented, not hidden): PUT `/timelines/{id}` now
+  *requires* `base_version` (422 missing / 409 stale, ops-endpoint
+  detail shape) with an in-place version bump — copy-on-write
+  dispatch rejected as inconsistent with the frozen ops endpoint; R
+  followed §3 capability matrix over §5 prose where they conflicted;
+  X `list_formats()` takes no `db, ws` (machine capability);
+  FE capability keys mirror the real backend (`no can_submit`).
+  Incidents: out-of-lane `otio_adapter.py` edit (22:07) broke the
+  OTIO roundtrip mid-gate — root-caused (`AnyVector` is a `Sequence`,
+  not `list`/`tuple`) and fixed; a workspace-isolation hole on the
+  notification write path was found cross-lane and fixed with 2
+  regression tests; stale Postman collection regenerated.
 - **2026-09-29 W11-D dispatched** (diff + PUT conflict + Editor notice).
 - **2026-09-29 contracts written** (this file). Deltas: none yet.

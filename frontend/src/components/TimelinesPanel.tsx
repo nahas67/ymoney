@@ -39,12 +39,21 @@ export default function TimelinesPanel({ contentId, videoId }: { contentId: stri
     if (!cur || !name.trim()) return;
     setBusy(true);
     try {
-      await wsApi.put(`/timelines/${cur.id}`, { name: name.trim() });
+      await wsApi.put(`/timelines/${cur.id}`,
+        { name: name.trim(), base_version: cur.version });
       setName("");
       lib.reload();
       toast("Renamed", "success");
     } catch (e: any) {
-      toast(e.message, "error", "Save failed");
+      if (e.status === 409) {
+        // another editor saved meanwhile — never overwrite silently
+        toast("Timeline changed elsewhere — reloading the latest version",
+          "warning", "Edit conflict");
+        setName("");
+        lib.reload();
+      } else {
+        toast(e.message, "error", "Save failed");
+      }
     } finally {
       setBusy(false);
     }

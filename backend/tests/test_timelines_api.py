@@ -41,16 +41,18 @@ def test_create_get_update_timeline(tmp_path, monkeypatch):
     voice["clips"].append({"id": "n1", "name": "narr", "start": 0.0,
                            "duration": 10.0, "source": {}, "effects": []})
     r = client.put(f"/api/v1/workspaces/{ws_id}/timelines/{tid}", headers=headers,
-                   json={"tracks": doc["tracks"], "duration_seconds": 10.0})
+                   json={"tracks": doc["tracks"], "duration_seconds": 10.0,
+                         "base_version": doc["version"]})
     assert r.status_code == 200, r.text
     assert r.json()["tracks"][5]["clips"][0]["id"] == "n1"
+    saved = r.json()
 
     # invalid tracks rejected, not persisted
     bad = [dict(t) for t in doc["tracks"]]
     bad[0]["clips"] = [{"id": "a", "name": "a", "start": 0.0, "duration": 5.0, "source": {}, "effects": []},
                        {"id": "b", "name": "b", "start": 2.0, "duration": 5.0, "source": {}, "effects": []}]
     r = client.put(f"/api/v1/workspaces/{ws_id}/timelines/{tid}", headers=headers,
-                   json={"tracks": bad})
+                   json={"tracks": bad, "base_version": saved["version"]})
     assert r.status_code == 422, r.text
 
 
@@ -101,8 +103,11 @@ def test_cross_workspace_isolation(tmp_path, monkeypatch):
 
     for method, url, kwargs in [
         ("get", f"/api/v1/workspaces/{ws2}/timelines/{tid}", {}),
-        ("put", f"/api/v1/workspaces/{ws2}/timelines/{tid}", {"json": {"name": "x"}}),
+        ("put", f"/api/v1/workspaces/{ws2}/timelines/{tid}",
+         {"json": {"name": "x", "base_version": 1}}),
         ("get", f"/api/v1/workspaces/{ws2}/timelines/{tid}/manifest", {}),
+        ("get", f"/api/v1/workspaces/{ws2}/timelines/{tid}/diff",
+         {"params": {"from_version": 1, "to_version": 1}}),
     ]:
         r = getattr(client, method)(url, headers=h2, **kwargs)
         assert r.status_code == 404, (method, url, r.text)

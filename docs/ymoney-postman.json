@@ -66,6 +66,65 @@
           }
         },
         {
+          "name": "Activity ledger (read-only, newest first, workspace-scoped)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/activity",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "activity"
+              ],
+              "query": [
+                {
+                  "key": "kind",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "project_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "target_type",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "target_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "since",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Activity ledger (read-only, newest first, workspace-scoped)"
+          }
+        },
+        {
           "name": "Recent Activity",
           "request": {
             "method": "GET",
@@ -462,6 +521,118 @@
             "auth": {
               "type": "noauth"
             }
+          }
+        }
+      ]
+    },
+    {
+      "name": "archives",
+      "item": [
+        {
+          "name": "Archive a project (freezes edits)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/:project_id/archive",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "projects",
+                ":project_id",
+                "archive"
+              ],
+              "query": []
+            },
+            "description": "Archive a project (freezes edits)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Archives of a project (newest first)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/:project_id/archives",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "projects",
+                ":project_id",
+                "archives"
+              ],
+              "query": []
+            },
+            "description": "Archives of a project (newest first)"
+          }
+        },
+        {
+          "name": "Download an archive (JSON manifest or portable zip)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/:project_id/archives/:archive_id/download",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "projects",
+                ":project_id",
+                "archives",
+                ":archive_id",
+                "download"
+              ],
+              "query": []
+            },
+            "description": "Download an archive (JSON manifest or portable zip)"
+          }
+        },
+        {
+          "name": "Restore an archived project to ACTIVE",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/:project_id/unarchive",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "projects",
+                ":project_id",
+                "unarchive"
+              ],
+              "query": []
+            },
+            "description": "Restore an archived project to ACTIVE"
           }
         }
       ]
@@ -2299,6 +2470,131 @@
       ]
     },
     {
+      "name": "comments",
+      "item": [
+        {
+          "name": "Add a comment (or a thread reply)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/comments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "comments"
+              ],
+              "query": []
+            },
+            "description": "Add a comment (or a thread reply)\n\nAdd a comment. Floor viewer + project ``comment`` cap when scoped.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List comments for a target",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/comments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "comments"
+              ],
+              "query": [
+                {
+                  "key": "target_type",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                },
+                {
+                  "key": "target_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                },
+                {
+                  "key": "include_resolved",
+                  "value": "False",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List comments for a target"
+          }
+        },
+        {
+          "name": "Reopen a ROOT comment",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/comments/:comment_id/reopen",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "comments",
+                ":comment_id",
+                "reopen"
+              ],
+              "query": []
+            },
+            "description": "Reopen a ROOT comment\n\nReopen a root comment (author or a ``comment``-cap holder may reopen)."
+          }
+        },
+        {
+          "name": "Resolve a ROOT comment",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/comments/:comment_id/resolve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "comments",
+                ":comment_id",
+                "resolve"
+              ],
+              "query": []
+            },
+            "description": "Resolve a ROOT comment\n\nResolve a root comment (author or a ``comment``-cap holder may resolve).\n\nDoes NOT touch the target's content."
+          }
+        }
+      ]
+    },
+    {
       "name": "connections",
       "item": [
         {
@@ -3450,6 +3746,290 @@
               "query": []
             },
             "description": "Start an experiment"
+          }
+        }
+      ]
+    },
+    {
+      "name": "exports",
+      "item": [
+        {
+          "name": "Builtin + workspace export profiles",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/exports/profiles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "exports",
+                "profiles"
+              ],
+              "query": []
+            },
+            "description": "Builtin + workspace export profiles"
+          }
+        },
+        {
+          "name": "Cancel a QUEUED/RUNNING export",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/exports/:export_id/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "exports",
+                ":export_id",
+                "cancel"
+              ],
+              "query": []
+            },
+            "description": "Cancel a QUEUED/RUNNING export"
+          }
+        },
+        {
+          "name": "Create a profile",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/exports/profiles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "exports",
+                "profiles"
+              ],
+              "query": []
+            },
+            "description": "Create a profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Export detail (state + verification)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/exports/:export_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "exports",
+                ":export_id"
+              ],
+              "query": []
+            },
+            "description": "Export detail (state + verification)"
+          }
+        },
+        {
+          "name": "Format availability (honest probe)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/exports/formats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "exports",
+                "formats"
+              ],
+              "query": [
+                {
+                  "key": "target_type",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Format availability (honest probe)"
+          }
+        },
+        {
+          "name": "List exports",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/exports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "exports"
+              ],
+              "query": [
+                {
+                  "key": "state",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "100",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List exports"
+          }
+        },
+        {
+          "name": "Queue an export",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/exports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "exports"
+              ],
+              "query": []
+            },
+            "description": "Queue an export",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Retry a FAILED/CANCELLED export",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/exports/:export_id/retry",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "exports",
+                ":export_id",
+                "retry"
+              ],
+              "query": []
+            },
+            "description": "Retry a FAILED/CANCELLED export"
+          }
+        },
+        {
+          "name": "Stream the export artifact",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/exports/:export_id/download",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "exports",
+                ":export_id",
+                "download"
+              ],
+              "query": []
+            },
+            "description": "Stream the export artifact"
+          }
+        },
+        {
+          "name": "Update a workspace profile",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/exports/profiles/:profile_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "exports",
+                "profiles",
+                ":profile_id"
+              ],
+              "query": []
+            },
+            "description": "Update a workspace profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           }
         }
       ]
@@ -7353,6 +7933,93 @@
       ]
     },
     {
+      "name": "notifications",
+      "item": [
+        {
+          "name": "Mark every unread notification read",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/notifications/read-all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "notifications",
+                "read-all"
+              ],
+              "query": []
+            },
+            "description": "Mark every unread notification read"
+          }
+        },
+        {
+          "name": "Mark one notification read",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/notifications/:notification_id/read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "notifications",
+                ":notification_id",
+                "read"
+              ],
+              "query": []
+            },
+            "description": "Mark one notification read"
+          }
+        },
+        {
+          "name": "My notifications (newest first)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/notifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "unread_only",
+                  "value": "False",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "My notifications (newest first)"
+          }
+        }
+      ]
+    },
+    {
       "name": "opportunities",
       "item": [
         {
@@ -7451,6 +8118,34 @@
                 }
               }
             }
+          }
+        }
+      ]
+    },
+    {
+      "name": "ops",
+      "item": [
+        {
+          "name": "Enterprise ops overview (admin, failure-isolated)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/ops/overview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "ops",
+                "overview"
+              ],
+              "query": []
+            },
+            "description": "Enterprise ops overview (admin, failure-isolated)"
           }
         }
       ]
@@ -7558,6 +8253,293 @@
               ]
             },
             "description": "Retention curve + timeline mapping"
+          }
+        }
+      ]
+    },
+    {
+      "name": "projects",
+      "item": [
+        {
+          "name": "Add or re-role a member",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/:project_id/members",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "projects",
+                ":project_id",
+                "members"
+              ],
+              "query": []
+            },
+            "description": "Add or re-role a member",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Create a project (creator becomes OWNER)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "projects"
+              ],
+              "query": []
+            },
+            "description": "Create a project (creator becomes OWNER)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Link a target",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/:project_id/targets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "projects",
+                ":project_id",
+                "targets"
+              ],
+              "query": []
+            },
+            "description": "Link a target",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Linked targets of a project",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/:project_id/targets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "projects",
+                ":project_id",
+                "targets"
+              ],
+              "query": []
+            },
+            "description": "Linked targets of a project"
+          }
+        },
+        {
+          "name": "List workspace projects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "projects"
+              ],
+              "query": []
+            },
+            "description": "List workspace projects"
+          }
+        },
+        {
+          "name": "Project detail (members + targets)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/:project_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "projects",
+                ":project_id"
+              ],
+              "query": []
+            },
+            "description": "Project detail (members + targets)"
+          }
+        },
+        {
+          "name": "Remove a member (or leave)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/:project_id/members/:user_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "projects",
+                ":project_id",
+                "members",
+                ":user_id"
+              ],
+              "query": []
+            },
+            "description": "Remove a member (or leave)"
+          }
+        },
+        {
+          "name": "Transfer ownership (OWNER only)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/:project_id/transfer",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "projects",
+                ":project_id",
+                "transfer"
+              ],
+              "query": []
+            },
+            "description": "Transfer ownership (OWNER only)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Unlink a target",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/:project_id/targets/:target_type/:target_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "projects",
+                ":project_id",
+                "targets",
+                ":target_type",
+                ":target_id"
+              ],
+              "query": []
+            },
+            "description": "Unlink a target"
+          }
+        },
+        {
+          "name": "Update project name/description",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/:project_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "projects",
+                ":project_id"
+              ],
+              "query": []
+            },
+            "description": "Update project name/description",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           }
         }
       ]
@@ -8005,6 +8987,453 @@
               "query": []
             },
             "description": "Oauth Youtube Start"
+          }
+        }
+      ]
+    },
+    {
+      "name": "retention",
+      "item": [
+        {
+          "name": "Retention policy (NULL days = keep forever)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/retention",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "retention"
+              ],
+              "query": []
+            },
+            "description": "Retention policy (NULL days = keep forever)"
+          }
+        },
+        {
+          "name": "Update the retention policy (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/retention",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "retention"
+              ],
+              "query": []
+            },
+            "description": "Update the retention policy (admin)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reviews",
+      "item": [
+        {
+          "name": "Approve / Reject / Request changes",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/reviews/:review_id/decisions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "reviews",
+                ":review_id",
+                "decisions"
+              ],
+              "query": []
+            },
+            "description": "Approve / Reject / Request changes",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Assign a reviewer",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/reviews/:review_id/assignments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "reviews",
+                ":review_id",
+                "assignments"
+              ],
+              "query": []
+            },
+            "description": "Assign a reviewer",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cancel a review",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/reviews/:review_id/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "reviews",
+                ":review_id",
+                "cancel"
+              ],
+              "query": []
+            },
+            "description": "Cancel a review"
+          }
+        },
+        {
+          "name": "Create a review (DRAFT)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/reviews",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "reviews"
+              ],
+              "query": []
+            },
+            "description": "Create a review (DRAFT)\n\nCreate a review bound to the target's current version.\n\nRBAC (contracts \u00a75, matrix locked in tests):\n  * workspace floor = **member** (a workspace viewer POST -> 403, member -> 201);\n  * project scope = the ``comment`` capability (OWNER|ADMIN|EDITOR|REVIEWER).\n    A project VIEWER POST -> 403, a project REVIEWER POST -> 201.\n\nContract note: \u00a75's prose floated ``edit_timeline`` for the project-scoped\ncap, but that cap excludes REVIEWER (\u00a73) and would contradict the locked\n\"project REVIEWER -> 201\" assertion. The test matrix wins; ``comment`` is\nthe narrowest capability that admits REVIEWER *and* EDITOR (\"content editors\nrequest review\") while excluding VIEWER. The workspace floor is ``member``\n(not ``viewer``) precisely so the locked \"viewer POST -> 403\" case holds\nwithout a bespoke handler check; \u00a73 only ever lets project roles narrow a\nworkspace floor, never widen it.\n\nWhen no ``project_id`` is given the cap is resolved through the target's\nproject links (unlinked targets fall through to the member floor per \u00a73),\nso a project-scoped target is never a bypass.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List reviews (filters: state/target/project)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/reviews",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "reviews"
+              ],
+              "query": [
+                {
+                  "key": "state",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "target_type",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "target_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "project_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List reviews (filters: state/target/project)"
+          }
+        },
+        {
+          "name": "Review detail (+ decisions/assignments/caps)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/reviews/:review_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "reviews",
+                ":review_id"
+              ],
+              "query": []
+            },
+            "description": "Review detail (+ decisions/assignments/caps)"
+          }
+        },
+        {
+          "name": "Revisions opened by a review",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/reviews/:review_id/revisions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "reviews",
+                ":review_id",
+                "revisions"
+              ],
+              "query": []
+            },
+            "description": "Revisions opened by a review"
+          }
+        },
+        {
+          "name": "Submit for review (rebinds version)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/reviews/:review_id/submit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "reviews",
+                ":review_id",
+                "submit"
+              ],
+              "query": []
+            },
+            "description": "Submit for review (rebinds version)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "revisions",
+      "item": [
+        {
+          "name": "List revision requests",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/revisions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "revisions"
+              ],
+              "query": [
+                {
+                  "key": "state",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "target_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "target_type",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "review_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "project_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List revision requests"
+          }
+        },
+        {
+          "name": "Open a revision request",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/revisions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "revisions"
+              ],
+              "query": []
+            },
+            "description": "Open a revision request\n\nOpen a revision request with a validated ask list (kind + description).\n\nBad kind or an empty description -> 422 (the engine validates every item\nBEFORE writing, so a bad item never leaves a half-created row).",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Revision detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/revisions/:revision_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "revisions",
+                ":revision_id"
+              ],
+              "query": []
+            },
+            "description": "Revision detail"
+          }
+        },
+        {
+          "name": "Set revision state (explicit only -- never auto)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/revisions/:revision_id/state",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "revisions",
+                ":revision_id",
+                "state"
+              ],
+              "query": []
+            },
+            "description": "Set revision state (explicit only -- never auto)\n\nExplicit state move -- the ONLY way a revision changes state (contracts \u00a77).\n\n``OPEN -> ADDRESSED`` requires the ``request_revision`` cap (reviewer side)\nAND, for unlinked targets where the cap cannot resolve a project, an\nexplicit ``member`` workspace floor (``_require_ws_floor``) so the\nreviewer-side gate actually bites. ``DISMISSED`` / reopen are allowed for the\nrequest's creator or an EDITOR+ (``edit_timeline``) holder. Editing the\ntimeline never moves this state -- that is the whole point of the lifecycle.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           }
         }
       ]
@@ -8746,6 +10175,43 @@
               "query": []
             },
             "description": "Scenes for a timeline"
+          }
+        },
+        {
+          "name": "Semantic diff between two timeline versions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/timelines/:timeline_id/diff",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "timelines",
+                ":timeline_id",
+                "diff"
+              ],
+              "query": [
+                {
+                  "key": "from_version",
+                  "value": "<value>",
+                  "description": "version number to diff from",
+                  "disabled": false
+                },
+                {
+                  "key": "to_version",
+                  "value": "<value>",
+                  "description": "version number to diff to",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Semantic diff between two timeline versions"
           }
         },
         {

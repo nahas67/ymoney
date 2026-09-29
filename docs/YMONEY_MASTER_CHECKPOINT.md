@@ -44,7 +44,129 @@ Status convention: ✅ COMPLETE · 🟢 WORKING · 🟡 PARTIAL · 🔵 NEXT · 
 ♻️ Vendored `MoneyPrinterTurbo/` worktree copy deleted (HTTP adapter is the only integration; 286 unstaged deletions visible in `git status`, uncommitted)
 🔵 Unique-prefix enforcement for future migrations (hygiene test fails on new collisions)
 
-## Evidence (Work 01 + Work 02 + Work 03 + Work 04 + Work 05 + Work 06 + Work 07 + Work 08 + Work 09, 2026-09-23/28)
+## Evidence (Work 01 + Work 02 + Work 03 + Work 04 + Work 05 + Work 06 + Work 07 + Work 08 + Work 09 + Work 10 + Work 11, 2026-09-23/29)
+
+### Work 11 (this slice) — Collaboration + Review + Export + Enterprise Ops
+- Full suite: fast lane **1283 passed, 4 skipped, 13 deselected** (586s);
+  slow lane **13 passed** (431s). Total **1296 tests, 0 failed**
+  (+190 vs Work 10's 1106).
+- Delivered in 8 lanes, each verified standalone then integrated:
+  **F** foundation — `models/collab.py` (13 tables) + migration **0028**
+  (fresh replay **28 applied / 0028_collaboration / REPLAY_NOOP**, 89 tables,
+  all 13 Work 11 tables present) + `services/project_auth.py` (5 roles ×
+  9 capabilities, project roles only ever NARROW workspace roles, ws-admin
+  bypass, foreign id → **404 never 403**) + `api/v1/projects.py`;
+  **D** `engine/timeline_diff.py` + additive `tip_version` /
+  `manifest_hash_of` on `engine/timeline.py` + `base_version` PUT gate
+  (optimistic concurrency — no silent last-write-wins);
+  **R** `engine/collab/{reviews,comments,revisions}.py` + `api/v1/{reviews,
+  comments}.py` — exact-version binding, approve re-verifies and 409s with
+  `stale:true`, lazy staleness refresh, full state machine, anchored
+  threaded comments (anchor/mention 422s, root-only resolve), revisions
+  with **no auto-transition on edit**; **32 tests**;
+  **X** `engine/exporter/{profiles,formats,verify,jobs}.py` +
+  `api/v1/exports.py` — 8 builtin profiles, **14-format registry** with
+  honest ffmpeg/encoder probes, verified exports (sha256 + ffprobe census),
+  retry/cancel; **58 tests (56 fast + 2 slow)**;
+  **L** `services/{activity,notifications,retention}.py`,
+  `engine/archive.py`, `api/v1/{activity,archives,ops,notifications}.py` —
+  append-only ledger (no mutator route exists), retention sweep that never
+  touches audit rows or live-review assets, MANIFEST_ONLY / PORTABLE_ARCHIVE
+  with secrets structurally excluded, failure-isolated ops overview;
+  **FE-A** `/reviews` `/activity` `/exports` + nav; **FE-B** editor
+  `CommentsPanel` / `ReviewStatusBar` / `VersionCompare` / `ConflictNotice`
+  (409 reload behind `ConfirmButton` — unsaved work never dropped silently).
+- Parallel lanes caught cross-lane defects at integration: lane R isolated a
+  silent `on_event` failure to lane L's file; lane L then found a genuine
+  **workspace-isolation hole on the notification write path** (`db.get`
+  without a workspace filter let a workspace-B id resolve recipients in
+  workspace A, and recipient filtering checked global user existence rather
+  than membership) — both reads and recipient sets are now workspace-scoped,
+  with 2 regression tests. Lane X's own probe-driven tests found **7 real
+  bugs**, incl. `str.isalnum()` rejecting `pcm_s16le`, `.upper()` breaking
+  `SHORTS_1080x1920` and `WebM` (ffmpeg got an extensionless filename), a
+  codec check that silently never ran, a SQLite write-lock deadlock held
+  across `jobs.enqueue`, an invalid ASS writer, and a verification check
+  reading its config before it was written.
+- **OTIO interchange data-loss bug fixed** (`engine/otio_adapter.py`, found
+  by lane X, verified then fixed by the orchestrator): OTIO returns
+  `AnyDictionary` / `AnyVector`, which are `Mapping` / `Sequence` but never
+  `dict` / `list`, so `isinstance(extra, dict)` dropped every extended clip
+  field and `list(md.get("effects"))` returned C++-backed objects that
+  dangled after the timeline was collected. Before: `text`, `volume`,
+  `speed`, `transform` lost + `json.dumps` failed + `repr` raised
+  `ValueError: Underlying C++ AnyDictionary has been destroyed`. After: all
+  fields preserved, JSON-clean, no dangling refs (`_plain()` deep converter).
+- Security: workspace isolation asserted on every Work 11 surface (404 never
+  403 for foreign ids); RBAC matrix locked by truth-table tests; archive
+  structurally excludes `ApiCredential`, `WebhookSubscription.secret_enc`,
+  connector `config_json`, `.env` and settings secrets; notification
+  recipients filtered by workspace membership; no secrets in any committed
+  file (scan: 43 new files, all hits are test fixtures / exclusion docs).
+- Contract deviations, documented not hidden: R followed the §3 matrix over
+  §5 prose where they conflicted (matrix self-describes as the lock) and
+  added an uncontracted ws-floor so §7's matrix is enforceable; X's
+  `list_formats()` takes no `db, ws` (availability is machine capability),
+  `ARCHIVE_MASTER` is source passthrough, `AUDIO_ONLY.audio_codec` is null;
+  FE lanes followed the real backend over the contract on `capabilities`
+  keys (`no can_submit`), revisions path, ledger row shape, export target
+  types, and the 200-row activity limit.
+- Gates: fast **1283/0 failed** + slow **13/0 failed**; fresh migration
+  replay **28 applied / 0028_collaboration / REPLAY_NOOP**; Postman regen
+  (drift test green); npm build **exit 0, 93 modules**; ruff
+  `F,I,SIM,UP` clean in all Work 11 files; OpenAPI **330 paths**
+  (53 new).
+- Git state: uncommitted working tree (no commits made).
+
+### Work 10 — GlobalMemory + KnowledgeGraph + Source Connectors + Knowledge Center
+- Full suite: fast lane **1095 passed, 4 skipped, 11 deselected** (365s);
+  slow lane **11 passed** (327s). Total **1106 tests, 0 failed**
+  (+149 vs Work 09's 957).
+- Section 0 first (Work 09 deferred gaps closed): `APPROVAL_REQUIRED` strict
+  toggle blocks the draft-send escape hatch when enabled (audited, opt-in);
+  write-time `LABEL_SET` validation in inbox classify (read-time kept);
+  bootstrap-guard test added; CAS `send_claimed_at` and all inbox safety
+  semantics untouched (49/49 touched-battery green).
+- Delivered in parallel lanes, each verified standalone:
+  **Foundation** `models/knowledge.py` (6 tables) + migration 0027 (fresh
+  replay 27 applied / REPLAY_NOOP) + orchestrator-owned shared
+  `engine/knowledge/{freshness,normalize}.py`;
+  **A** `GlobalMemory` (12 types; provenance-first Memory→Evidence→Source;
+  missing provenance = UNVERIFIED; conflicts never overwritten;
+  supersession keeps history; statuses FRESH/AGING/STALE/CONFLICTED/
+  SUPERSEDED/UNVERIFIED; 24 tests);
+  **B** `KnowledgeGraphProvider` (13 node kinds / 10 relationships,
+  relational DB first) + `MemoryRetriever` (scope+relevance+evidence+
+  freshness+confidence ranking, weights sum 1.0; Work 05 DecisionEngine for
+  semantic re-rank only; 30 tests + 50 decision-engine regressions green);
+  **C** `engine/sources/` connector ecosystem (local/url/rss/youtube/s3
+  implemented; 8 catalog-only kinds honest UNAVAILABLE; durable sync:
+  idempotent in-flight dedupe, cursor resume, retry/backoff, cancellation,
+  failure isolation, checksum dedupe; 28 tests + 35 regression green);
+  **D** knowledge API — 12 routes dual-mounted (24 OpenAPI paths),
+  roles viewer=GET / member=memory+promote / admin=sources,
+  `_bootstrap_source_jobs` guarded registration; `test_knowledge_api.py`
+  **17 tests** (RBAC matrix, secret redaction, sync dedupe, dual mount,
+  generic-500 no-echo, enum 422s);
+  **E** `context_bridge` (budget-bound injection, never whole-store),
+  `community_bridge.promote_insights_to_memory`, creation memory block
+  (failure-isolated; 11 tests + 83 regression green);
+  **F** source→content lineage (research bundle → content → asset →
+  timeline; 26 tests + 46 regression green);
+  **Scheduler** `recommend_response_windows` — recommendation-first from
+  measured data, action only when `schedule_automation` opt-in (10 tests);
+  **Frontend** `/knowledge` (4 tabs; honest 404/shape degradation; nav ◈;
+  `npm run build` exit 0).
+- Security: no secrets/OAuth/unnecessary PII in memory; source configs
+  never serialized (`config_json` redacted, `has_credentials` only);
+  cross-workspace isolation asserted on every surface.
+- Gates: fast **1095/0 failed** + slow **11/0 failed**; fresh migration
+  replay **27 applied / FRESH_OK**; Postman regen **43 folders / 329
+  requests** + drift test; npm build **exit 0**; ruff `F,I,SIM,UP` = 19
+  repo-baseline hits, **zero in Work 10 files**.
+- Gate fixes: stale Postman collection regenerated; `test_sources` job-count
+  query workspace-scoped (leaked across tests in the shared session DB).
+- Git state: uncommitted working tree (no commits made).
 
 ### Work 09 (this slice) — Unified Social Inbox + CommunityManagerAgent
 - Full suite: fast lane **942 passed, 4 skipped, 11 deselected** (291s);
@@ -250,3 +372,17 @@ Status convention: ✅ COMPLETE · 🟢 WORKING · 🟡 PARTIAL · 🔵 NEXT · 
 - Work 09: the guarded job bootstrap `except Exception: pass`
   (`inbox.py:1475-1483`) has no direct test — probe-verified that importing
   `app.main` registers all 4 handlers (NIT-1, deferred).
+- Work 10: 8 of 13 source connector kinds are catalog-only (no config →
+  honest `SourceConfigError`/UNAVAILABLE); only local/url/rss/youtube/s3
+  are implemented and tested with mocks — no live credential-backed sync
+  has run (no secrets in repo).
+- Work 10: registering a `url` connector with blank config returns
+  **201 + `status=UNAVAILABLE`** (health() converts SourceError to a
+  status) instead of 422 — honest-by-design but contract-ambiguous;
+  clarification deferred.
+- Work 10: response-windows opt-in (`schedule_automation`) is surfaced
+  inside `notes`, not as a top-level boolean — the UI must read notes
+  (scheduler honesty keys are otherwise top-level).
+- Work 10: memory confidence labels map to fixed numbers (low→0.3,
+  medium→0.6, high→0.9) — numeric confidence has three levels of
+  granularity, not continuous.

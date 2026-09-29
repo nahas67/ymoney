@@ -46,6 +46,41 @@ WEBHOOK_EVENTS: tuple[str, ...] = (
     "campaign.completed",
     "campaign.failed",
     "webhook.test",
+    # Work 11 (Lane X): export lifecycle. The allowlist silently drops
+    # unknown kinds, so a subscribed customer would never hear about a
+    # finished (or failed) export without these entries.
+    "EXPORT_CREATED",
+    "EXPORT_COMPLETED",
+    "EXPORT_FAILED",
+    # Work 11 (Lane L): collaboration + enterprise-ops kinds. Same
+    # rationale as the export block above — the allowlist silently drops
+    # unknown kinds, so subscribers would never hear about a project
+    # being created, reviewed, archived or swept.
+    "PROJECT_CREATED",
+    "PROJECT_UPDATED",
+    "PROJECT_MEMBER_ADDED",
+    "PROJECT_MEMBER_REMOVED",
+    "PROJECT_TRANSFERRED",
+    "TIMELINE_EDITED",
+    "VERSION_CREATED",
+    "COMMENT_ADDED",
+    "REVIEW_REQUESTED",
+    "CHANGES_REQUESTED",
+    "APPROVED",
+    "PUBLISHED",
+    "ARCHIVE_CREATED",
+    "RETENTION_SWEEP",
+    "REVIEW_ASSIGNED",
+    "REVISION_REQUESTED",
+    "RETENTION_POLICY_UPDATED",
+    # Work 11 (Lane R, reported by the reviews audit): the reviews engine
+    # also emits these — without entries the allowlist would silently
+    # drop them from webhook fan-out.
+    "REVIEW_CANCELLED",
+    "REVIEW_REJECTED",
+    "COMMENT_RESOLVED",
+    "COMMENT_REOPENED",
+    "REVISION_UPDATED",
 )
 
 _SIGNATURE_HEADER = "X-YM-Signature"

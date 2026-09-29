@@ -3,9 +3,12 @@
 from fastapi import APIRouter
 
 from app.api.v1 import auth, autopilot, content, workspaces
+from app.api.v1.activity import activity_ledger_router
 from app.api.v1.api_keys import router as api_keys_router
+from app.api.v1.archives import archives_router
 from app.api.v1.brands import brand_router
 from app.api.v1.campaigns import campaign_flows_router, campaign_shorts_router
+from app.api.v1.comments import comments_router
 from app.api.v1.connections import connections_router
 from app.api.v1.content import (
     assets_router,
@@ -17,6 +20,7 @@ from app.api.v1.content import (
 )
 from app.api.v1.creative import creative_router
 from app.api.v1.experiments import experiments_router
+from app.api.v1.exports import exports_router
 from app.api.v1.inbox import inbox_router
 from app.api.v1.intelligence_decisions import router as intelligence_decisions_router
 from app.api.v1.intelligence_evidence import (
@@ -41,7 +45,11 @@ from app.api.v1.misc import (
     publishing_router,
     system_router,
 )
+from app.api.v1.notifications import notifications_router
+from app.api.v1.ops import ops_router, retention_router
 from app.api.v1.performance import performance_router
+from app.api.v1.projects import projects_router
+from app.api.v1.reviews import reviews_router, revisions_router
 from app.api.v1.safety import (
     cost_intel_router,
     decision_router,
@@ -117,3 +125,28 @@ api_router.include_router(inbox_router)
 #   /knowledge/... ?workspace_id=...          literal contract path
 api_router.include_router(knowledge_router, prefix="/workspaces/{workspace_id}")
 api_router.include_router(knowledge_router)
+# Projects + project RBAC (Work 11 Lane F): canonical only —
+#   /workspaces/{workspace_id}/projects/...
+api_router.include_router(projects_router)
+# Reviews + comments + revisions (Work 11 Lane R): canonical only —
+#   /workspaces/{workspace_id}/reviews/...
+#   /workspaces/{workspace_id}/comments/...
+#   /workspaces/{workspace_id}/revisions/...
+api_router.include_router(reviews_router)
+api_router.include_router(comments_router)
+api_router.include_router(revisions_router)
+# Activity ledger + notifications + archives + enterprise ops
+# (Work 11 Lane L): canonical only —
+#   /workspaces/{workspace_id}/activity          read-only ledger
+#   /workspaces/{workspace_id}/notifications     own inbox rows
+#   /workspaces/{workspace_id}/projects/...      archive/unarchive
+#   /workspaces/{workspace_id}/ops/overview      admin aggregates
+#   /workspaces/{workspace_id}/retention         admin policy
+api_router.include_router(activity_ledger_router)
+api_router.include_router(notifications_router)
+api_router.include_router(archives_router)
+api_router.include_router(ops_router)
+api_router.include_router(retention_router)
+# Export center (Work 11 Lane X): canonical only —
+#   /workspaces/{workspace_id}/exports/{formats,profiles,...}
+api_router.include_router(exports_router)

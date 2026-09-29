@@ -232,7 +232,8 @@ def test_pipeline_creates_editor_compatible_timeline(client, db_session):
     r = client.put(
         f"/api/v1/workspaces/{ctx['ws']}/timelines/{timeline_id}",
         headers=ctx["headers"],
-        json={"tracks": tl["tracks"], "duration_seconds": tl["duration_seconds"]},
+        json={"tracks": tl["tracks"], "duration_seconds": tl["duration_seconds"],
+              "base_version": tl["version"]},
     )
     assert r.status_code == 200, r.text
 
@@ -410,7 +411,8 @@ def test_regenerate_refuses_after_manual_edit(client, db_session):
     # a human edits the generated timeline in the editor
     r = client.get(f"/api/v1/workspaces/{ctx['ws']}/timelines/{timeline_id}",
                    headers=ctx["headers"])
-    tracks = r.json()["tracks"]
+    loaded = r.json()
+    tracks = loaded["tracks"]
     edited = False
     for track in tracks:
         if track["kind"] == "caption" and track["clips"]:
@@ -421,7 +423,8 @@ def test_regenerate_refuses_after_manual_edit(client, db_session):
     r = client.put(f"/api/v1/workspaces/{ctx['ws']}/timelines/{timeline_id}",
                    headers=ctx["headers"],
                    json={"tracks": tracks,
-                         "duration_seconds": r.json()["duration_seconds"]})
+                         "duration_seconds": loaded["duration_seconds"],
+                         "base_version": loaded["version"]})
     assert r.status_code == 200, r.text
 
     # regeneration must refuse instead of overwriting that edit

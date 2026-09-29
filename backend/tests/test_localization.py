@@ -820,7 +820,8 @@ def test_localized_timeline_passes_editor_api_validation(tmp_path, monkeypatch):
     r = client.put(f"/api/v1/workspaces/{ws}/timelines/{timeline_id}",
                    headers=headers,
                    json={"tracks": doc["tracks"],
-                         "duration_seconds": doc["duration_seconds"]})
+                         "duration_seconds": doc["duration_seconds"],
+                         "base_version": doc["version"]})
     assert r.status_code == 200, r.text
     saved = r.json()
     assert len(saved["tracks"]) == len(doc["tracks"])
@@ -833,7 +834,8 @@ def test_localized_timeline_passes_editor_api_validation(tmp_path, monkeypatch):
         {"id": "b", "name": "b", "start": 2.0, "duration": 5.0,
          "source": {}, "effects": []}]
     r = client.put(f"/api/v1/workspaces/{ws}/timelines/{timeline_id}",
-                   headers=headers, json={"tracks": bad})
+                   headers=headers,
+                   json={"tracks": bad, "base_version": saved["version"]})
     assert r.status_code == 422, r.text
 
     # OTIO export of the localized timeline

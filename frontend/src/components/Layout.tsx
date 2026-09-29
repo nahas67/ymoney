@@ -12,6 +12,7 @@ const NAV: { group: string; items: { to: string; label: string; icon: string; ke
     { to: "/autopilot", label: "Autopilot", icon: "⏻", keys: "a", desc: "Jobs, cycles, dead letters" },
     { to: "/calendar", label: "Calendar", icon: "▤", keys: "k", desc: "Schedule + auto-fill" },
     { to: "/approvals", label: "Approvals", icon: "☑", keys: "r", desc: "Human gate: QC queue" },
+    { to: "/reviews", label: "Reviews", icon: "◎", keys: "v", desc: "Version-bound approvals + revisions" },
   ]},
   { group: "Discover", items: [
     { to: "/trends", label: "Trend Center", icon: "▲", keys: "t", desc: "Opportunities by lifecycle + scores" },
@@ -29,6 +30,7 @@ const NAV: { group: string; items: { to: string; label: string; icon: string; ke
   ]},
   { group: "Distribute", items: [
     { to: "/publishing", label: "Publishing", icon: "↥", keys: "p", desc: "Accounts, jobs, delivery" },
+    { to: "/exports", label: "Exports", icon: "⇩", keys: "x", desc: "Verified formats, profiles, jobs" },
     { to: "/inbox", label: "Inbox", icon: "✉", desc: "Capability surface" },
   ]},
   { group: "Understand", items: [
@@ -37,6 +39,7 @@ const NAV: { group: string; items: { to: string; label: string; icon: string; ke
     { to: "/intelligence", label: "Intelligence", icon: "☰", keys: "g", desc: "Patterns, decisions, strategy" },
     { to: "/knowledge", label: "Knowledge", icon: "◈", desc: "Memory graph, sources, community signals" },
     { to: "/memory", label: "Memory", icon: "◍", desc: "Semantic + style memory" },
+    { to: "/activity", label: "Activity", icon: "≡", keys: "e", desc: "Append-only ledger, read-only" },
   ]},
   { group: "Developers", items: [
     { to: "/developers/keys", label: "API Keys", icon: "⚷", keys: "d", desc: "Third-party keys, hash-only" },

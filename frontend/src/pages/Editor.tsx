@@ -4,6 +4,10 @@ import WaveSurfer from "wavesurfer.js";
 import { getToken, mediaFileUrl, videoFileUrl, wsApi } from "../lib/api";
 import { Badge, Card, PageHeader, toast } from "../components/ui";
 import CreativeDirector from "../components/CreativeDirector";
+import CommentsPanel from "../components/collab/CommentsPanel";
+import ConflictNotice from "../components/collab/ConflictNotice";
+import ReviewStatusBar from "../components/collab/ReviewStatusBar";
+import VersionCompare from "../components/collab/VersionCompare";
 import {
   TRACK_FAMILY, applyOpsLocal, clipEnd, findClip, inverseOps, snapTime, sortedTracks,
 } from "../editor/adapters/timelineAdapter";
@@ -23,6 +27,16 @@ function fmt(t: number): string {
   return `${String(m).padStart(2, "0")}:${s}`;
 }
 
+/** Parsed 409 body ({error, expected_version, actual_version}), if any. */
+function parseConflict(message?: string): any {
+  try {
+    const parsed = JSON.parse(message ?? "");
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 let idSeq = 0;
 const nid = (p: string) => `${p}_${Date.now().toString(36)}_${idSeq++}`;
 
@@ -38,10 +52,13 @@ export default function Editor() {
   const [pxPerSec, setPxPerSec] = useState(40);
   const [snap, setSnap] = useState(true);
   const [saveState, setSaveState] = useState<SaveState>("Saved");
+  const [conflict, setConflict] = useState<any>(null);
   const [undo, setUndo] = useState<UndoEntry[]>([]);
   const [redo, setRedo] = useState<UndoEntry[]>([]);
   const [versions, setVersions] = useState<any[]>([]);
   const [showVersions, setShowVersions] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [showCompare, setShowCompare] = useState(false);
   const [scenes, setScenes] = useState<any[]>([]);
   const [assets, setAssets] = useState<any[]>([]);
   const [assetQ, setAssetQ] = useState("");
@@ -76,6 +93,7 @@ export default function Editor() {
       setUndo([]);
       setRedo([]);
       setSaveState("Saved");
+      setConflict(null);
       const v: any = await wsApi.get(`/timelines/${timelineId}/versions`);
       setVersions(v.versions ?? []);
       const s: any = await wsApi.get(`/timelines/${timelineId}/scenes`);
@@ -108,9 +126,17 @@ export default function Editor() {
       setVersion(res.version);
       versionRef.current = res.version;
       setSaveState("Saved");
+      setConflict(null);
     } catch (e: any) {
       if (e.status === 409) {
+        // Optimistic-concurrency conflict: the server moved on. Keep the local
+        // tracks on screen (user intent stays visible) and require an explicit
+        // reload — never a silent last-write-wins overwrite.
+        const detail = parseConflict(e.message);
+        setConflict(detail);
         setSaveState("Conflict");
+        toast("Someone else saved this timeline — reload latest to continue",
+          "warning", "Edit conflict");
       } else {
         setSaveState("Save failed");
         toast(e.message, "error", "Autosave failed — reloading server state");
@@ -325,6 +351,7 @@ export default function Editor() {
       setUndo([]);
       setRedo([]);
       setSaveState("Saved");
+      setConflict(null);
       const vv: any = await wsApi.get(`/timelines/${timelineId}/versions`);
       setVersions(vv.versions ?? []);
       toast("Version restored onto a new tip", "success");
@@ -360,15 +387,14 @@ export default function Editor() {
           </button>
         </>} />
       {saveState === "Conflict" && (
-        <Card><b>Conflict:</b> the timeline changed elsewhere (v{versionRef.current}).
-          <button className="btn-primary !text-xs ml-3" onClick={load}>Reload latest</button>
-        </Card>
+        <ConflictNotice conflict={conflict} localVersion={version} onReload={() => void load()} />
       )}
       {saveState === "Save failed" && (
         <Card><b>Autosave failed.</b>
           <button className="btn-outline !text-xs ml-3" onClick={flushSave}>Retry save</button>
         </Card>
       )}
+      {timelineId && <ReviewStatusBar timelineId={timelineId} version={version} />}
 
       <div className="grid xl:grid-cols-[280px_1fr_300px] gap-3">
         {/* Assets */}
@@ -443,6 +469,12 @@ export default function Editor() {
             <button className="btn-ghost !text-xs" onClick={() => setShowVersions((v) => !v)}>
               {showVersions ? "Hide versions" : `Versions (${versions.length})`}
             </button>
+            <button
+              className={showComments ? "btn-primary !text-xs" : "btn-ghost !text-xs"}
+              onClick={() => setShowComments((v) => !v)}
+            >
+              {showComments ? "Hide comments" : "💬 Comments"}
+            </button>
             {showVersions && versions.map((v: any) => (
               <div key={v.id} className="flex items-center gap-2 mt-1 text-[12px]">
                 <Badge tone={v.is_tip ? "success" : "info"}>v{v.version}</Badge>
@@ -488,9 +520,32 @@ export default function Editor() {
           <button className={snap ? "btn-primary !text-xs" : "btn-ghost !text-xs"} onClick={() => setSnap((s) => !s)}>
             🧲 Snap {snap ? "on" : "off"}
           </button>
+          <button className={showComments ? "btn-primary !text-xs" : "btn-ghost !text-xs"}
+            onClick={() => setShowComments((v) => !v)}>
+            {showComments ? "Hide comments" : "💬 Comments"}
+          </button>
+          <button className={showCompare ? "btn-primary !text-xs" : "btn-ghost !text-xs"}
+            onClick={() => setShowCompare((v) => !v)}>
+            {showCompare ? "Hide compare" : "⇄ Compare"}
+          </button>
           <Badge tone={saveState === "Saved" ? "success" : saveState === "Conflict" ? "error" : "warning"}>{saveState}</Badge>
         </div>
       </Card>
+
+      {/* Collaboration panels (Work 11 FE-B) */}
+      {showComments && timelineId && (
+        <CommentsPanel
+          timelineId={timelineId}
+          time={time}
+          scenes={scenes}
+          selectedClipId={sel?.clipId ?? null}
+          selectedClip={selClip}
+          onSeek={seek}
+        />
+      )}
+      {showCompare && timelineId && (
+        <VersionCompare timelineId={timelineId} versions={versions} />
+      )}
 
       {/* Creative Director: NL → parse → preview → apply → undo */}
       {timelineId && <CreativeDirector timelineId={timelineId} onApplied={load} />}

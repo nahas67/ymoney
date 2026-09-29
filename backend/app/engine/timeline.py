@@ -11,6 +11,10 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.models import ContentTimeline
 
 TRACK_KINDS = ("video", "broll", "avatar", "text", "caption", "voice", "music", "sfx")
 
@@ -273,6 +277,33 @@ def version_family(session, timeline_id: str) -> list:
 def list_versions(session, timeline_id: str) -> tuple[object, list]:
     """(root, family rows) for the versions panel."""
     return version_family(session, timeline_id)
+
+
+def tip_version(session, timeline_id: str) -> ContentTimeline | None:
+    """Canonical "current version": the highest-`version` row of the family.
+
+    One resolver for every caller that needs an authoritative answer instead
+    of re-deriving it (the API list sorts `created_at` desc, engine code sorts
+    `version` desc — both can disagree once branches exist). Returns None when
+    the timeline does not exist; raises nothing.
+    """
+    from app.models import ContentTimeline
+
+    if session.get(ContentTimeline, timeline_id) is None:
+        return None
+    try:
+        _, family = version_family(session, timeline_id)
+    except TimelineValidationError:
+        return None
+    if not family:
+        return None
+    # version first, newest row first on a tie (branches can share a number)
+    return max(family, key=lambda row: (int(row.version or 0), str(row.created_at)))
+
+
+def manifest_hash_of(doc: dict) -> str:
+    """Stable `manifest_hash` for a timeline doc (see render_manifest)."""
+    return render_manifest(doc)["manifest_hash"]
 
 
 def restore_version(session, timeline_id: str, version_id: str) -> str:

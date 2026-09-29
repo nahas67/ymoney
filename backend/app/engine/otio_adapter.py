@@ -9,10 +9,34 @@ round-trip via OTIO metadata (OTIO-native consumers ignore them, YMONEY keeps th
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+
 import opentimelineio as otio
 
 from app.engine import timeline as tl
 from app.engine.timeline import TimelineValidationError
+
+
+def _plain(value):
+    """Deep-copy an OTIO metadata value into JSON-safe builtins.
+
+    OTIO hands back ``AnyDictionary`` for nested metadata objects. It is a
+    ``MutableMapping`` but deliberately NOT a ``dict`` subclass, so an
+    ``isinstance(x, dict)`` guard rejects every nested value -- and the
+    surviving references are C++-backed, so they dangle (``ValueError:
+    Underlying C++ AnyDictionary has been destroyed``) once the Timeline they
+    came from is garbage collected, and they are not JSON serializable.
+    Convert eagerly while the owning timeline is still alive.
+    """
+    if isinstance(value, Mapping):
+        return {str(k): _plain(v) for k, v in value.items()}
+    # OTIO returns AnyVector for nested arrays: a Sequence, but not list/tuple.
+    # isinstance(str) must be excluded or strings split into characters.
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_plain(v) for v in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
 
 TRACK_KIND_TO_OTIO = {"video": otio.schema.TrackKind.Video,
                       "broll": otio.schema.TrackKind.Video,
@@ -65,7 +89,7 @@ def from_otio_timeline(timeline: otio.schema.Timeline, *, aspect: str = "9:16") 
         for clip in track:
             if not isinstance(clip, otio.schema.Clip):
                 continue
-            md = dict(clip.metadata or {})
+            md = _plain(clip.metadata or {})
             kind = md.get("ymoney_track", "voice" if is_audio else "video")
             rng = clip.source_range
             start = rng.start_time.value if rng else 0.0
@@ -73,11 +97,12 @@ def from_otio_timeline(timeline: otio.schema.Timeline, *, aspect: str = "9:16") 
             entry = {"id": md.get("ymoney_clip_id", clip.name or "clip"),
                      "name": clip.name or "",
                      "start": float(start), "duration": float(duration),
-                     "source": dict(md.get("source", {})),
-                     "effects": list(md.get("effects", [])),
+                     "source": md.get("source") or {},
+                     "effects": list(md.get("effects") or []),
                      "_kind": kind}
             extra = md.get("ymoney_clip")
-            if isinstance(extra, dict):
+            # AnyDictionary is a MutableMapping, never a dict -- hence Mapping.
+            if isinstance(extra, Mapping):
                 entry.update({k: v for k, v in extra.items() if k not in entry})
             clips.append(entry)
             if rng:

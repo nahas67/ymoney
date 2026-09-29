@@ -21,7 +21,8 @@ from pathlib import Path
 
 VERIFICATION_STATUSES = ("VERIFIED", "PARTIALLY_VERIFIED", "NOT_VERIFIED", "BLOCKED")
 EXECUTION_STATUSES = ("COMPLETED", "FAILED", "RUNNING", "UNKNOWN")
-KINDS = ("video", "publication", "campaign", "research", "community_reply")
+KINDS = ("video", "publication", "campaign", "research", "community_reply",
+         "export")
 
 BLOCKED_CROSS_WORKSPACE = "cross-workspace subject (isolation)"
 
@@ -369,12 +370,47 @@ def _check_reply_contract(session, workspace_id: str,
                        action.account_id, action.platform)
 
 
+# ---------------------------------------------------------------------------
+# export (Work 11 Lane X) -- an export is COMPLETE only when its own
+# independent verification proved it; we replay that evidence into the ledger
+# rather than re-probing the bytes (the export center already recorded
+# per-check {name, passed, detail} at run time).
+# ---------------------------------------------------------------------------
+
+
+def check_export(session, workspace_id: str,
+                 contract: CompletionContract) -> tuple[str, str, list[dict]]:
+    """Replay a finished export's own verdict as ledger evidence.
+
+    A COMPLETE export is only VERIFIED when the export row says COMPLETE *and*
+    every critical check passed. Anything else (FAILED, CANCELLED, still
+    QUEUED/RUNNING, or a verdict with a failed critical check) is
+    NOT_VERIFIED -- an unproven export never claims to be a verified one.
+    """
+    from app.engine.exporter.verify import check_export_contract
+
+    outcome = check_export_contract(session, workspace_id, contract.subject_id)
+    if not outcome.get("found"):
+        # unknown id or another workspace's export -> isolation, never a
+        # half-filled NOT_VERIFIED that looks like a real evaluation
+        return "UNKNOWN", *_blocked(BLOCKED_CROSS_WORKSPACE)
+    checks = [
+        CheckResult(str(c.get("name") or "check"), bool(c.get("passed")),
+                    str(c.get("detail") or ""),
+                    critical=bool(c.get("critical", True)))
+        for c in outcome["checks"]
+    ]
+    return str(outcome.get("execution") or "UNKNOWN"), _verdict(checks), [
+        c.as_dict() for c in checks]
+
+
 _CHECKERS = {
     "video": check_video,
     "publication": check_publication,
     "campaign": check_campaign,
     "research": check_research,
     "community_reply": _check_reply_contract,
+    "export": check_export,
 }
 
 

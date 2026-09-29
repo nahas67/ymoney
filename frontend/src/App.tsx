@@ -20,6 +20,9 @@ import Knowledge from "./pages/Knowledge";
 import Memory from "./pages/Memory";
 import Agents from "./pages/Agents";
 import Approvals from "./pages/Approvals";
+import Reviews from "./pages/Reviews";
+import Activity from "./pages/Activity";
+import Exports from "./pages/Exports";
 import ApiKeys from "./pages/ApiKeys";
 import Webhooks from "./pages/Webhooks";
 import Templates from "./pages/Templates";
@@ -82,6 +85,9 @@ export default function App() {
         <Route path="longform" element={<LongForm />} />
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="approvals" element={<Approvals />} />
+        <Route path="reviews" element={<Reviews />} />
+        <Route path="activity" element={<Activity />} />
+        <Route path="exports" element={<Exports />} />
         <Route path="composer" element={<Composer />} />
         <Route path="publishing" element={<Publishing />} />
         <Route path="inbox" element={<Inbox />} />

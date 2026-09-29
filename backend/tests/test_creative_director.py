@@ -64,14 +64,16 @@ def _set_brand(client, ws, headers, extra=None):
 
 def _timeline(client, ws, headers, *, duration=10.0, voice="andrew",
               preset="minimal"):
-    """A real canonical timeline: video + voice + caption + text + music."""
-    r = client.post(f"/api/v1/workspaces/{ws}/timelines", headers=headers,
-                    json={"name": "main", "duration_seconds": duration})
-    assert r.status_code == 200, r.text
-    tid = r.json()["id"]
-    doc = client.get(f"/api/v1/workspaces/{ws}/timelines/{tid}",
-                     headers=headers).json()
-    tracks = doc["tracks"]
+    """A real canonical timeline: video + voice + caption + text + music.
+
+    The clips ride the CREATE route (the same `validate_timeline` gate the
+    editor save runs) so the family starts at a pristine version 1 — every
+    assertion below reads creative-apply's append-only version chain from v1.
+    """
+    from app.engine.timeline import TRACK_KINDS
+
+    tracks = [{"id": f"t_{kind}", "kind": kind, "name": kind.title(), "clips": []}
+              for kind in TRACK_KINDS]
 
     def clips(kind):
         return next(t for t in tracks if t["kind"] == kind)["clips"]
@@ -92,10 +94,11 @@ def _timeline(client, ws, headers, *, duration=10.0, voice="andrew",
     clips("music").append({"id": "mus1", "name": "bed", "start": 0.0,
                            "duration": duration, "source": {"music_id": "bed1"},
                            "effects": []})
-    r = client.put(f"/api/v1/workspaces/{ws}/timelines/{tid}", headers=headers,
-                   json={"tracks": tracks, "duration_seconds": duration})
+    r = client.post(f"/api/v1/workspaces/{ws}/timelines", headers=headers,
+                    json={"name": "main", "duration_seconds": duration,
+                          "tracks": tracks})
     assert r.status_code == 200, r.text
-    return tid
+    return r.json()["id"]
 
 
 def _get_timeline(client, ws, headers, tid):

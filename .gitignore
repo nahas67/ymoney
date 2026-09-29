@@ -51,3 +51,6 @@ MoneyPrinterTurbo/config.toml
 MoneyPrinterTurbo/.venv/
 MoneyPrinterTurbo/__pycache__/
 MoneyPrinterTurbo/.git.disabled/
+
+# TypeScript incremental build cache (regenerated on every build)
+frontend/tsconfig.tsbuildinfo

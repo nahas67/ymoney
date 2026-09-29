@@ -29,6 +29,8 @@ class TimelineUpdate(BaseModel):
     name: str | None = None
     duration_seconds: float | None = None
     tracks: list | None = None
+    # optimistic concurrency: the version the editor last loaded (required)
+    base_version: int
 
 
 class VersionCreate(BaseModel):
@@ -154,6 +156,17 @@ def update_timeline(
     db=Depends(get_db),
 ):
     row = _get(ws.id, timeline_id, db)
+    # optimistic concurrency — same gate (and same detail shape) as /operations
+    tip = tl.tip_version(db, timeline_id) or row
+    current_version = int(getattr(tip, "version", None) or 1)
+    # only the tip row is writable: a save aimed at any other family row would
+    # rewrite history (append-only), so it is reported as stale either way.
+    if int(body.base_version) != current_version or row.id != tip.id:
+        raise HTTPException(status_code=409, detail={
+            "error": "stale timeline version — reload latest",
+            "expected_version": current_version,
+            "actual_version": int(body.base_version),
+        })
     current = dict(row.tracks_json or {})
     doc = _checked_doc(body.name or row.name, row.fps,
                        body.duration_seconds if body.duration_seconds is not None
@@ -165,12 +178,15 @@ def update_timeline(
         row.name = body.name
     row.duration_seconds = doc.get("duration_seconds", row.duration_seconds)
     row.tracks_json = doc
+    # version bump mirrors /operations: the saved row becomes the new tip
+    row.version = current_version + 1
     db.commit()
     db.refresh(row)
     from app.services.events import record_event
 
     record_event(ws.id, "timeline.updated", f"Saved timeline '{row.name[:60]}'",
-                 level="info", source="editor", data={"timeline_id": row.id})
+                 level="info", source="editor",
+                 data={"timeline_id": row.id, "version": row.version})
     return _dto(row)
 
 
@@ -385,8 +401,106 @@ def versions_list(
             "versions": [{**_dto(r), "is_tip": r.id == timeline_id} for r in family]}
 
 
+def _doc_of(row: ContentTimeline) -> dict:
+    """Stored tracks_json + row fallbacks, the shape every timeline GET uses."""
+    doc = dict(row.tracks_json or {})
+    doc.setdefault("fps", row.fps)
+    doc.setdefault("duration_seconds", row.duration_seconds)
+    return doc
+
+
+def _brand_snapshot_before(db, workspace_id: str, at) -> object | None:
+    """Latest BrandDNA policy snapshot saved at or before `at` (ledger read)."""
+    from app.models import BrandEffectiveConfig
+
+    q = (select(BrandEffectiveConfig)
+         .where(BrandEffectiveConfig.workspace_id == workspace_id,
+                BrandEffectiveConfig.created_at <= at)
+         .order_by(BrandEffectiveConfig.created_at.desc(),
+                   BrandEffectiveConfig.id.desc())
+         .limit(1))
+    return db.scalars(q).first()
+
+
+def _dna_of(snapshot) -> dict:
+    payload = dict(snapshot.effective_json or {})
+    effective = payload.get("effective")
+    return dict(effective) if isinstance(effective, dict) else payload
+
+
+def _brand_diff(db, workspace_id: str, before_row: ContentTimeline,
+                after_row: ContentTimeline) -> dict:
+    """BrandDNA diff for two version rows — never fabricated.
+
+    A snapshot can only be tied to a version by save time: the ledger records
+    policy resolutions (workspace/campaign), not timeline versions. When no
+    snapshot exists at or before one of the two versions, `available` is false
+    and no brand data is invented.
+    """
+    from app.engine.timeline_diff import diff_brand_snapshots
+
+    snap_before = _brand_snapshot_before(db, workspace_id, before_row.created_at)
+    snap_after = _brand_snapshot_before(db, workspace_id, after_row.created_at)
+    if snap_before is None or snap_after is None:
+        return {"available": False,
+                "reason": "no brand snapshot saved at or before one of these versions"}
+    dna_before, dna_after = _dna_of(snap_before), _dna_of(snap_after)
+    if not dna_before or not dna_after:
+        return {"available": False, "reason": "brand snapshot carries no DNA document"}
+    return {
+        "available": True,
+        "selection": "latest brand snapshot saved at or before each version",
+        "from": {"snapshot_id": snap_before.id, "dna_version": snap_before.dna_version},
+        "to": {"snapshot_id": snap_after.id, "dna_version": snap_after.dna_version},
+        "diff": diff_brand_snapshots(dna_before, dna_after),
+    }
+
+
+@timelines_router.get("/{timeline_id}/diff",
+                      summary="Semantic diff between two timeline versions")
+def diff_timeline_versions(
+    timeline_id: str,
+    from_version: int = Query(..., description="version number to diff from"),
+    to_version: int = Query(..., description="version number to diff to"),
+    ws: Workspace = Depends(require_workspace_role("viewer")),
+    db=Depends(get_db),
+):
+    from app.engine.timeline import list_versions, manifest_hash_of
+    from app.engine.timeline_diff import diff_timeline_docs
+
+    _get(ws.id, timeline_id, db)
+    try:
+        _, family = list_versions(db, timeline_id)
+    except TimelineValidationError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    by_version: dict[int, ContentTimeline] = {}
+    for row in family:  # family is ordered: the newest row wins a version tie
+        by_version[int(row.version or 1)] = row
+    before = by_version.get(int(from_version))
+    after = by_version.get(int(to_version))
+    if before is None:
+        raise HTTPException(status_code=404,
+                            detail=f"version {int(from_version)} not found")
+    if after is None:
+        raise HTTPException(status_code=404,
+                            detail=f"version {int(to_version)} not found")
+    doc_before, doc_after = _doc_of(before), _doc_of(after)
+    try:
+        hash_before = manifest_hash_of(doc_before)
+        hash_after = manifest_hash_of(doc_after)
+    except TimelineValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "from": {"version": int(from_version), "manifest_hash": hash_before},
+        "to": {"version": int(to_version), "manifest_hash": hash_after},
+        "diff": diff_timeline_docs(doc_before, doc_after),
+        "brand_diff": _brand_diff(db, ws.id, before, after),
+    }
+
+
 class RestoreBody(BaseModel):
     label: str = ""
+
 
 
 @timelines_router.post("/{timeline_id}/versions/{version_id}/restore",

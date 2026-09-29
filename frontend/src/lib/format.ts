@@ -31,12 +31,15 @@ export function fmtCompact(n?: number | null): string {
 
 export function statusTone(status?: string): "success" | "warning" | "error" | "info" | "muted" {
   const s = (status || "").toUpperCase();
-  if (["PUBLISHED", "LEARNED", "READY", "COMPLETED", "FINISHED", "CONNECTED", "PASSED", "DONE", "APPROVED"].includes(s))
+  if (["PUBLISHED", "LEARNED", "READY", "COMPLETED", "COMPLETE", "FINISHED", "CONNECTED", "PASSED", "DONE", "APPROVED", "ACTIVE", "SUCCEEDED"].includes(s))
     return "success";
-  if (["FAILED", "DEAD", "ERROR", "EXPIRED", "BLOCKED"].includes(s)) return "error";
-  if (["RUNNING", "RENDERING", "PROCESSING", "PUBLISHING", "QUEUED", "DISPATCHING", "RETRYING", "PAUSED", "IN_PROGRESS"].includes(s))
+  if (["FAILED", "DEAD", "ERROR", "EXPIRED", "BLOCKED", "REJECTED"].includes(s)) return "error";
+  if (["RUNNING", "RENDERING", "PROCESSING", "PUBLISHING", "QUEUED", "DISPATCHING", "RETRYING", "PAUSED", "IN_PROGRESS",
+       "IN_REVIEW", "CHANGES_REQUESTED", "PENDING", "SCHEDULED", "STALE", "UNAVAILABLE"].includes(s))
     return "warning";
   if (["EMERGING", "RISING", "CREATE_NOW", "PRODUCE", "MOCK"].includes(s)) return "info";
+  // Intentionally muted (neutral, not a problem): DRAFT, CANCELLED, ARCHIVED,
+  // and anything unrecognized -- unknown tokens must never imply success.
   return "muted";
 }
 

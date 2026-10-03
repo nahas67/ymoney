@@ -65,6 +65,9 @@ def test_profiles_validate_bad_aspect_and_duration():
         "youtube_shorts", "tiktok", "instagram_reels", "facebook_reels",
         # Work 09 §15: LinkedIn/X joined the campaign target set
         "linkedin", "x",
+        # Work 14: expanded distribution (Threads, Pinterest, Bluesky, and
+        # Snapchat-as-a-handoff).
+        "threads", "pinterest", "bluesky", "snapchat",
     }
     good = {"title": "Save 20% of every paycheck", "description": "A simple habit.",
             "hashtags": ["#money"]}
@@ -109,7 +112,7 @@ def test_metadata_differs_per_platform():
                                script_excerpt="pay yourself first every month")
     # Work 09 §15: one bundle per campaign platform (now 6 incl. linkedin/x)
     assert set(bundles) == set(CAMPAIGN_PLATFORMS)
-    assert len(bundles) == 6
+    assert len(bundles) == len(CAMPAIGN_PLATFORMS)
     assert {b["platform"] for b in bundles.values()} == set(CAMPAIGN_PLATFORMS)
 
     # Work 09: every campaign platform has its own voice, so all 6 bundles

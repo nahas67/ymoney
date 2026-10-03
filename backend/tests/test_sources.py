@@ -420,15 +420,22 @@ def test_rss_parses_feed_as_single_snapshot_page():
 # ---------------------------------------------------------------------------
 
 
-def test_public_host_rejects_private_literals_allows_public():
+def test_public_host_rejects_private_literals_allows_public(monkeypatch):
+    from app.core.config import settings
     for host in ("127.0.0.1", "10.0.0.1", "169.254.1.1", "192.168.1.1", "::1"):
         with pytest.raises(SourceError):
             _assert_public_host(host)
     assert _assert_public_host("93.184.216.34") is None  # public literal: no DNS needed
+    # W11.5 C-F1: allow_private needs the operator kill-switch, so it is refused
+    # by default and only honored when the operator opts in.
+    with pytest.raises(SourceError, match="operator"):
+        _assert_public_host("127.0.0.1", allow_private=True)
+    monkeypatch.setattr(settings, "allow_private_connectors", True)
     assert _assert_public_host("127.0.0.1", allow_private=True) is None
 
 
-def test_url_config_rejects_bad_scheme_and_private_hosts():
+def test_url_config_rejects_bad_scheme_and_private_hosts(monkeypatch):
+    from app.core.config import settings
     with pytest.raises(SourceError, match="http"):
         validate_config_url("ftp://93.184.216.34/x")
     with pytest.raises(SourceError):
@@ -437,11 +444,21 @@ def test_url_config_rejects_bad_scheme_and_private_hosts():
         create_connector("url", {"url": "https://10.0.0.5/private"}).connect()
     with pytest.raises(SourceError):  # loopback literal without allow_private
         create_connector("url", {"url": "https://127.0.0.1/x"}).connect()
-    # allow_private unlocks private/loopback targets for development
+    # W11.5 C-F1: allow_private is NECESSARY but not sufficient -- the operator
+    # kill-switch `allow_private_connectors` (default False) gates it, so a
+    # workspace admin cannot self-serve a pivot to loopback/cloud metadata.
+    monkeypatch.setattr(settings, "allow_private_connectors", True)
     create_connector("url", {"url": "https://10.0.0.5/x", "allow_private": True}).connect()
     create_connector(
         "url", {"url": "http://127.0.0.1/x", "allow_private": True}
     ).connect()
+    monkeypatch.setattr(settings, "allow_private_connectors", False)
+    with pytest.raises(SourceError, match="operator"):
+        create_connector("url", {"url": "https://10.0.0.5/x", "allow_private": True}).connect()
+    with pytest.raises(SourceError, match="operator"):
+        create_connector(
+            "url", {"url": "http://127.0.0.1/x", "allow_private": True}
+        ).connect()
     create_connector("url", {"url": f"{PUBLIC_HOST}/x"}).connect()  # public literal
 
 

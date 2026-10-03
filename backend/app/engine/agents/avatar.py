@@ -65,7 +65,19 @@ class AvatarDirectorAgent(BaseAgent):
                 self.step_failed(str(exc)[:150])
                 raise
             self.step_done("ok", clip.path)
-            self.track_cost(ctx, "video", 0.0, provider=f"avatar_{clip.backend}")
+            # Work 15.7: this used to be ``track_cost(ctx, "video", 0.0, ...)``
+            # for EVERY lane, including ``server`` -- a BILLED GPU render. A
+            # $0 amount is not "free", it is "no row": services/cost.py drops
+            # anything <= 0, so the paid render left no cost entry anywhere.
+            # The server lane is now booked by ``providers/avatar.py`` (an
+            # estimate, or an UNKNOWN-exposure event when the renderer reported
+            # no price), so the agent must NOT book a second, fabricated zero.
+            billed = clip.backend == "server"
+            self.step(
+                "cost",
+                "billed GPU render booked by providers.avatar "
+                "(paid.submission record)" if billed else
+                f"{clip.backend} lane: operator CPU, no vendor invoice")
             return {
                 "summary": f"directed presenter clip via {clip.backend}",
                 "video_path": clip.path,
@@ -73,6 +85,9 @@ class AvatarDirectorAgent(BaseAgent):
                 "duration": clip.duration,
                 "voice": used_voice,
                 "is_mock": clip.is_mock,
+                # Surfaced so the operator can see WHICH renders moved money
+                # without reading the cost ledger.
+                "billable_render": billed,
             }
 
         return self.execute(ctx, "render_avatar", input_summary=f"avatar: {image[:80]}", fn=work)

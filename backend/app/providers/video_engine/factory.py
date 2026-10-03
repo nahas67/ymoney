@@ -65,6 +65,16 @@ def get_video_engine(workspace_id: str | None = None) -> BaseVideoEngine:
         return _instances[scope]
     name = (settings.video_engine or "").lower()
     if name in ("mock", "simulation"):
+        # W11.5 E-MED: refuse a mock engine in production instead of relying
+        # only on readiness (which `override_readiness` can bypass). Explicit
+        # opt-in is required, exactly like the publishing factory.
+        if getattr(settings, "is_production", False) and not getattr(
+            settings, "allow_mock_in_production", False
+        ):
+            raise EngineNotConfigured(
+                "video_engine='mock' is refused in production "
+                "(set allow_mock_in_production=True to override deliberately)"
+            )
         _instances[scope] = MockVideoEngine()
         return _instances[scope]
     if name in ("ffmpeg_avatar", "ffmpeg-avatar", "ffmpeg"):

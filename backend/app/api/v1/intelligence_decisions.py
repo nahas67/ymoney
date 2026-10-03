@@ -6,6 +6,8 @@ and shadow report. All routes mask cross-workspace access as 404.
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -13,6 +15,8 @@ from sqlalchemy import select
 from app.db import get_db
 from app.models import Workspace, WorkspaceMember
 from app.services.auth_service import get_current_user
+
+logger = logging.getLogger("ymoney.intelligence")
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/intelligence", tags=["intelligence"])
 
@@ -91,6 +95,19 @@ def run_decision(
     engine = _engine_for(ws)
     fn = getattr(engine, kind)
     output, record = fn(dict(body.input or {}), provider=body.provider or "")
+    # W11.5 E-F2 (HIGH): an LLM-backed decision recorded cost_usd on the audit
+    # record but never wrote a CostEntry, so the daily budget gate could not see
+    # it. Ledger it after the fact (deterministic/local decisions cost 0 and are
+    # skipped by track_cost's own <=0 guard).
+    if float(record.cost_usd or 0.0) > 0:
+        try:
+            from app.services.cost import track_cost
+
+            track_cost(ws.id, "decision_engine", float(record.cost_usd),
+                       provider=record.actual_provider or record.requested_provider,
+                       detail={"kind": kind, "model": record.model})
+        except Exception as exc:  # noqa: BLE001 — never fail a decision on ledger write
+            logger.warning("decision cost ledger failed (%s): %s", kind, exc)
     return {
         "kind": kind,
         "mode": record.mode,

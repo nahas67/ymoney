@@ -93,7 +93,7 @@ def upgrade(session) -> None:
             state VARCHAR(32) NOT NULL DEFAULT 'DRAFT',
             bound_version VARCHAR(64),
             bound_manifest_hash VARCHAR(64),
-            stale BOOLEAN NOT NULL DEFAULT 0,
+            stale BOOLEAN NOT NULL DEFAULT FALSE,
             stale_detected_at TIMESTAMP,
             created_by VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             closed_at TIMESTAMP
@@ -211,7 +211,7 @@ def upgrade(session) -> None:
             name VARCHAR(120) NOT NULL,
             preset VARCHAR(32) NOT NULL,
             config_json JSON NOT NULL DEFAULT '{}',
-            is_builtin BOOLEAN NOT NULL DEFAULT 0,
+            is_builtin BOOLEAN NOT NULL DEFAULT FALSE,
             created_by VARCHAR(36) REFERENCES users(id) ON DELETE SET NULL
         )
     """))

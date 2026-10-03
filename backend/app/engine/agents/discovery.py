@@ -98,6 +98,8 @@ class TrendAnalystAgent(BaseAgent):
     def score_pending(self, ctx) -> int:
         """Score all unscored opportunities for this workspace; returns count."""
         ws = ctx.workspace_id
+        # W13-F1: filled inside the transaction, consumed after it commits.
+        advisory_rows: list[dict] = []
 
         def work():
             weights = {}
@@ -156,25 +158,39 @@ class TrendAnalystAgent(BaseAgent):
                     opp.confidence = float(breakdown.get("confidence", 0.5))
                     opp.virality = float(breakdown.get("virality", 0.0))
                     ids.append(opp.id)
-                self.step_done("ok", f"scored {len(ids)} opportunity(ies)")
-                # Intelligence advisory (Work 05, Lane A): shadow-only by default.
-                # Scores above stay authoritative; the hook records agreement only.
-                try:
-                    from app.engine.intelligence.integrations import advise_trend_scores
-
-                    pending_rows = s.scalars(
-                        select(Opportunity).where(Opportunity.id.in_(ids))
-                    ).all() if ids else []
-                    advise_trend_scores(
-                        [{"topic": o.topic, "score": o.score} for o in pending_rows],
-                        workspace_id=ws,
+                    # W13-F1 (carry-forward hardening): build the advisory
+                    # payload from the IN-MEMORY row. The previous code
+                    # re-SELECTed these rows, but ``autoflush`` is off
+                    # (app/db.py) and nothing had been flushed yet, so that read
+                    # returned the PRE-update scores and the advisory ranked
+                    # stale numbers.
+                    advisory_rows.append(
+                        {"topic": opp.topic, "score": opp.score}
                     )
-                except Exception:
-                    pass
+                self.step_done("ok", f"scored {len(ids)} opportunity(ies)")
+                # W13-F1: the advisory itself now runs OUTSIDE this scope (see
+                # below). ``advise_trend_scores`` opens its OWN committing
+                # session via ``DecisionEngine._persist``; calling it while this
+                # scope was open survived only because the dirty rows were
+                # never flushed. A single ``s.flush()`` earlier in this block
+                # would have deadlocked on SQLite's write lock - exactly the
+                # hazard Work 11.5 recorded.
                 s.flush()
             return len(ids)
 
-        return self.execute(ctx, "score_opportunities", input_summary="pending opportunities", fn=work)
+        result = self.execute(ctx, "score_opportunities",
+                              input_summary="pending opportunities", fn=work)
+        # Intelligence advisory (Work 05, Lane A): shadow-only by default.
+        # Scores above stay authoritative; the hook records agreement only.
+        # Runs after the scoring transaction has committed so there is no
+        # ambient write transaction for its nested session to contend with.
+        try:
+            from app.engine.intelligence.integrations import advise_trend_scores
+
+            advise_trend_scores(list(advisory_rows), workspace_id=ws)
+        except Exception:
+            pass
+        return result
 
 
 _persist_lock = __import__("threading").Lock()

@@ -21,6 +21,13 @@ ALL_COMMAND_TYPES = {
     "ChangeVoice", "ChangeCaptionPreset", "ChangeMusic", "ChangeCTA",
     "ChangeStyle", "ChangeDuration", "ChangeAspectRatio", "CreateVariant",
     "ApplyBrandPreset", "ReframeScene",
+    # Work 13 typed motion commands
+    "ChangeCaptionStyle", "HighlightKeyword", "AddLowerThird", "AddTitle",
+    "AddCallout", "AddTransition", "ApplyEffect", "RemoveEffect",
+    "ApplyMotionPreset",
+    # Work 13.1 keyframe/motion commands
+    "AnimateElement", "MoveElement", "AnimateOpacity", "AnimateScale",
+    "ChangeTransition",
 }
 BRAND = {
     "approved_voices": ["ava", "andrew"],
@@ -552,7 +559,11 @@ def test_catalog_exposes_approved_commands_and_components(tmp_path, monkeypatch)
     assert entries["ChangeDuration"]["risk"] == "high"
     assert entries["CreateVariant"]["risk"] == "high"
     assert set(data["auto_apply"]["types"]) == {
-        "RewriteSegment", "ChangeCaptionPreset", "ChangeCTA"}
+        # Work 13 adds ChangeCaptionStyle (a typed style patch) and
+        # RemoveEffect (removing an effect is always safe) as low-risk
+        # auto-apply types.
+        "RewriteSegment", "ChangeCaptionPreset", "ChangeCTA",
+        "ChangeCaptionStyle", "RemoveEffect"}
     assert data["auto_apply"]["enabled"] is False
     # workspace brand hard constraints are surfaced, never hidden
     assert data["hard_constraints"]["approved_voices"] == ["ava", "andrew"]

@@ -15,14 +15,50 @@ Two complementary mechanisms:
    keys, OAuth tokens, ``.env`` assignments, PEM private keys, bearer
    credentials, JWTs) are replaced even when they appear inside prose.
 
+3. Transport-shaped: URLs and exception text carry credentials in places the
+   first two mechanisms cannot see — ``https://user:pass@host`` userinfo,
+   ``?api_key=`` query parameters, and percent-encoded copies of a known key
+   inside an upstream error message. :func:`redact_error_text` covers those,
+   and :func:`strip_think_tags` keeps a reasoning model's private scratchpad
+   out of user-visible text.
+
 Inputs are never mutated; redacted deep copies are returned.
 """
 
 from __future__ import annotations
 
 import re
+from urllib.parse import quote, quote_plus
 
 REDACTED = "[REDACTED]"
+
+# Reasoning models (DeepSeek-R1, QwQ, o-series) return their private
+# deliberation wrapped in <think>...</think>. Two shapes matter:
+#
+#   * a closed block   — `<think>rambling</think>The answer.`
+#   * an unclosed block — a truncated response, `<think>rambling and then it
+#     hit the token cap`. There is no closing tag, so the block runs to the end
+#     of the string and the regex is anchored with ``$``.
+#
+# The unclosed shape is the one that matters: it happens on every length-
+# limited response, and a plain `.*?</think>` match silently leaves the entire
+# scratchpad in the output — straight into the script, the subtitles and the
+# TTS narration.
+_THINK_BLOCK_RE = re.compile(r"<think\b[^>]*>.*?</think>", re.IGNORECASE | re.DOTALL)
+_UNCLOSED_THINK_BLOCK_RE = re.compile(r"<think\b[^>]*>.*$", re.IGNORECASE | re.DOTALL)
+
+# `https://user:pass@host` — the userinfo component. Only http(s)/ws(s) so a
+# bare `mailto:someone@host` or an `@handle` in prose is never touched.
+_URL_USERINFO_RE = re.compile(r"((?:https?|wss?)://)([^/\s?#@]*:[^/\s?#@]*@)", re.IGNORECASE)
+
+# Credentials passed as query parameters. The parameter name must be preceded
+# by `?` or `&` and followed immediately by `=`, so `?keyword=x` and
+# `?monkey=x` are not matches — only a bare `key`/`token` parameter is.
+_SENSITIVE_QUERY_RE = re.compile(
+    r"([?&](?:api[_-]?key|apikey|access[_-]?token|auth[_-]?token|token|key|secret"
+    r"|secret[_-]?key|password|passwd|authorization|signature|sig)=)([^&#\s]+)",
+    re.IGNORECASE,
+)
 
 _PLACEHOLDERS = frozenset(
     {"", REDACTED, "****", "***", "••••", "none", "null", "undefined", "n/a", "mock"}
@@ -160,6 +196,68 @@ def _scrub_text(text: str) -> str:
     for pattern, replacement in _VALUE_PATTERNS:
         text = pattern.sub(replacement, text)
     return text
+
+
+def strip_think_tags(content: str | None, *, provider: str = "") -> str:
+    """Return provider text with any ``<think>`` scratchpad removed.
+
+    Raises ``ValueError`` when nothing is left. That is deliberate: a
+    reasoning model that answered *only* inside a think block has not answered,
+    and returning an empty string would let a blank script reach the timeline
+    and the voice-over as if it were finished content.
+
+    Paragraph breaks inside the answer survive — scripts are split on blank
+    lines and subtitles are read line by line, so only the outer
+    ``.strip()`` is applied.
+    """
+    label = f"[{provider}] " if provider else ""
+    if content is None:
+        raise ValueError(f"{label}returned empty text content")
+    if not isinstance(content, str):
+        raise TypeError(f"{label}returned non-text content: {type(content).__name__}")
+    # Ported from MoneyPrinterTurbo 1.3.7
+    # Copyright (c) 2024 Harry — MIT License
+    # https://github.com/harry0703/MoneyPrinterTurbo
+    cleaned = _THINK_BLOCK_RE.sub("", content)
+    cleaned = _UNCLOSED_THINK_BLOCK_RE.sub("", cleaned).strip()
+    if not cleaned:
+        raise ValueError(f"{label}returned empty text content")
+    return cleaned
+
+
+def redact_error_text(text: object, *, secrets: tuple[str, ...] | list[str] = ()) -> str:
+    """Scrub credentials from text that is about to be raised, logged or shown.
+
+    Exception messages from an OpenAI-compatible stack routinely embed the full
+    request URL, so a proxy configured as ``https://user:pass@gateway/v1`` or a
+    key passed as ``?api_key=`` leaks straight into the error a user sees.
+    ``secrets`` are additionally removed verbatim, plus their ``quote_plus``
+    and ``quote`` percent-encoded forms — an upstream error reports the key the
+    way the URL encoded it, not the way it was stored.
+
+    Composes with :func:`redact_secrets` rather than replacing it: known key
+    shapes (``sk-…``, JWTs, AWS keys) are already covered by ``_scrub_text``.
+    """
+    message = "" if text is None else str(text)
+    # Ported from MoneyPrinterTurbo 1.3.7
+    # Copyright (c) 2024 Harry — MIT License
+    # https://github.com/harry0703/MoneyPrinterTurbo
+    message = _URL_USERINFO_RE.sub(rf"\1{REDACTED}@{REDACTED}", message)
+    message = _SENSITIVE_QUERY_RE.sub(rf"\1{REDACTED}", message)
+    for secret in secrets:
+        message = _redact_literal(message, str(secret or ""))
+    return _scrub_text(message)
+
+
+def _redact_literal(message: str, secret: str) -> str:
+    """Remove one known secret and its percent-encoded spellings."""
+    if not secret:
+        return message
+    message = message.replace(secret, REDACTED)
+    for encoded in (quote_plus(secret), quote(secret, safe="")):
+        if encoded and encoded != secret:
+            message = message.replace(encoded, REDACTED)
+    return message
 
 
 def _is_placeholder(value: object) -> bool:

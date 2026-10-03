@@ -1,21 +1,33 @@
 """Upgrade 0014: content lineage + media assets + scenes (Work 01)."""
 
+from app.migrations.ddl import add_columns_if_missing
+
 
 def upgrade(session) -> None:
     from sqlalchemy import text
 
-    for col, ddl in (
-        ("parent_content_id", "VARCHAR(36)"),
-        ("root_content_id", "VARCHAR(36)"),
-        ("derivation_type", "VARCHAR(30)"),
-        ("lineage_version", "INTEGER NOT NULL DEFAULT 1"),
-    ):
-        # column-guarded: replay-safe on every backend (duplicate-column means applied)
-        try:
-            session.execute(text(f"ALTER TABLE content_items ADD COLUMN {col} {ddl}"))
-        except Exception as exc:  # noqa: BLE001 — see above
-            if "duplicate" not in str(exc).lower() and "exists" not in str(exc).lower():
-                raise
+    # Replay-safe on every backend, but NOT by catching the error. The old guard
+    # was ``try: ALTER ... except: ignore 'duplicate column'``. SQLite leaves the
+    # transaction usable after a failed statement so that was harmless; on
+    # PostgreSQL the failed ALTER aborts the transaction, the handler swallows it,
+    # and every later statement in this migration dies with 25P02 -- with the
+    # real error never surfacing. Reading the catalog cannot fail, so nothing is
+    # caught and nothing is poisoned.
+    #
+    # ``when_absent_table="raise"`` keeps the old loud behaviour: the previous
+    # ``except`` clause re-raised anything that was not a duplicate column, so a
+    # missing ``content_items`` used to fail here rather than be skipped.
+    add_columns_if_missing(
+        session,
+        "content_items",
+        [
+            ("parent_content_id", "VARCHAR(36)"),
+            ("root_content_id", "VARCHAR(36)"),
+            ("derivation_type", "VARCHAR(30)"),
+            ("lineage_version", "INTEGER NOT NULL DEFAULT 1"),
+        ],
+        when_absent_table="raise",
+    )
     session.execute(text("""
         CREATE INDEX IF NOT EXISTS ix_content_parent
         ON content_items (parent_content_id)

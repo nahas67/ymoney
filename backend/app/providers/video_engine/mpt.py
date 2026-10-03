@@ -30,6 +30,7 @@ from app.providers.video_engine.base import (
     RenderStatus,
     VideoEngineError,
     VideoEngineRequestInvalid,
+    VideoEngineSubmissionUnknown,
     VideoEngineUnavailable,
 )
 
@@ -49,6 +50,26 @@ def normalize_mpt_state(raw: int | None) -> str:
     return STATE_NOT_FOUND
 
 
+def submission_unknown(detail: str, req: RenderRequest) -> VideoEngineSubmissionUnknown:
+    """Build an ambiguity that says WHICH render it is about.
+
+    Work 15.8 §6. A lost response is only reconcilable if somebody can name the
+    request it belongs to, and the adapter is the only place that knows which
+    exact body went on the wire. The caller usually re-computes the same hash
+    from its own object, but "usually" is not a reconciliation key: after a
+    restart, and after any change to what the request carries, only the value the
+    adapter actually sent identifies the job the engine may have created.
+
+    ``request_fingerprint`` is read with ``getattr`` by the caller, so this
+    attribute is the adapter's contract with it -- documented here rather than
+    left as an accident.
+    """
+    error = VideoEngineSubmissionUnknown(detail)
+    error.request_fingerprint = req.request_hash()
+    error.engine = MoneyPrinterTurboAdapter.engine_name
+    return error
+
+
 class MoneyPrinterTurboAdapter(BaseVideoEngine):
     engine_name = "moneyprinterturbo"
 
@@ -66,8 +87,20 @@ class MoneyPrinterTurboAdapter(BaseVideoEngine):
         """Map transport/HTTP failures into safe, typed engine errors.
         Never include server paths or response bodies with secrets."""
         status = getattr(getattr(exc, "response", None), "status_code", None)
-        if isinstance(exc, (httpx.ConnectError, httpx.TimeoutException)):
+        # A CONNECT failure and a READ failure mean opposite things, and lumping
+        # them together is a money bug. A connect failure proves the socket
+        # never opened, so the request cannot have been delivered and a retry
+        # costs nothing. A READ timeout means the POST WAS DELIVERED and the
+        # response was lost: the engine may have accepted and billed the job, so
+        # retrying blindly buys a second render. That case is reported as
+        # SUBMISSION_UNKNOWN by the caller, never as a retryable outage.
+        if isinstance(exc, httpx.ConnectTimeout):
             return VideoEngineUnavailable(f"video engine unreachable at {settings.mpt_base_url}")
+        if isinstance(exc, (httpx.ConnectError, httpx.TimeoutException)):
+            # Context-free mapping. A read timeout is ambiguous for a SUBMIT but
+            # merely an outage for a POLL, so it stays here as a plain
+            # unavailability; :meth:`submit` applies the stricter rule.
+            return VideoEngineUnavailable(f"video engine network failure: {type(exc).__name__}")
         if status is None:
             return VideoEngineUnavailable(f"video engine network failure: {type(exc).__name__}")
         if status == 429:
@@ -164,7 +197,41 @@ class MoneyPrinterTurboAdapter(BaseVideoEngine):
         except VideoEngineError:
             raise
         except httpx.HTTPError as exc:
-            raise self._translate_http_error(exc) from exc
+            # Work 15.6 §5: a submit is BILLABLE, so the generic mapping is not
+            # strict enough here. Two families must not become a retryable
+            # outage:
+            #   * the request was DELIVERED and the answer was lost (read
+            #     timeout, dropped connection, protocol error);
+            #   * a 5xx, which can FOLLOW a successful task creation.
+            # Either way the engine may have accepted and billed the render, so
+            # the job is SUBMISSION_UNKNOWN and must be reconciled rather than
+            # resubmitted. A connect failure proves nothing was delivered and
+            # stays retryable, as does a 4xx, which definitively refused us.
+            #
+            # ``WriteTimeout`` and ``PoolTimeout`` are ``TimeoutException``s,
+            # NOT subclasses of ``WriteError``; omitting them let a
+            # partially-written body fall through as a retryable outage
+            # (Work 15.7 R9). ``WriteError`` is still listed: a socket that
+            # broke mid-body means the server may hold a partial request.
+            if isinstance(exc, (httpx.ReadTimeout, httpx.RemoteProtocolError,
+                                httpx.ReadError, httpx.WriteError,
+                                httpx.WriteTimeout, httpx.PoolTimeout)):
+                raise submission_unknown(
+                    "engine did not answer after the submit was sent; it may "
+                    "have accepted and billed the job. Reconcile the engine "
+                    "task list before any resubmit.", req) from exc
+            translated = self._translate_http_error(exc)
+            if (isinstance(translated, VideoEngineUnavailable)
+                    and not isinstance(exc, (httpx.ConnectError,
+                                             httpx.ConnectTimeout))
+                    and getattr(getattr(exc, "response", None),
+                                "status_code", 0) >= 500):
+                raise submission_unknown(
+                    f"engine returned "
+                    f"{exc.response.status_code} after the submit was sent; "
+                    "the task may have been created. Reconcile before "
+                    "resubmitting.", req) from exc
+            raise translated from exc
 
     def status(self, handle: RenderHandle) -> RenderStatus:
         try:

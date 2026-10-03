@@ -73,6 +73,283 @@ class UnknownCommandError(CommandError):
     """Raised for a type outside the approved command catalog."""
 
 
+# -- Work 13 command validators ---------------------------------------------
+# Each appends reason strings (empty == valid) and NEVER raises, so a bad
+# command is rejected through the normal `reasons` channel rather than
+# exploding mid-preview.
+
+
+def _motion_policy(caption_style: dict | None):
+    """Project a brand caption_style mapping onto the motion policy."""
+    try:
+        from app.engine.motion.policy import EffectiveMotionPolicy
+
+        caption_style = dict(caption_style or {})
+        return EffectiveMotionPolicy(
+            approved_caption_presets=tuple(caption_style.get(
+                "approved_presets") or caption_style.get("presets") or ()),
+            caption_style=caption_style,
+            motion_intensity=str(caption_style.get("motion_intensity")
+                                 or "standard"),
+            forbidden_effects=tuple(caption_style.get("forbidden_effects") or ()),
+        )
+    except Exception:
+        return None
+
+
+def _validate_motion_style_command(cmd, policy: dict | None,
+                                   reasons: list[str]) -> None:
+    from app.engine.captions.presets import UnknownPresetError, get_preset
+    from app.engine.captions.style import CaptionStyle, CaptionStyleError
+    from app.engine.motion.policy import MOTION_INTENSITIES
+
+    p = cmd.payload()
+    preset = str(p.get("preset") or "").strip()
+    style = p.get("style") or {}
+    if not preset and not isinstance(style, dict):
+        reasons.append(f"{cmd.type} requires preset and/or style")
+        return
+    motion = _motion_policy((policy or {}).get("caption_style"))
+    if preset:
+        try:
+            get_preset(preset)
+        except UnknownPresetError as exc:
+            reasons.append(str(exc))
+            return
+        if motion is not None and not motion.caption_preset_allowed(preset):
+            reasons.append(
+                f"blocked by brand rule: caption preset '{preset}' is not "
+                f"approved for this workspace")
+    if isinstance(style, dict) and style:
+        try:
+            CaptionStyle.from_dict({}).patch(style)
+        except CaptionStyleError as exc:
+            reasons.append(str(exc))
+    intensity = str(p.get("motion_intensity") or "").strip()
+    if intensity and intensity not in MOTION_INTENSITIES:
+        reasons.append(
+            f"motion_intensity {intensity!r} not in {list(MOTION_INTENSITIES)}")
+
+
+def _validate_emphasis_command(cmd, doc: dict, reasons: list[str]) -> None:
+    from app.engine.captions.emphasis import (
+        EMPHASIS_KINDS,
+        EmphasisError,
+        assert_no_sensitive_kinds,
+    )
+
+    kinds = [str(k).strip().upper() for k in (cmd.kinds or []) if str(k or "").strip()]
+    if not kinds:
+        reasons.append("HighlightKeyword requires at least one emphasis kind")
+        return
+    unknown = [k for k in kinds if k not in EMPHASIS_KINDS]
+    if unknown:
+        reasons.append(f"HighlightKeyword: unknown kind(s) {unknown}")
+        return
+    try:
+        assert_no_sensitive_kinds(kinds)
+    except EmphasisError as exc:
+        reasons.append(str(exc))
+
+
+def _validate_motion_insert_command(cmd, reasons: list[str]) -> None:
+    from app.engine.motion.lower_thirds import LOWER_THIRD_KINDS
+    from app.engine.motion.templates import (
+        MotionTemplateError,
+        get_template,
+        validate_instance,
+    )
+
+    p = cmd.payload()
+    if cmd.type == "AddLowerThird":
+        kind = str(p.get("kind") or "person").strip().lower()
+        if kind not in LOWER_THIRD_KINDS:
+            reasons.append(
+                f"AddLowerThird: unknown kind {kind!r}; "
+                f"known {sorted(LOWER_THIRD_KINDS)}")
+            return
+        template = LOWER_THIRD_KINDS[kind]
+        # The command MUST declare which fields it can vouch for. An AI
+        # command that asserts a name/role without saying where it came from is
+        # exactly the "invented metadata" case the spec forbids, so an absent
+        # or empty `known` is a rejection rather than a blank cheque.
+        known = {str(k).strip() for k in (cmd.known or []) if str(k or "").strip()}
+        if not known:
+            reasons.append(
+                "AddLowerThird must declare `known` (which of name/role/topic/"
+                "source are real) - refusing to assert unvouched metadata")
+            return
+        candidate = {k: p.get(k) for k in ("name", "role", "topic", "source")
+                     if str(p.get(k) or "").strip()}
+        bindings = {k: v for k, v in candidate.items() if k in known}
+        unvouched = sorted(set(candidate) - set(bindings))
+        if unvouched:
+            reasons.append(
+                f"AddLowerThird: {unvouched} were supplied but are not in "
+                f"`known`; dropping them rather than asserting them")
+        if not bindings:
+            reasons.append(
+                "AddLowerThird has no known metadata - refusing to invent a "
+                "name, role, topic or source")
+            return
+    else:
+        template = {"AddTitle": "title_main",
+                    "AddCallout": "callout_emphasis"}[cmd.type]
+        slot = {"AddTitle": "headline", "AddCallout": "text"}[cmd.type]
+        value = str(p.get(slot) or "").strip()
+        if not value:
+            reasons.append(f"{cmd.type} requires {slot!r}")
+            return
+        bindings = {slot: value}
+    try:
+        tpl = get_template(template)
+        validate_instance(
+            {"template": template, "bindings": bindings,
+             "start": p.get("start", 0.0),
+             "duration": p.get("duration") or tpl.default_duration},
+            metadata_available=set(bindings),
+        )
+    except MotionTemplateError as exc:
+        reasons.append(str(exc))
+
+
+def _validate_transition_command(cmd, doc: dict, reasons: list[str]) -> None:
+    from app.engine.motion.transitions import TransitionError, validate_transition
+
+    p = cmd.payload()
+    # ChangeTransition replaces an EXISTING transition; AddTransition creates
+    # one. Both resolve the same way, but ChangeTransition must find the pair.
+    type_field = "transition_type"
+    if not str(p.get(type_field) or "").strip():
+        reasons.append(f"{cmd.type} requires transition_type")
+        return
+    if not str(p.get("from_item") or "").strip():
+        reasons.append(f"{cmd.type} requires from_item")
+        return
+    try:
+        validate_transition({
+            "from_item": p.get("from_item"),
+            "to_item": p.get("to_item") or "",
+            "type": p.get(type_field),
+            "duration": p.get("duration", 0.5),
+        }, doc)
+    except TransitionError as exc:
+        reasons.append(str(exc))
+
+
+def _validate_animation_command(cmd, doc: dict, reasons: list[str]) -> None:
+    """Keyframe animation commands: closed easing, real targets, legal values."""
+    from app.engine.motion.graph import EASINGS
+
+    p = cmd.payload()
+    easing = str(p.get("easing") or "EASE_IN_OUT").strip().upper()
+    if easing not in EASINGS:
+        reasons.append(
+            f"{cmd.type}: easing {easing!r} not in {list(EASINGS)}")
+        return
+    targets = _animation_targets(cmd, doc)
+    if not targets:
+        reasons.append(
+            f"{cmd.type}: no animatable clip found on this timeline "
+            f"(targets: {sorted(_animatable_kinds(doc))})")
+        return
+    for name, value in (("from_x", p.get("from_x")), ("to_x", p.get("to_x")),
+                        ("from_y", p.get("from_y")), ("to_y", p.get("to_y"))):
+        if value is None:
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            reasons.append(f"{cmd.type}: {name} must be a number")
+            return
+        if not -4.0 <= number <= 4.0:
+            reasons.append(f"{cmd.type}: {name}={number} outside -4..4")
+            return
+    for name in ("from_opacity", "to_opacity"):
+        value = p.get(name)
+        if value is None:
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            reasons.append(f"{cmd.type}: {name} must be a number")
+            return
+        if not 0.0 <= number <= 1.0:
+            reasons.append(f"{cmd.type}: {name}={number} outside 0..1")
+            return
+    for name in ("from_scale", "to_scale"):
+        value = p.get(name)
+        if value is None:
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            reasons.append(f"{cmd.type}: {name} must be a number")
+            return
+        if not 0.01 <= number <= 8.0:
+            reasons.append(f"{cmd.type}: {name}={number} outside 0.01..8")
+            return
+
+
+#: Clip kinds a keyframe animation can target (visual + overlays).
+_ANIMATABLE_KINDS = ("video", "broll", "avatar", "text", "caption")
+
+
+def _animatable_kinds(doc: dict) -> set[str]:
+    return {str(tr.get("kind")) for tr in (doc or {}).get("tracks", [])
+            if tr.get("kind") in _ANIMATABLE_KINDS}
+
+
+def _animation_targets(cmd, doc: dict) -> list[tuple[str, str]]:
+    """``(track_kind, clip_id)`` pairs this command will animate."""
+    wanted = {str(c) for c in (cmd.clip_ids or []) if str(c or "").strip()}
+    out: list[tuple[str, str]] = []
+    for track in (doc or {}).get("tracks", []):
+        kind = str(track.get("kind") or "")
+        if kind not in _ANIMATABLE_KINDS:
+            continue
+        for clip in track.get("clips", []) or []:
+            if not wanted or str(clip.get("id")) in wanted:
+                out.append((kind, str(clip.get("id"))))
+    return out
+
+
+def _validate_effect_command(cmd, doc: dict, policy: dict | None,
+                             reasons: list[str]) -> None:
+    from app.engine.motion.effects import EffectError, validate_effect
+
+    p = cmd.payload()
+    try:
+        validated = validate_effect(p.get("effect") or {})
+    except EffectError as exc:
+        reasons.append(str(exc))
+        return
+    motion = _motion_policy((policy or {}).get("caption_style"))
+    if motion is not None and not motion.effect_allowed(validated["type"]):
+        reasons.append(
+            f"blocked by brand rule: effect '{validated['type']}' is not permitted")
+
+
+def _caption_clip_ids(doc: dict, requested) -> list[str]:
+    """Resolve target clip ids, defaulting to every caption clip."""
+    clips = [c for tr in doc.get("tracks", []) if tr.get("kind") == "caption"
+             for c in tr.get("clips", [])]
+    if requested:
+        known = {str(c.get("id")) for c in clips}
+        wanted = [str(c) for c in requested if str(c) in known]
+        return wanted
+    return [str(c.get("id")) for c in clips if c.get("id")]
+
+
+def _visual_clip_ids(doc: dict, requested, kinds=("video", "broll", "avatar")) -> list[str]:
+    clips = [c for tr in doc.get("tracks", []) if tr.get("kind") in kinds
+             for c in tr.get("clips", [])]
+    if requested:
+        known = {str(c.get("id")) for c in clips}
+        return [str(c) for c in requested if str(c) in known]
+    return [str(c.get("id")) for c in clips if c.get("id")]
+
+
 # ---------------------------------------------------------------------------
 # the union
 # ---------------------------------------------------------------------------
@@ -332,12 +609,258 @@ class ReframeScene(BaseCommand):
     description: ClassVar[str] = "Reframe scene clips around a focus point."
 
 
+# -- Work 13 typed motion commands ------------------------------------------
+# These perform REAL motion edits through the typed Work 13 schemas: nothing
+# here can emit an arbitrary ffmpeg fragment, and every payload is validated
+# by the caption/motion modules before the director plans an operation.
+
+
+@dataclass
+class ChangeCaptionStyle(BaseCommand):
+    """Set a typed caption style and/or preset on caption clips."""
+
+    preset: str = ""
+    style: dict = field(default_factory=dict)
+    clip_ids: list[str] = field(default_factory=list)
+
+    type: ClassVar[str] = "ChangeCaptionStyle"
+    risk: ClassVar[str] = "low"
+    auto_apply: ClassVar[bool] = True
+    reversible: ClassVar[bool] = True
+    artifacts: ClassVar[str] = ("captions", "brand")
+    description: ClassVar[str] = "Apply a caption preset and/or typed style."
+
+
+@dataclass
+class HighlightKeyword(BaseCommand):
+    """Recompute + store semantic emphasis for caption clips (§3)."""
+
+    clip_ids: list[str] = field(default_factory=list)
+    kinds: list[str] = field(default_factory=list)
+
+    type: ClassVar[str] = "HighlightKeyword"
+    risk: ClassVar[str] = "low"
+    auto_apply: ClassVar[bool] = False
+    reversible: ClassVar[bool] = True
+    artifacts: ClassVar[str] = ("captions",)
+    description: ClassVar[str] = "Highlight keywords/numbers in captions."
+
+
+@dataclass
+class AddLowerThird(BaseCommand):
+    """Insert a lower-third motion instance (§7)."""
+
+    kind: str = "person"
+    name: str = ""
+    role: str = ""
+    topic: str = ""
+    source: str = ""
+    start: float = 0.0
+    duration: float = 4.0
+    known: list[str] = field(default_factory=list)
+
+    type: ClassVar[str] = "AddLowerThird"
+    risk: ClassVar[str] = "medium"
+    auto_apply: ClassVar[bool] = False
+    reversible: ClassVar[bool] = True
+    artifacts: ClassVar[str] = ("text_clips", "captions")
+    description: ClassVar[str] = "Add a lower third from KNOWN metadata only."
+
+
+@dataclass
+class AddTitle(BaseCommand):
+    """Insert a TITLE motion instance (§6)."""
+
+    headline: str = ""
+    kicker: str = ""
+    start: float = 0.0
+    duration: float = 2.5
+
+    type: ClassVar[str] = "AddTitle"
+    risk: ClassVar[str] = "medium"
+    auto_apply: ClassVar[bool] = False
+    reversible: ClassVar[bool] = True
+    artifacts: ClassVar[str] = ("text_clips",)
+    description: ClassVar[str] = "Add a title/kicker motion item."
+
+
+@dataclass
+class AddCallout(BaseCommand):
+    """Insert a CALLOUT motion instance."""
+
+    text: str = ""
+    start: float = 0.0
+    duration: float = 2.5
+
+    type: ClassVar[str] = "AddCallout"
+    risk: ClassVar[str] = "medium"
+    auto_apply: ClassVar[bool] = False
+    reversible: ClassVar[bool] = True
+    artifacts: ClassVar[str] = ("text_clips",)
+    description: ClassVar[str] = "Add an emphasised callout."
+
+
+@dataclass
+class AddTransition(BaseCommand):
+    """Attach a registry-backed transition between adjacent clips (§9)."""
+
+    transition_type: str = ""
+    from_item: str = ""
+    to_item: str = ""
+    duration: float = 0.5
+
+    type: ClassVar[str] = "AddTransition"
+    risk: ClassVar[str] = "medium"
+    auto_apply: ClassVar[bool] = False
+    reversible: ClassVar[bool] = True
+    artifacts: ClassVar[str] = ("video_clips",)
+    description: ClassVar[str] = "Add a validated transition between clips."
+
+
+@dataclass
+class ApplyEffect(BaseCommand):
+    """Attach a typed visual effect to a clip (§8)."""
+
+    effect: dict = field(default_factory=dict)
+    clip_ids: list[str] = field(default_factory=list)
+
+    type: ClassVar[str] = "ApplyEffect"
+    risk: ClassVar[str] = "medium"
+    auto_apply: ClassVar[bool] = False
+    reversible: ClassVar[bool] = True
+    artifacts: ClassVar[str] = ("video_clips",)
+    description: ClassVar[str] = "Apply a registry-validated visual effect."
+
+
+@dataclass
+class RemoveEffect(BaseCommand):
+    """Remove a typed visual effect from a clip (§8)."""
+
+    effect: str = ""
+    clip_ids: list[str] = field(default_factory=list)
+
+    type: ClassVar[str] = "RemoveEffect"
+    risk: ClassVar[str] = "low"
+    auto_apply: ClassVar[bool] = True
+    reversible: ClassVar[bool] = True
+    artifacts: ClassVar[str] = ("video_clips",)
+    description: ClassVar[str] = "Remove a visual effect from clips."
+
+
+@dataclass
+class ApplyMotionPreset(BaseCommand):
+    """Apply a caption preset AND the matching motion intensity (§4, §11)."""
+
+    preset: str = ""
+    motion_intensity: str = ""
+
+    type: ClassVar[str] = "ApplyMotionPreset"
+    risk: ClassVar[str] = "low"
+    auto_apply: ClassVar[bool] = False
+    reversible: ClassVar[bool] = True
+    artifacts: ClassVar[str] = ("captions", "brand")
+    description: ClassVar[str] = "Apply a caption preset + motion intensity."
+
+
+@dataclass
+class AnimateElement(BaseCommand):
+    """Animate a clip's canonical keyframes (position + easing)."""
+
+    clip_ids: list[str] = field(default_factory=list)
+    from_x: float = 0.0
+    to_x: float = 0.5
+    from_y: float = 0.5
+    to_y: float = 0.5
+    easing: str = "EASE_IN_OUT"
+
+    type: ClassVar[str] = "AnimateElement"
+    risk: ClassVar[str] = "medium"
+    auto_apply: ClassVar[bool] = False
+    reversible: ClassVar[bool] = True
+    artifacts: ClassVar[str] = ("timeline_versions",)
+    description: ClassVar[str] = "Animate an element across the frame."
+
+
+@dataclass
+class MoveElement(BaseCommand):
+    """Move an element by keyframing position only."""
+
+    clip_ids: list[str] = field(default_factory=list)
+    from_x: float = 0.0
+    to_x: float = 0.5
+    from_y: float = 0.5
+    to_y: float = 0.5
+    easing: str = "LINEAR"
+
+    type: ClassVar[str] = "MoveElement"
+    risk: ClassVar[str] = "medium"
+    auto_apply: ClassVar[bool] = False
+    reversible: ClassVar[bool] = True
+    artifacts: ClassVar[str] = ("timeline_versions",)
+    description: ClassVar[str] = "Move an element to a position."
+
+
+@dataclass
+class AnimateOpacity(BaseCommand):
+    """Fade an element in/out with canonical opacity keyframes."""
+
+    clip_ids: list[str] = field(default_factory=list)
+    from_opacity: float = 0.0
+    to_opacity: float = 1.0
+    easing: str = "EASE_IN_OUT"
+
+    type: ClassVar[str] = "AnimateOpacity"
+    risk: ClassVar[str] = "medium"
+    auto_apply: ClassVar[bool] = False
+    reversible: ClassVar[bool] = True
+    artifacts: ClassVar[str] = ("timeline_versions",)
+    description: ClassVar[str] = "Fade an element with keyframes."
+
+
+@dataclass
+class AnimateScale(BaseCommand):
+    """Scale an element up/down with canonical scale keyframes."""
+
+    clip_ids: list[str] = field(default_factory=list)
+    from_scale: float = 1.0
+    to_scale: float = 1.4
+    easing: str = "EASE_OUT"
+
+    type: ClassVar[str] = "AnimateScale"
+    risk: ClassVar[str] = "medium"
+    auto_apply: ClassVar[bool] = False
+    reversible: ClassVar[bool] = True
+    artifacts: ClassVar[str] = ("timeline_versions",)
+    description: ClassVar[str] = "Scale an element with keyframes."
+
+
+@dataclass
+class ChangeTransition(AnimateElement):
+    """Replace the transition on an existing clip pair."""
+
+    transition_type: str = ""
+    from_item: str = ""
+    to_item: str = ""
+    duration: float = 0.5
+
+    type: ClassVar[str] = "ChangeTransition"
+    risk: ClassVar[str] = "medium"
+    auto_apply: ClassVar[bool] = False
+    reversible: ClassVar[bool] = True
+    artifacts: ClassVar[str] = ("video_clips",)
+    description: ClassVar[str] = "Change an existing clip transition."
+
+
 COMMAND_TYPES: dict[str, type[BaseCommand]] = {
     cls.type: cls
     for cls in (
         ReplaceAsset, RegenerateScene, RewriteHook, RewriteSegment, ChangeVoice,
         ChangeCaptionPreset, ChangeMusic, ChangeCTA, ChangeStyle, ChangeDuration,
         ChangeAspectRatio, CreateVariant, ApplyBrandPreset, ReframeScene,
+        ChangeCaptionStyle, HighlightKeyword, AddLowerThird, AddTitle,
+        AddCallout, AddTransition, ApplyEffect, RemoveEffect, ApplyMotionPreset,
+        AnimateElement, MoveElement, AnimateOpacity, AnimateScale,
+        ChangeTransition,
     )
 }
 
@@ -349,6 +872,10 @@ CreativeCommand = (
     ReplaceAsset | RegenerateScene | RewriteHook | RewriteSegment | ChangeVoice
     | ChangeCaptionPreset | ChangeMusic | ChangeCTA | ChangeStyle | ChangeDuration
     | ChangeAspectRatio | CreateVariant | ApplyBrandPreset | ReframeScene
+    | ChangeCaptionStyle | HighlightKeyword | AddLowerThird | AddTitle
+    | AddCallout | AddTransition | ApplyEffect | RemoveEffect | ApplyMotionPreset
+    | AnimateElement | MoveElement | AnimateOpacity | AnimateScale
+    | ChangeTransition
 )
 
 
@@ -552,6 +1079,28 @@ def validate_command(cmd: BaseCommand, *, session, workspace_id: str,
             reasons.append(
                 f"blocked by brand rule: brand preset '{preset}' is not configured "
                 f"(available: {known})")
+    # -- Work 13 motion commands -------------------------------------------
+    # Validation delegates to the Work 13 schemas, so an invalid style, an
+    # unknown effect or a transition that does not fit its clips is refused
+    # HERE, before preview or any timeline mutation.
+    elif cmd.type in ("ChangeCaptionStyle", "ApplyMotionPreset"):
+        _validate_motion_style_command(cmd, policy, reasons)
+    elif cmd.type == "HighlightKeyword":
+        _validate_emphasis_command(cmd, doc, reasons)
+    elif cmd.type in ("AddLowerThird", "AddTitle", "AddCallout"):
+        _validate_motion_insert_command(cmd, reasons)
+    elif cmd.type == "AddTransition":
+        _validate_transition_command(cmd, doc, reasons)
+    elif cmd.type == "ApplyEffect":
+        _validate_effect_command(cmd, doc, policy, reasons)
+    elif cmd.type == "RemoveEffect":
+        if not str(p.get("effect") or "").strip():
+            reasons.append("RemoveEffect requires effect")
+    elif cmd.type in ("AnimateElement", "MoveElement", "AnimateOpacity",
+                      "AnimateScale"):
+        _validate_animation_command(cmd, doc, reasons)
+    elif cmd.type == "ChangeTransition":
+        _validate_transition_command(cmd, doc, reasons)
     elif cmd.type == "ChangeDuration":
         seconds = float(p.get("seconds") or 0.0)
         minimum = float((policy or {}).get("min_duration_seconds") or 0.0)

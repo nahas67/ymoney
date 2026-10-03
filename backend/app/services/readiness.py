@@ -14,6 +14,8 @@ actually working. Checks probe REAL services — no fake providers:
   trends         — at least one enabled source reachable (best-effort, 8-source registry)
   publishing     — per-platform account/relay status (non-blocking)
   public_base    — public URL reachable for PULL publishers like Instagram (non-blocking)
+  media_intel    — media-intelligence provider availability (non-blocking; an
+                   install with no ML backends is a valid honest state)
 
 Stale after 24h; START refuses when blocking checks fail unless the operator
 explicitly overrides (audited). Every check returns latency_ms + remediation
@@ -49,6 +51,7 @@ CHECK_TIERS: dict[str, int] = {
     "trends": 1,
     "publishing": 1,
     "public_base": 1,
+    "media_intel": 1,
 }
 
 _YTDLP_UPGRADE_COMMAND = 'python -m pip install -U "yt-dlp[default]"'
@@ -295,6 +298,41 @@ def _check_public_base() -> tuple[bool, str, bool, str]:
         return False, f"probe error: {type(exc).__name__}", False, "Check YMONEY_PUBLIC_BASE_URL."
 
 
+def _check_media_intel() -> tuple[bool, str, bool, str]:
+    # Work 12 (Lane A). Non-blocking on purpose: an install with no ML backends
+    # is a valid, honest configuration -- the editor simply shows every
+    # intelligence capability as read-only with its reason. ffmpeg-backed kinds
+    # (enhancement / denoise) are reported separately from the model ones.
+    try:
+        from app.engine.intel import ffmpeg_util
+        from app.engine.intel import registry as intel_registry
+
+        ready = {k for k in intel_registry.CAPABILITY_KINDS
+                 if intel_registry.resolve(k)[0] is not None}
+        missing = [k for k in intel_registry.CAPABILITY_KINDS if k not in ready]
+        has_ffmpeg = ffmpeg_util.ffmpeg_available()
+        detail = (f"{len(ready)}/{len(intel_registry.CAPABILITY_KINDS)} intel capabilities ready"
+                  f"; ffmpeg {'found' if has_ffmpeg else 'MISSING'}")
+        if not ready:
+            return (
+                False,
+                f"no media-intelligence provider is installed ({', '.join(missing)})",
+                False,
+                "ffmpeg-backed enhancement/denoise work with no extra install; the rest need their "
+                "optional backend on the worker host (see docs/oss/MEDIA_INTEL_LICENSES.md).",
+            )
+        if missing:
+            return (
+                True,
+                f"{detail}; unavailable: {', '.join(missing)}",
+                False,
+                "",
+            )
+        return True, detail, False, ""
+    except Exception as exc:
+        return False, f"probe error: {type(exc).__name__}", False, "Check the intel registry import."
+
+
 def run_readiness(force_refresh: bool = True) -> dict:
     checks = []
     for cid, fn in [
@@ -309,6 +347,7 @@ def run_readiness(force_refresh: bool = True) -> dict:
         ("trends", _check_trends),
         ("publishing", _check_publishing),
         ("public_base", _check_public_base),
+        ("media_intel", _check_media_intel),
     ]:
         start = time.perf_counter()
         try:

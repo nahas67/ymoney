@@ -109,7 +109,14 @@ class BrollResearcherAgent(BaseAgent):
                     self.step_failed(str(exc)[:150])
                     raise
                 self.step_done("ok", path)
-                return {"summary": "generated AI B-roll clip", "path": path, "source": "ai"}
+                # Work 15.7: the AI-generate branch recorded NO cost at all. The
+                # ``server`` backend is a billed GPU render, so its cost is now
+                # booked by ``providers/broll.py`` as an estimate -- or as an
+                # UNKNOWN-exposure event when the renderer never reports a
+                # price. ``billable`` says which one happened so the caller does
+                # not have to guess from a silent ledger.
+                return {"summary": "generated AI B-roll clip", "path": path,
+                        "source": "ai", "billable": True}
             vid = video_id.strip()
             if not vid:
                 if not (query or "").strip():

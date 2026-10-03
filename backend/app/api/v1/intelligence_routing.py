@@ -140,6 +140,25 @@ def routing_health(ws: Workspace = Depends(_workspace_or_404("viewer"))):
     return {"providers": default_router().health()}
 
 
+@intelligence_router.get("/routing/chains")
+def routing_chains(ws: Workspace = Depends(_workspace_or_404("viewer"))):
+    """Recent routed executions, leg by leg (Work 15.8 §12).
+
+    An operator needs to see what a routed request ACTUALLY did: which tier and
+    provider each leg chose, whether it ran locally or against a paid gateway,
+    how many attempts it cost, and why it stopped. The chain record is
+    in-process and bounded, which is the right scope for a diagnostic view --
+    durable money facts live in the incident list and the cost ledger.
+    """
+    from app.engine.intelligence.router import chain_log
+
+    return {
+        "chains": redact_secrets(chain_log(ws.id))[-50:],
+        "note": ("in-process and bounded; the durable record of what may have "
+                 "been billed is the incidents endpoint and the cost ledger"),
+    }
+
+
 @intelligence_router.post("/context/budget")
 def run_budget(body: BudgetBody, ws: Workspace = Depends(_workspace_or_404("member"))):
     manager = _budget_store(ws.id)

@@ -47,6 +47,26 @@ class LipSyncJob(Base, PKMixin, TimestampMixin):
     adapter_job_id: Mapped[str] = mapped_column(String(80), default="")
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # --- Work 15.8 §7: three facts that used to be conflated into two -------
+    # `status` above is the BUSINESS status (QUEUED|RUNNING|SUCCEEDED|FAILED|
+    # CANCELLED|TIMEOUT) and stays exactly that: the render pipeline, the API and
+    # the frontend all read it and must not start interpreting a state they have
+    # no business interpreting.
+    #
+    # Before this, "may this job already have been billed?" lived ONLY inside
+    # `cost_json`, so an operator could not filter for it -- they had to fetch
+    # every row and parse arbitrary JSON to find the ones that matter. These two
+    # columns hold the CANONICAL vocabularies (SubmissionState and CostOutcome)
+    # rather than new spellings:
+    #
+    #   status=FAILED, execution_outcome=SUBMISSION_UNKNOWN,
+    #   cost_outcome=UNKNOWN_EXPOSURE
+    #
+    # is the honest rendering of one event: the job failed to produce a video,
+    # the submit may already have been billed, and nobody knows how much.
+    execution_outcome: Mapped[str] = mapped_column(String(24), default="",
+                                                   index=True)
+    cost_outcome: Mapped[str] = mapped_column(String(24), default="", index=True)
 
 
 __all__ = ["LIPSYNC_STATUSES", "LipSyncJob"]

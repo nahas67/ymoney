@@ -10,6 +10,8 @@ import pytest
 from app.providers.images import ImageProviderError, XkiroImageProvider
 
 
+
+
 def test_snap_size_landscape_wide():
     assert XkiroImageProvider._snap_size("1024x576") == "1792x1024"
 
@@ -119,3 +121,18 @@ def test_generate_raises_on_failed_job(monkeypatch):
 def test_healthy_false_without_key():
     p = XkiroImageProvider(base_url="https://x.test/v1", api_key="")
     assert p.healthy() is False
+
+# ---------------------------------------------------------------------------
+# Work 15.9 1: billable lanes need an explicit budget owner.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _owner_for_billable_lanes(billable_workspace):
+    """This module drives BILLABLE provider lanes.
+
+    A billable call with no budget owner is now REFUSED before the request
+    leaves -- correct product behaviour. These tests opt into a synthetic
+    workspace scope explicitly rather than the product growing a loophole.
+    """
+    yield billable_workspace

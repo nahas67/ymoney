@@ -104,12 +104,301 @@ def _escape_fontfile(path: str) -> str:
             .replace(",", "\\,").replace("'", "\\'"))
 
 
+def _escape_filter_value(value: str) -> str:
+    """Escape an unquoted filter-graph option value (W11.5 C-F4).
+
+    ``color``/``x``/``y`` come from timeline clip dicts (workspace-member
+    controlled). An unescaped ``:`` breaks out of the ``drawtext`` option
+    into a new filter option; ``'``, ``,``, ``[``/``]`` and ``;`` break the
+    graph structure. Backslash first so escaping is idempotent-safe.
+    """
+    return (
+        str(value or "")
+        .replace("\\", "\\\\")
+        .replace("'", "\\'")
+        .replace(":", "\\:")
+        .replace(",", "\\,")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
+        .replace(";", "\\;")
+    )
+
+
+def _safe_fontcolor(color: str) -> str:
+    """Named colors and #hex only; anything else falls back to white."""
+    import re
+
+    candidate = str(color or "").strip()
+    if re.fullmatch(r"#[0-9a-fA-F]{3,8}|[A-Za-z]+", candidate):
+        return candidate
+    return "white"
+
+
 def _srt_time(sec: float) -> str:
     ms = max(0, int(round(sec * 1000)))
     h, rem = divmod(ms, 3600000)
     m, rem = divmod(rem, 60000)
     s, ms = divmod(rem, 1000)
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def _caption_is_styled(clip: dict) -> bool:
+    """True when a caption carries ANY Work 13 styling/animation/word timing.
+
+    Used to keep the pre-Work-13 render byte-for-byte identical for plain
+    captions, while routing everything new through the typed builder.
+    """
+    text = clip.get("text")
+    if isinstance(text, dict) and text:
+        return True
+    return bool(clip.get("word_level") or clip.get("words") or clip.get("keyframes"))
+
+
+def _resolve_caption_style(clip: dict):
+    """preset -> (preset, resolved style) for a caption clip."""
+    from app.engine.captions.presets import resolve_preset_chain
+
+    text = clip.get("text") or {}
+    preset_key = str(text.get("preset") or "minimal").strip().lower() or "minimal"
+    try:
+        return resolve_preset_chain(preset_key, clip_patch={
+            k: v for k, v in text.items()
+            if k not in ("preset", "max_chars_per_line", "max_lines")
+        })
+    except Exception:
+        # An unknown/invalid preset degrades to the default look rather than
+        # failing the whole render; QC reports it separately.
+        from app.engine.captions.presets import get_preset
+
+        return get_preset("minimal"), get_preset("minimal").style
+
+
+def _caption_context(doc: dict, workspace_id: str, db) -> dict:
+    """Per-clip word timings + emphasis, read from STORED Work 12 rows.
+
+    Returns empty maps rather than raising: a render must never fail because
+    intelligence evidence is missing, it just renders without word-level
+    animation.
+    """
+    words_by_clip: dict[str, list] = {}
+    emphasis_by_clip: dict[str, list] = {}
+    try:
+        from app.engine.captions.emphasis import CaptionEmphasisEngine
+        from app.engine.captions.words import load_word_timings
+    except Exception:
+        return {"words_by_clip": words_by_clip, "emphasis_by_clip": emphasis_by_clip}
+    engine = CaptionEmphasisEngine()
+    for track in doc.get("tracks", []) or []:
+        if track.get("kind") != "caption":
+            continue
+        for clip in track.get("clips", []) or []:
+            clip_id = str(clip.get("id") or "")
+            if not clip_id:
+                continue
+            try:
+                start = float(clip.get("start", 0.0))
+                end = start + float(clip.get("duration", 0.0))
+            except (TypeError, ValueError):
+                continue
+            source = load_word_timings(
+                db, workspace_id,
+                asset_id=str(clip.get("source", {}).get("asset_id") or "") or None,
+            )
+            if not source.available:
+                continue
+            inside = [w for w in source.words if w.end_s > start and w.start_s < end]
+            if not inside:
+                continue
+            words_by_clip[clip_id] = inside
+            text = str(clip.get("name") or "")
+            if text:
+                emphasis_by_clip[clip_id] = engine.emphasize(text)
+    return {"words_by_clip": words_by_clip, "emphasis_by_clip": emphasis_by_clip}
+
+
+def _effect_context(doc: dict, workspace_id: str, db) -> dict:
+    """Tracking/mask evidence for effects, plus the effective safe box.
+
+    Never raises. An effect that needs evidence it does not have declines to
+    emit, and the render records a warning instead of faking the effect.
+    """
+    ctx: dict = {"safe_box": {}}
+    try:
+        from app.engine.motion.policy import resolve_motion_policy
+
+        policy = resolve_motion_policy(db, workspace_id)
+        ctx["safe_box"] = dict(policy.safe_zone or {})
+        ctx["policy"] = policy
+    except Exception:
+        pass
+    asset_id = ""
+    for track in doc.get("tracks", []) or []:
+        if track.get("kind") not in ("video", "broll", "avatar"):
+            continue
+        for clip in track.get("clips", []) or []:
+            found = str((clip.get("source") or {}).get("asset_id") or "")
+            if found:
+                asset_id = found
+                break
+        if asset_id:
+            break
+    if asset_id:
+        try:
+            from app.engine.motion import tracking
+
+            summary = tracking.evidence_summary(db, workspace_id, asset_id)
+            ctx["evidence"] = summary
+            ctx["subject_mask_key"] = summary.get("subject_mask")
+            ctx["background_mask_key"] = summary.get("subject_mask")
+            # Resolve the mask to a real file through the storage boundary.
+            # Without it the composite effect reports NOT_AVAILABLE rather than
+            # pretending to have blurred a background.
+            mask_asset_id = _mask_asset_id(db, workspace_id, asset_id)
+            if mask_asset_id:
+                ctx["subject_mask_asset_id"] = mask_asset_id
+                try:
+                    from app.services.storage import managed_path
+
+                    resolved = managed_path(workspace_id, mask_asset_id)
+                except Exception:
+                    resolved = None
+                if resolved is not None:
+                    from pathlib import Path as _Path
+
+                    candidate = _Path(str(resolved))
+                    if candidate.exists():
+                        ctx["subject_mask_path"] = str(candidate)
+        except Exception:
+            pass
+    return ctx
+
+
+def _mask_asset_id(db, workspace_id: str, asset_id: str) -> str:
+    """The newest Work 12 subject mask for an asset, workspace-scoped."""
+    try:
+        from app.engine.intel import reframe as _reframe
+
+        mask = _reframe.find_mask(db, workspace_id, asset_id, kind="PERSON")
+    except Exception:
+        return ""
+    return str(getattr(mask, "mask_asset_id", "") or "") if mask else ""
+
+
+def _caption_keyframes(clip: dict, warnings: list[str]):
+    """Validated, time-ordered keyframes for a clip (Work 13.1 §3).
+
+    Returns ``(frames, problems)``. Invalid frames are reported and excluded so
+    a malformed keyframe cannot produce an unrenderable graph -- it is dropped
+    and named in the render warnings instead.
+    """
+    raw = clip.get("keyframes")
+    if not raw:
+        return [], []
+    try:
+        duration = float(clip.get("duration", 0.0))
+    except (TypeError, ValueError):
+        duration = 0.0
+    from app.engine.motion.graph import validate_keyframes
+
+    frames, problems = validate_keyframes(raw, clip_duration=duration)
+    for problem in problems:
+        warnings.append(
+            f"clip {clip.get('id')!r} keyframe {problem}")
+    return frames, problems
+
+
+def _plan_transitions(doc: dict, segments: list[dict]):
+    from app.engine.motion.graph import plan_transitions
+
+    return plan_transitions(doc, segments)
+
+
+def _build_visual_join(vlabels, durations, transition_plan):
+    """Build the visual join, using the registry's xfade builder."""
+    from app.engine.motion.graph import build_visual_join
+    from app.engine.motion.transitions import build_transition_filter
+
+    return build_visual_join(
+        vlabels, durations, transition_plan,
+        xfade_builder=lambda spec, offset: build_transition_filter(
+            spec, offset_s=offset),
+    )
+
+
+def _order_effects(effects):
+    from app.engine.motion.graph import order_effects
+
+    return order_effects(effects)
+
+
+def _apply_keyframe_geometry(vf: str, frames: list[dict], *, width: int,
+                             height: int) -> str:
+    """Append a time-varying crop driven by canonical keyframes.
+
+    ``crop`` accepts ``t`` in its expressions, so this produces real motion
+    from stored configuration. The keyframe times are clip-local and the
+    segment is already trimmed to the clip, so ``t`` lines up with the
+    canonical timeline without any extra offset.
+    """
+    from app.engine.motion.graph import evaluate_keyframes
+
+    crop_w, cw = evaluate_keyframes(frames, "crop_width", default=float(width))
+    crop_h, ch = evaluate_keyframes(frames, "crop_height", default=float(height))
+    crop_x, cx = evaluate_keyframes(frames, "crop_x", default=0.0)
+    crop_y, cy = evaluate_keyframes(frames, "crop_y", default=0.0)
+    if not (crop_w or crop_h or crop_x or crop_y):
+        return vf
+    w = crop_w or f"{cw:.0f}"
+    h = crop_h or f"{ch:.0f}"
+    x = crop_x or f"{cx:.0f}"
+    y = crop_y or f"{cy:.0f}"
+    return (vf + f",crop=w='max(16,{w})':h='max(16,{h})'"
+            f":x='max(0,{x})':y='max(0,{y})'")
+
+
+def _plan_composite_effect(effect: dict, ctx: dict, clip: dict):
+    """Plan a composite effect, returning ``(plan, extra_input_args)``.
+
+    The extra ``-i`` arguments are returned separately so the caller can append
+    them to the shared input list in the right order.
+    """
+    from app.engine.motion.graph import COMPOSITE_EFFECTS, plan_composite
+
+    if str(effect.get("type") or "").upper() not in COMPOSITE_EFFECTS:
+        from app.engine.motion.graph import CompositePlan
+
+        return CompositePlan(key=str(effect.get("type") or "")), []
+    plan = plan_composite(effect, ctx)
+    inputs: list[tuple[str, ...]] = []
+    if plan.available and plan.input_args:
+        inputs.append(tuple(plan.input_args))
+    return plan, inputs
+
+
+def _build_effect(effect: dict, ctx: dict):
+    """Validate + build one effect filter, raising on an invalid definition."""
+    from app.engine.motion.effects import build_effect_filter
+
+    return build_effect_filter(effect, ctx)
+
+
+def build_caption_filters(**kwargs):
+    """Thin re-export of the Work 13 caption builder (single rendering path).
+
+    Imported lazily inside the render loop so this module keeps no import-time
+    dependency on the caption engine.
+    """
+    from app.engine.captions.filters import build_caption_filters as _build
+
+    return _build(**kwargs)
+
+
+def resolve_caption_font(family: str = "") -> str | None:
+    """Font for caption/text overlays. Delegates to the shared resolver so the
+    Work 13 builder and this renderer cannot drift apart."""
+    from app.engine.captions.ffmpeg_escape import resolve_font as _shared
+
+    return _shared(family)
 
 
 def visual_segments(doc: dict, resolver) -> list[dict]:
@@ -170,6 +459,15 @@ def render_timeline(workspace_id: str, db, doc: dict, *, out_name: str = "edit.m
     if font is None:
         warnings.append("no render font found — text overlays and captions skipped")
 
+    # -- Work 13 wiring ----------------------------------------------------
+    # The caption / motion / effect engines are EXTENSIONS of this renderer:
+    # one render path, one font dependency, and one escaping implementation
+    # (app.engine.captions.ffmpeg_escape, which this module's helpers delegate
+    # to so there is a single audited copy).
+    effect_ctx = _effect_context(doc, workspace_id, db)
+    safe_box = dict(effect_ctx.get("safe_box") or {})
+    caption_ctx = _caption_context(doc, workspace_id, db)
+
     tmp = Path(tempfile.mkdtemp(prefix="ym-edit-"))
     inputs: list[str] = []
     n_inputs = 0  # ordinal of -i options (NOT argv position)
@@ -201,11 +499,83 @@ def render_timeline(workspace_id: str, db, doc: dict, *, out_name: str = "edit.m
                 vf += f",fade=t=in:st=0:d={seg['fade_in']:.3f}"
             if seg["fade_out"] > 0:
                 vf += f",fade=t=out:st={max(0.0, dur - seg['fade_out']):.3f}:d={seg['fade_out']:.3f}"
+            # Work 13 §8: typed, registry-validated effects, applied in the
+            # order they were stored on the clip. A refused or composite effect
+            # is REPORTED in warnings and skipped -- it never corrupts the
+            # graph, and it is never silently dropped.
+            seg_clip = seg.get("clip") or {}
+            # Work 13.1 §4: a composite effect is a real multi-input graph, so
+            # it REPLACES the segment's start label instead of being appended to
+            # a single-input chain. Unavailable (e.g. no Work 12 mask) is an
+            # explicit NOT_AVAILABLE warning, never a silent skip.
+            chain_in = f"[{idx}:v]"
+            # Work 13.1 §3: canonical keyframes become a time-varying crop, so a
+            # keyframed clip really moves/scales instead of only being stored.
+            kf_frames, _kf_problems = _caption_keyframes(seg_clip, warnings)
+            if kf_frames:
+                vf = _apply_keyframe_geometry(vf, kf_frames, width=width,
+                                              height=height)
+            ordered_effects, order_problems = _order_effects(
+                seg_clip.get("effects") or [])
+            warnings.extend(
+                f"clip {seg_clip.get('id')!r} {problem}"
+                for problem in order_problems)
+            for effect in ordered_effects:
+                kind = str(effect.get("type") or "").upper()
+                from app.engine.motion.graph import COMPOSITE_EFFECTS as _COMPOSITE
+
+                if kind in _COMPOSITE:
+                    composite, extra_inputs = _plan_composite_effect(
+                        effect, effect_ctx, seg_clip)
+                    if composite.available and extra_inputs:
+                        # The graph must reference the REAL input ordinal that
+                        # _add_input returns, not a synthetic label.
+                        mask_idx = _add_input(*extra_inputs[0])
+                        for fragment in composite.filters:
+                            fc.append(fragment
+                                      .replace("{IN}", chain_in)
+                                      .replace(f"[{composite.input_label}:v]",
+                                               f"[{mask_idx}:v]"))
+                        chain_in = f"[{composite.out_suffix}{i}]"
+                        continue
+                    if not composite.available:
+                        warnings.append(
+                            f"NOT_AVAILABLE: {kind} on clip "
+                            f"{seg_clip.get('id')!r} - {composite.reason}")
+                    continue
+                try:
+                    built = _build_effect(effect, effect_ctx)
+                except Exception as exc:  # noqa: BLE001 - a bad effect is a warning
+                    warnings.append(
+                        f"effect on clip {seg_clip.get('id')!r} refused: {exc}")
+                    continue
+                if not built:
+                    warnings.append(
+                        f"effect {kind} on clip {seg_clip.get('id')!r} produced "
+                        f"no filter (evidence or prerequisites missing)")
+                    continue
+                vf += f",{built}"
             vf += ",format=yuv420p"
-            fc.append(f"[{idx}:v]{vf}[v{i}]")
+            fc.append(f"{chain_in}{vf}[v{i}]")
         vlabels.append(f"[v{i}]")
 
-    fc.append(f"{''.join(vlabels)}concat=n={len(vlabels)}:v=1:a=0[vcat]")
+    # Work 13.1 §1: real transitions. When any adjacent segment pair carries a
+    # validated transition, the flat `concat` is replaced by a pairwise `xfade`
+    # ladder whose offsets come from the canonical clip timing. Audio is built
+    # separately below and is NOT affected, which is what keeps A/V in sync.
+    transition_plan, transition_warnings = _plan_transitions(doc, segments)
+    warnings.extend(transition_warnings)
+    join = _build_visual_join(
+        vlabels,
+        [float(seg.get("duration", 0.0)) for seg in segments],
+        transition_plan,
+    )
+    fc.extend(join.filters)
+    warnings.extend(join.warnings)
+    for note in join.applied:
+        warnings.append(
+            f"transition {note['type']} applied at offset {note['offset']}s "
+            f"({note['duration']}s)")
 
     # audio: voice/music/sfx delayed into place, mixed over full-duration silence
     audio_tracks = [dict(c) for tr in doc.get("tracks", [])
@@ -254,7 +624,8 @@ def render_timeline(workspace_id: str, db, doc: dict, *, out_name: str = "edit.m
                 # comma-free window expression (filter parser splits bare commas)
                 window = f"gte(t\\,{t0:.3f})*lte(t\\,{t1:.3f})"
                 fc.append(f"{vcur}drawtext=fontfile='{font_esc}':text='{_escape_drawtext(content)}':"
-                          f"fontsize={size}:fontcolor={color}:x={x}:y={y}:"
+                          f"fontsize={size}:fontcolor={_safe_fontcolor(color)}:"
+                          f"x={_escape_filter_value(x)}:y={_escape_filter_value(y)}:"
                           f"enable='{window}'[vtxt{n_text}]")
                 vcur = f"[vtxt{n_text}]"
                 n_text += 1
@@ -264,13 +635,47 @@ def render_timeline(workspace_id: str, db, doc: dict, *, out_name: str = "edit.m
             line = (c.get("name") or "").strip()
             if not line:
                 continue
-            t0, t1 = float(c["start"]), float(c["start"]) + float(c["duration"])
-            window = f"gte(t\\,{t0:.3f})*lte(t\\,{t1:.3f})"
-            fc.append(f"{vcur}drawtext=fontfile='{font_esc}':text='{_escape_drawtext(line)}':"
-                      f"fontsize=56:fontcolor=white:borderw=2:bordercolor=black:"
-                      f"x=(w-text_w)/2:y=h*0.78:"
-                      f"enable='{window}'[vcap{j}]")
-            vcur = f"[vcap{j}]"
+            # Work 13: a caption that carries ANY Work 13 styling, animation or
+            # word timing goes through the typed builder. A caption with none of
+            # those keeps the legacy hardcoded path byte-for-byte, so every
+            # pre-Work-13 timeline renders exactly as it did before.
+            if not _caption_is_styled(c):
+                t0, t1 = float(c["start"]), float(c["start"]) + float(c["duration"])
+                window = f"gte(t\\,{t0:.3f})*lte(t\\,{t1:.3f})"
+                fc.append(f"{vcur}drawtext=fontfile='{font_esc}':text='{_escape_drawtext(line)}':"
+                          f"fontsize=56:fontcolor=white:borderw=2:bordercolor=black:"
+                          f"x=(w-text_w)/2:y=h*0.78:"
+                          f"enable='{window}'[vcap{j}]")
+                vcur = f"[vcap{j}]"
+                continue
+            preset, style = _resolve_caption_style(c)
+            words = caption_ctx.get("words_by_clip", {}).get(str(c.get("id"))) or []
+            word_level = bool(c.get("word_level")) and bool(words)
+            plan = build_caption_filters(
+                label_in=vcur.strip("[]"),
+                caption=c,
+                style=style,
+                width=width,
+                height=height,
+                safe_box=safe_box,
+                max_chars_per_line=int((c.get("text") or {}).get(
+                    "max_chars_per_line", preset.max_chars_per_line)),
+                max_lines=int((c.get("text") or {}).get(
+                    "max_lines", preset.max_lines)),
+                words=words,
+                word_level=word_level,
+                emphasis=caption_ctx.get("emphasis_by_clip", {}).get(
+                    str(c.get("id"))) or [],
+                font_family=str((c.get("text") or {}).get("font") or style.font or ""),
+                keyframes=_caption_keyframes(c, warnings)[0],
+                label_prefix=f"vcap{j}",
+            )
+            for built in plan.filters:
+                fc.append(built)
+            for note in plan.warnings:
+                warnings.append(f"caption {c.get('id')!r}: {note}")
+            if plan.chains:
+                vcur = f"[{plan.chains[-1][1]}]"
 
     out_path = tmp / out_name
     cmd = ([ffmpeg, "-y", *inputs, "-filter_complex", ";".join(fc),
@@ -279,7 +684,12 @@ def render_timeline(workspace_id: str, db, doc: dict, *, out_name: str = "edit.m
             "-c:a", "aac", "-shortest", str(out_path)])
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     if proc.returncode != 0 or not out_path.exists():
-        raise TimelineRenderError(f"ffmpeg failed: {(proc.stderr or '')[-500:]}")
+        # Include the generated graph in the failure: an ffmpeg "matches no
+        # streams" / "no such filter" error is otherwise untraceable.
+        raise TimelineRenderError(
+            f"ffmpeg failed: {(proc.stderr or '')[-500:]}\n"
+            f"-- filter_complex --\n{';'.join(fc)}"
+        )
     from app.services.storage import probe_metadata
 
     meta = probe_metadata(out_path)

@@ -36,7 +36,7 @@ def upgrade(session) -> None:
             replacement VARCHAR(200) NOT NULL DEFAULT '',
             target_languages JSON NOT NULL DEFAULT '[]',
             kind VARCHAR(20) NOT NULL DEFAULT 'terminology',
-            case_sensitive BOOLEAN NOT NULL DEFAULT 0
+            case_sensitive BOOLEAN NOT NULL DEFAULT FALSE
         )
     """))
     session.execute(text("""

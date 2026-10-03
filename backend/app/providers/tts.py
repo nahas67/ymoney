@@ -10,6 +10,14 @@ Providers (selected via TTS_PROVIDER or per-request):
 
 The provider returns raw audio bytes + a duration probe; callers decide how to
 persist the artifact (storage boundary owns paths).
+
+Work 15.7: every remote ``/audio/speech`` submit goes through
+:class:`~app.services.paid_executor.PaidProviderExecutor`. ElevenLabs bills per
+character, and the operator servers (Kokoro / Chatterbox / Qwen3) are billable
+whenever their base URL points at a remote host -- the credential that holds
+that URL is a paid-capability credential. The budget gate therefore runs
+BEFORE the POST, and a lost response is recorded as an UNKNOWN exposure rather
+than a flat ``TTSError`` the caller cannot distinguish from a refusal.
 """
 
 from __future__ import annotations
@@ -18,6 +26,25 @@ import abc
 import math
 import struct
 from dataclasses import dataclass
+
+from app.services.paid_executor import (
+    IdempotencySupport,
+    PaidJobError,
+    PaidProviderExecutor,
+    PaidSubmissionUnconfirmed,
+    RemoteSubmission,
+)
+from app.services.paid_provider import (
+    PaidOperation,
+    SpendAuthority,
+    absorb_paid_failure,
+    paid_event,
+    paid_operation,
+)
+
+#: Ledger category for a synthesis. "tts", so a dub costs against the same
+#: daily cap as everything else the workspace buys.
+COST_CATEGORY = "tts"
 
 
 class TTSError(Exception):
@@ -189,16 +216,11 @@ class KokoroTTSProvider(BaseTTSProvider):
     def synthesize(self, text: str, *, voice: str = "", rate: float = 1.0,
                    volume: float = 1.0, language: str = "",
                    exaggeration: float = 0.5, clone_from: str = "") -> TTSResult:
-        import httpx
-
         text = (text or "").strip()
         if not text:
             raise TTSError("text is empty")
         speed = max(0.25, min(4.0, float(rate or 1.0)))
-        headers = {"Content-Type": "application/json"}
         key = self._key()
-        if key:
-            headers["Authorization"] = f"Bearer {key}"
         payload = {
             "model": "kokoro",
             "input": text,
@@ -206,14 +228,11 @@ class KokoroTTSProvider(BaseTTSProvider):
             "response_format": "mp3",
             "speed": speed,
         }
-        try:
-            resp = httpx.post(f"{self.base_url}/audio/speech", json=payload,
-                              headers=headers, timeout=180)
-        except httpx.HTTPError as exc:
-            raise TTSError(f"kokoro server unreachable at {self.base_url}: {type(exc).__name__}") from exc
-        if resp.status_code != 200:
-            raise TTSError(f"kokoro returned HTTP {resp.status_code}: {resp.text[:200]}")
-        return TTSResult(audio_bytes=resp.content, format="mp3", provider=self.name)
+        # Billable-if-remote: the Kokoro base URL is a credential, so a hosted
+        # server bills us and a lost response may already have cost money.
+        audio = _speech_post(self.base_url, key, payload, 180,
+                             provider=self.name, remote_label="kokoro_speech")
+        return TTSResult(audio_bytes=audio, format="mp3", provider=self.name)
 
     def voices(self, language: str = "") -> list[dict]:
         import httpx
@@ -288,20 +307,69 @@ class MockTTSProvider(BaseTTSProvider):
 # ---------------------------------------------------------------------------
 
 
-def _speech_post(base_url: str, api_key: str, payload: dict, timeout: int = 180) -> bytes:
+def _speech_post(base_url: str, api_key: str, payload: dict, timeout: int = 180,
+                 *, provider: str = "", remote_label: str = "") -> bytes:
+    """POST ``/audio/speech`` for the operator-server TTS providers.
+
+    One submit, ever. The base URL arrives as a credential, so a non-local
+    server is somebody's invoice: the request is routed through the paid
+    executor, the pre-spend gate runs before it, and a lost response becomes an
+    UNKNOWN exposure instead of a ``TTSError`` a caller could reasonably
+    retry into a second purchase.
+    """
     import httpx
 
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-    try:
+    name = provider or "tts_server"
+    billable = _remote_base_url(base_url)
+    paid, executor = _paid(
+        f"speech.{remote_label or 'openai_compat'}", provider=name,
+        billable=billable)
+
+    def submit(_idempotency_key: str) -> RemoteSubmission:
         resp = httpx.post(f"{base_url.rstrip('/')}/audio/speech", json=payload,
                           headers=headers, timeout=timeout)
-    except httpx.HTTPError as exc:
-        raise TTSError(f"tts server unreachable at {base_url}: {type(exc).__name__}") from exc
-    if resp.status_code != 200:
-        raise TTSError(f"tts server returned HTTP {resp.status_code}: {resp.text[:200]}")
-    return resp.content
+        if resp.status_code != 200:
+            # Same reasoning as providers/broll.py: the status has to reach the
+            # paid classifier rather than being flattened into one generic
+            # "server unreachable" string -- a 4xx was never billed and a 5xx
+            # may follow a rendered, billed segment.
+            raise httpx.HTTPStatusError(
+                f"tts server returned HTTP {resp.status_code}: "
+                f"{str(getattr(resp, 'text', ''))[:200]}",
+                request=(getattr(resp, "request", None)
+                         or httpx.Request("POST",
+                                          f"{base_url.rstrip('/')}/audio/speech")),
+                response=resp)
+        if not resp.content:
+            # 2xx with no audio: billed, unfulfilled, and not reconcilable
+            # through a remote id. Never reported as a success.
+            raise PaidSubmissionUnconfirmed(
+                provider=name,
+                detail="tts server answered 2xx with an empty body")
+        return RemoteSubmission(
+            remote_id=_header(resp, "x-request-id"),
+            artifact_path="inline", raw={"audio": resp.content})
+
+    try:
+        handle = executor.execute(submit)
+    except TTSError:
+        raise
+    except PaidJobError as exc:
+        # Whether money is gone is decided ONCE, in the shared helper: a 4xx
+        # releases the reservation, a lost response keeps it and marks the
+        # exposure unknown, a connection that never opened proves nothing was
+        # delivered. The caller cannot tell those apart by exception type, so
+        # the ledger has already been told.
+        absorb_paid_failure(paid, exc)
+        raise TTSError(str(exc)) from exc
+    paid.mark_succeeded(
+        amount_unknown=True,
+        detail=("remote operator TTS server; the response carries no price"
+                if billable else "local operator TTS server; nothing billed"))
+    return bytes(handle.raw.get("audio") or b"")
 
 
 def _speech_voices(base_url: str, timeout: int = 15) -> list[dict] | None:
@@ -366,7 +434,9 @@ class ChatterboxTTSProvider(BaseTTSProvider):
                 "speed": max(0.25, min(4.0, float(rate or 1.0))),
                 "exaggeration": ex,
             }
-            audio = _speech_post(self.base_url, "", payload)
+            audio = _speech_post(self.base_url, "", payload,
+                                 provider=self.name,
+                                 remote_label="chatterbox_speech")
             return TTSResult(audio_bytes=audio, format="mp3", provider=self.name)
         if not self._native_available():
             raise TTSError(
@@ -478,7 +548,8 @@ class QwenTTSProvider(BaseTTSProvider):
             payload["instruct"] = self.instruct
         if clone_from:
             payload["clone_from"] = clone_from
-        audio = _speech_post(self.base_url, self._key(), payload)
+        audio = _speech_post(self.base_url, self._key(), payload,
+                             provider=self.name, remote_label="qwen3_speech")
         return TTSResult(audio_bytes=audio, format="mp3", provider=self.name)
 
     def _key(self) -> str:
@@ -569,18 +640,49 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
             speed = 1.0
         if speed != 1.0:
             payload["speed"] = speed
-        try:
+        # ElevenLabs bills per character, so this provider has a REAL cost
+        # estimate -- and therefore a real budget decision to make before the
+        # POST rather than after it.
+        estimate = round(len(text) * self.EST_USD_PER_CHAR, 6)
+        paid, executor = _paid(
+            "tts.text_to_speech", provider=self.name, estimated_cost=estimate)
+
+        def submit(_idempotency_key: str) -> RemoteSubmission:
             resp = httpx.post(
                 f"{self.API}/text-to-speech/{voice_id}",
                 headers=self._headers(), json=payload, timeout=120.0,
             )
-        except httpx.HTTPError as exc:
-            raise TTSError(f"elevenlabs unreachable: {type(exc).__name__}") from exc
-        if resp.status_code != 200:
-            raise TTSError(f"elevenlabs HTTP {resp.status_code}: {resp.text[:160]}")
-        if len(resp.content) < 512:
-            raise TTSError("elevenlabs returned suspiciously small audio")
-        return TTSResult(audio_bytes=resp.content, format="mp3", provider=self.name)
+            resp.raise_for_status()
+            if len(resp.content) < 512:
+                # Charged per character and the answer is unusable: this is an
+                # unknown exposure, not a rejection we may buy again.
+                raise PaidSubmissionUnconfirmed(
+                    provider=self.name,
+                    detail=f"elevenlabs returned suspiciously small audio "
+                           f"({len(resp.content)} bytes)")
+            return RemoteSubmission(
+                remote_id=_header(resp, "request-id")
+                or _header(resp, "x-request-id"),
+                artifact_path="inline", raw={"audio": resp.content})
+
+        try:
+            handle = executor.execute(submit, estimated_cost=estimate)
+        except TTSError:
+            raise
+        except PaidJobError as exc:
+            # Ambiguous or refused: both are recorded, and the caller cannot
+            # tell "billed" from "not billed" by the exception type alone --
+            # the submission record can.
+            absorb_paid_failure(paid, exc)
+            raise TTSError(str(exc)) from exc
+        # A REAL per-character estimate, reserved before the POST and settled in
+        # place -- never a second track_cost, which would bill one narration
+        # twice and double-charge the daily cap.
+        paid.mark_succeeded(
+            estimate_usd=estimate,
+            detail=f"{len(text)} char(s) at ${self.EST_USD_PER_CHAR}/char")
+        return TTSResult(audio_bytes=bytes(handle.raw.get("audio") or b""),
+                         format="mp3", provider=self.name)
 
     def voices(self, language: str = "") -> list[dict]:
         import httpx
@@ -717,6 +819,88 @@ def tts_provider_status() -> dict:
     if chosen in ("qwen3", "qwen", "qwen-tts"):
         out["base_url"] = _qwen_base_url()
     return out
+
+
+# ---------------------------------------------------------------------------
+# paid-submission wiring (Work 15.7)
+# ---------------------------------------------------------------------------
+
+
+def _header(resp, name: str, default: str = "") -> str:
+    """One response header, tolerating a thin response object.
+
+    ``httpx`` answers with a mapping; a test double may answer with a plain
+    dict or with nothing at all. A vendor request id is a reconciliation
+    handle, not a reason to fail a render.
+    """
+    getter = getattr(getattr(resp, "headers", None), "get", None)
+    return str(getter(name, default)) if callable(getter) else default
+
+
+def _remote_base_url(base_url: str) -> bool:
+    """True when a TTS base URL names a host other than this machine.
+
+    A self-hosted Kokoro on ``localhost`` is operator CPU. The same server on
+    ``https://voices.example.com`` is somebody's invoice, and the credential
+    that holds that URL is a paid-capability credential. The audit records both
+    readings; the guard has to pick one, so it picks the money-safe one.
+    """
+    from urllib.parse import urlsplit
+
+    text = str(base_url or "").strip()
+    if not text:
+        return False
+    host = (urlsplit(text if "//" in text else f"//{text}").hostname or "").lower()
+    return host not in ("", "localhost", "127.0.0.1", "::1", "0.0.0.0",
+                        "host.docker.internal")
+
+
+def _owner(workspace_id: str = "") -> str:
+    """The tenant a synthesis is billed to, or "" when there is none.
+
+    An explicit argument wins; otherwise the ambient scope is read, which is
+    what a request thread has. An empty answer is now a REFUSAL rather than a
+    silent run: since §1 the shared helper raises before the POST, where this
+    used to send the request anyway and book it against ``workspace_id=""``.
+    """
+    if str(workspace_id or "").strip():
+        return str(workspace_id).strip()
+    try:
+        from app.services.provider_settings import current_workspace_id
+
+        return str(current_workspace_id() or "").strip()
+    except Exception:  # noqa: BLE001 - no scope means no ledger owner
+        return ""
+
+
+def _paid(operation: str, *, provider: str, workspace_id: str = "",
+          estimated_cost: float = 0.0, billable: bool = True,
+          idempotency: IdempotencySupport = IdempotencySupport.UNSUPPORTED,
+          ) -> tuple[PaidOperation, PaidProviderExecutor]:
+    """One speech synthesis, on the shared money mechanics.
+
+    Returns ``(paid, executor)``; see ``providers/images.py`` for the shape.
+    ``billable=False`` keeps the classification (a lost response is still not a
+    refusal) while booking nothing for a local operator server -- and now says
+    so through a DECLARATION rather than by quietly omitting the gate, which is
+    how a genuinely local server and an accidentally-unbudgeted remote one used
+    to look identical.
+    """
+    paid = paid_operation(
+        provider=provider,
+        operation=operation,
+        workspace_id=_owner(workspace_id),
+        category=COST_CATEGORY,
+        estimated_cost=estimated_cost,
+        idempotency=idempotency,
+        reservation_extra={"lane": "tts"},
+    )
+    if billable:
+        paid.bind(on_event=lambda phase, level, message:
+                  paid_event(paid, phase, level, message))
+    else:
+        paid.declared(authority=SpendAuthority.EXPLICIT_NONBILLABLE)
+    return paid, paid.make_executor()
 
 
 def wav_duration_seconds(audio_bytes: bytes, sample_rate: int = 16_000) -> float:

@@ -16,6 +16,11 @@ from sqlalchemy import select, update
 from app.db import session_scope
 from app.engine.lipsync.base import (
     ACTIVE_STATUSES,
+    COST_OUTCOMES,
+    COST_UNKNOWN_EXPOSURE,
+    EXECUTION_OUTCOMES,
+    EXECUTION_PREPARED,
+    EXECUTION_SUBMISSION_UNKNOWN,
     JOB_CANCELLED,
     JOB_QUEUED,
     JOB_RUNNING,
@@ -75,6 +80,11 @@ def job_dto(row: LipSyncJob) -> dict:
         "workspace_id": row.workspace_id,
         "provider": row.provider,
         "status": row.status,
+        # Work 15.8 §7: three facts, three keys. A client that reads `status`
+        # sees only the business outcome; the money facts are named, never
+        # buried in `cost`.
+        "execution_outcome": row.execution_outcome or "",
+        "cost_outcome": row.cost_outcome or "",
         "progress": round(float(row.progress or 0.0), 3),
         "error": row.error or "",
         "result_asset_ref": row.result_asset_ref or "",
@@ -88,6 +98,107 @@ def job_dto(row: LipSyncJob) -> dict:
         "started_at": row.started_at.isoformat() + "Z" if row.started_at else None,
         "completed_at": row.completed_at.isoformat() + "Z" if row.completed_at else None,
     }
+
+
+# ---------------------------------------------------------------------------
+# Work 15.8 §7: the two structural facts, written and read as columns
+# ---------------------------------------------------------------------------
+#
+# Before this, "may this job already have been billed?" existed ONLY inside
+# `cost_json`. An operator asking that question had to load every row for the
+# workspace and parse arbitrary JSON, because the business `status` cannot carry
+# an ambiguity: `FAILED` means "no video", and every reader of `status` -- the
+# worker, the API, the frontend -- would have to start handling a state they have
+# no business interpreting (the mistake Work 15.5 §7 had to undo for `videos`).
+#
+# So they are columns, indexed, holding the canonical vocabularies. These writes
+# validate their inputs rather than trusting a caller: a typo'd outcome would be
+# permanently un-queryable, and a typo'd value in a *status* column would break
+# the pipeline that reads it.
+
+
+def set_paid_outcomes(job_id: str, *, execution_outcome: str = "",
+                      cost_outcome: str = "") -> bool:
+    """Write the execution and cost outcomes onto a job row.
+
+    ``execution_outcome`` defaults to :data:`EXECUTION_PREPARED` only when
+    it is left empty, so a caller that only knows the money fact does not have to
+    invent an execution fact. Both are validated against the canonical
+    vocabularies and a bad value raises rather than being stored.
+    """
+    execution = str(execution_outcome or "").strip() or EXECUTION_PREPARED
+    if execution not in EXECUTION_OUTCOMES:
+        raise ValueError(
+            f"unknown execution outcome {execution!r}; expected one of "
+            f"{EXECUTION_OUTCOMES}")
+    cost = str(cost_outcome or "").strip()
+    if cost and cost not in COST_OUTCOMES:
+        raise ValueError(
+            f"unknown cost outcome {cost!r}; expected one of {COST_OUTCOMES}")
+    values: dict[str, Any] = {"execution_outcome": execution}
+    if cost:
+        values["cost_outcome"] = cost
+    with session_scope() as s:
+        res = s.execute(
+            update(LipSyncJob)
+            .where(LipSyncJob.id == job_id)
+            .values(**values)
+        )
+        return res.rowcount == 1
+
+
+def jobs_with_unknown_exposure(workspace_id: str, limit: int = 100) -> list[dict]:
+    """Every job whose submit may have been billed and nobody knows the amount.
+
+    The point of the whole §7 change: this is a WHERE clause, not a scan-and-
+    parse. Before the columns existed the only honest answer required loading
+    every row for the workspace and inspecting ``cost_json`` by hand.
+    """
+    with session_scope() as s:
+        rows = s.execute(
+            select(LipSyncJob.id, LipSyncJob.provider, LipSyncJob.status,
+                   LipSyncJob.execution_outcome, LipSyncJob.cost_outcome,
+                   LipSyncJob.error, LipSyncJob.created_at)
+            .where(
+                LipSyncJob.workspace_id == workspace_id,
+                LipSyncJob.cost_outcome == COST_UNKNOWN_EXPOSURE,
+            )
+            .order_by(LipSyncJob.created_at.desc())
+            .limit(min(int(limit or 100), 500))
+        ).all()
+    return [
+        {
+            "id": r[0],
+            "provider": r[1],
+            # The business status, unmodified: a lost response is still reported
+            # as whatever the job actually became.
+            "status": r[2],
+            "execution_outcome": r[3] or "",
+            "cost_outcome": r[4] or "",
+            "error": r[5] or "",
+            "created_at": r[6].isoformat() + "Z" if r[6] else None,
+        }
+        for r in rows
+    ]
+
+
+def jobs_with_unknown_submission(workspace_id: str, limit: int = 100) -> list[str]:
+    """Job ids whose SUBMIT could not be confirmed. Independently filterable.
+
+    Separate from the cost question on purpose: "the submit is unconfirmed" and
+    "the amount is unknown" are different assertions, and an operator asking the
+    first should not have to widen it to the second.
+    """
+    with session_scope() as s:
+        rows = s.execute(
+            select(LipSyncJob.id)
+            .where(
+                LipSyncJob.workspace_id == workspace_id,
+                LipSyncJob.execution_outcome == EXECUTION_SUBMISSION_UNKNOWN,
+            )
+            .limit(min(int(limit or 100), 500))
+        ).all()
+    return [r[0] for r in rows]
 
 
 # ---------------------------------------------------------------------------
@@ -272,11 +383,14 @@ __all__ = [
     "finish_job",
     "get_job_row",
     "job_dto",
+    "jobs_with_unknown_exposure",
+    "jobs_with_unknown_submission",
     "list_job_rows",
     "mark_running",
     "mirror_cost",
     "request_cancel",
     "row_status",
     "set_adapter_job",
+    "set_paid_outcomes",
     "update_progress",
 ]

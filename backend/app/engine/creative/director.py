@@ -45,6 +45,9 @@ from app.engine.creative.commands import (
     RewriteHook,
     RewriteSegment,
     UnknownCommandError,
+    _animation_targets,
+    _caption_clip_ids,
+    _visual_clip_ids,
     affected_artifacts,
     command_from_dict,
     commands_to_dicts,
@@ -1044,6 +1047,14 @@ def _clips(doc: dict | None, kind: str) -> list[dict]:
     return []
 
 
+def _find_clip(doc: dict | None, kind: str, clip_id: str) -> dict | None:
+    """One clip by id on a track, or None. Used by the Work 13 planners."""
+    for clip in _clips(doc, kind):
+        if str(clip.get("id")) == str(clip_id):
+            return clip
+    return None
+
+
 def _rebuild(track: str, clips: list[dict], patch: dict) -> list[dict]:
     """Delete + re-add clips with a patched source payload (canonical ops)."""
     ops: list[dict] = []
@@ -1284,6 +1295,209 @@ def _plan(session, workspace, cmd, *, doc: dict, policy: dict) -> tuple[list, di
             raise CommandError("no video clips overlap the targeted scene")
         return ops, {}, {"op": "reframe", "focus": focus,
                          "clips": sorted(touched)}
+
+    # -- Work 13 typed motion planning -------------------------------------
+    # These emit REAL typed ops; the renderer is never touched directly. Each
+    # payload was already validated by commands.validate_command, so the only
+    # failure mode here is "no matching target on this timeline".
+
+    if cmd.type in ("ChangeCaptionStyle", "ApplyMotionPreset"):
+        targets = _caption_clip_ids(doc, cmd.clip_ids)
+        if not targets:
+            raise CommandError("no caption clips on this timeline to restyle")
+        preset_key = str(p.get("preset") or "").strip()
+        style_patch = dict(p.get("style") or {})
+        if cmd.type == "ApplyMotionPreset" and not preset_key:
+            raise CommandError("ApplyMotionPreset requires preset")
+        ops = [{"type": "update_caption_style", "track": "caption",
+                "clip_id": clip_id,
+                **({"preset": preset_key} if preset_key else {}),
+                **({"style": style_patch} if style_patch else {})}
+               for clip_id in targets]
+        return ops, {}, {"op": "caption_style", "preset": preset_key,
+                         "clips": targets,
+                         "motion_intensity": str(p.get("motion_intensity") or "")}
+
+    if cmd.type == "HighlightKeyword":
+        from app.engine.captions.emphasis import CaptionEmphasisEngine
+
+        kinds = tuple(str(k).strip().upper() for k in (cmd.kinds or []))
+        engine = CaptionEmphasisEngine(enabled_kinds=kinds)
+        targets = _caption_clip_ids(doc, cmd.clip_ids)
+        if not targets:
+            raise CommandError("no caption clips on this timeline to emphasise")
+        ops = []
+        emphasised: dict[str, list] = {}
+        for clip_id in targets:
+            clip = _find_clip(doc, "caption", clip_id)
+            if clip is None:
+                continue
+            words = clip.get("words") or []
+            if not words:
+                # No REAL word timing -> we cannot highlight per word without
+                # inventing it. The clip is left alone rather than faked.
+                continue
+            text = str(clip.get("name") or "")
+            hits = [w.to_dict() for w in engine.emphasize(text)]
+            emphasised[clip_id] = hits
+        if not emphasised:
+            raise CommandError(
+                "no caption clip has stored word timing; run an alignment "
+                "first (emphasis is never inferred from text positions alone)")
+        for clip_id, hits in emphasised.items():
+            clip = _find_clip(doc, "caption", clip_id)
+            text = str(clip.get("name") or "")
+            # rebuild the clip text so the highlighted words are the ones stored
+            ops.append({"type": "set_caption_words", "track": "caption",
+                        "clip_id": clip_id, "words": clip.get("words") or [],
+                        "emphasis": hits})
+        return ops, {}, {"op": "highlight_keyword", "kinds": list(kinds),
+                         "clips": sorted(emphasised)}
+
+    if cmd.type in ("AddLowerThird", "AddTitle", "AddCallout"):
+        from app.engine.motion.lower_thirds import LowerThirdRequest, build_lower_third
+        from app.engine.motion.templates import validate_instance
+
+        if cmd.type == "AddLowerThird":
+            request = LowerThirdRequest(
+                kind=str(p.get("kind") or "person"), name=str(p.get("name") or ""),
+                role=str(p.get("role") or ""), topic=str(p.get("topic") or ""),
+                source=str(p.get("source") or ""),
+                start=float(p.get("start") or 0.0),
+                duration=float(p.get("duration") or 4.0),
+                known=tuple(p.get("known") or ()))
+            result = build_lower_third(request)
+            if not result.built or result.clip is None:
+                raise CommandError(result.reason or "lower third could not be built")
+            clip = result.clip
+        else:
+            template = {"AddTitle": "title_main",
+                        "AddCallout": "callout_emphasis"}[cmd.type]
+            slot = {"AddTitle": "headline", "AddCallout": "text"}[cmd.type]
+            instance = validate_instance(
+                {"template": template, "bindings": {slot: p.get(slot)},
+                 "start": p.get("start", 0.0), "duration": p.get("duration", 0.0)
+                 or None},
+                metadata_available={slot})
+            clip = instance.to_clip()
+        clip_id = f"motion_{cmd.type.lower()}_{int(float(clip['start']) * 1000)}"
+        clip["id"] = clip_id
+        return ([{"type": "add_item", "track": "text", "clip": clip}], {},
+                {"op": "add_motion", "template": clip.get("text", {}).get("preset"),
+                 "clip_id": clip_id})
+
+    if cmd.type == "AddTransition":
+        from_item = str(p.get("from_item") or "")
+        to_item = str(p.get("to_item") or "")
+        if not to_item:
+            raise CommandError(
+                "AddTransition needs to_item (the outgoing clip's neighbour)")
+        ops = [{"type": "set_transition", "track": "video", "clip_id": from_item,
+                "to_item": to_item,
+                "transition": {"from_item": from_item, "to_item": to_item,
+                               "type": p.get("transition_type"),
+                               "duration": float(p.get("duration") or 0.5)}}]
+        return ops, {}, {"op": "add_transition", "from_item": from_item,
+                         "to_item": to_item,
+                         "type": str(p.get("transition_type") or "")}
+
+    if cmd.type == "ApplyEffect":
+        targets = _visual_clip_ids(doc, cmd.clip_ids)
+        if not targets:
+            raise CommandError("no visual clips on this timeline to effect")
+        ops = [{"type": "apply_effect", "track": tr.get("kind"),
+                "clip_id": clip_id, "effect": p.get("effect")}
+               for tr in doc.get("tracks", [])
+               if tr.get("kind") in ("video", "broll", "avatar")
+               for clip_id in targets
+               if (clip := _find_clip(doc, tr.get("kind"), clip_id)) is not None]
+        return ops, {}, {"op": "apply_effect", "effect": p.get("effect"),
+                         "clips": sorted(targets)}
+
+    if cmd.type == "RemoveEffect":
+        effect = str(p.get("effect") or "").strip()
+        targets = _visual_clip_ids(doc, cmd.clip_ids)
+        if not targets:
+            raise CommandError("no visual clips on this timeline")
+        ops = [{"type": "remove_effect", "track": tr.get("kind"),
+                "clip_id": clip_id, "effect": effect}
+               for tr in doc.get("tracks", [])
+               if tr.get("kind") in ("video", "broll", "avatar")
+               for clip_id in targets
+               if (clip := _find_clip(doc, tr.get("kind"), clip_id)) is not None
+               and any(str((e or {}).get("type", "")).upper() == effect.upper()
+                       for e in (_find_clip(doc, tr.get("kind"), clip_id)
+                                 .get("effects") or [])
+                       if isinstance(e, dict))]
+        if not ops:
+            raise CommandError(f"no clip carries a {effect!r} effect to remove")
+        return ops, {}, {"op": "remove_effect", "effect": effect,
+                         "clips": sorted({o["clip_id"] for o in ops})}
+
+    if cmd.type in ("AnimateElement", "MoveElement", "AnimateOpacity",
+                     "AnimateScale"):
+        # Two canonical keyframes replace the clip's chain: the property the
+        # command names gets animated; anything else the clip keyed keeps its
+        # existing value so one animation never silently erases another.
+        from app.engine.motion.graph import EASINGS
+
+        easing = str(p.get("easing") or "EASE_IN_OUT").strip().upper()
+        if easing not in EASINGS:
+            raise CommandError(f"unsupported easing {easing!r}")
+        targets = _animation_targets(cmd, doc)
+        if not targets:
+            raise CommandError("no animatable clip on this timeline")
+        ops: list[dict] = []
+        for kind, clip_id in targets:
+            clip = _find_clip(doc, kind, clip_id) or {}
+            duration = float(clip.get("duration", 0.0) or 0.0)
+            if duration <= 0:
+                continue
+            existing = list(clip.get("keyframes") or [])
+            # the properties this command drives
+            if cmd.type == "AnimateOpacity":
+                pairs = {"opacity": (float(p.get("from_opacity", 0.0)),
+                                    float(p.get("to_opacity", 1.0)))}
+            elif cmd.type == "AnimateScale":
+                pairs = {"scale": (float(p.get("from_scale", 1.0)),
+                                   float(p.get("to_scale", 1.4)))}
+            elif cmd.type == "MoveElement":
+                pairs = {"x": (float(p.get("from_x", 0.0)), float(p.get("to_x", 0.5))),
+                         "y": (float(p.get("from_y", 0.5)), float(p.get("to_y", 0.5)))}
+            else:  # AnimateElement
+                pairs = {"x": (float(p.get("from_x", 0.0)), float(p.get("to_x", 0.5))),
+                         "y": (float(p.get("from_y", 0.5)), float(p.get("to_y", 0.5)))}
+            kept = [f for f in existing
+                    if not any(prop in (f.get("props") or {}) for prop in pairs)]
+            stamp = f"{clip_id}_w131"
+            merged = kept + [
+                {"id": f"{stamp}a", "t": 0.0, "easing": easing,
+                 "props": {k: v[0] for k, v in pairs.items()}},
+                {"id": f"{stamp}b", "t": duration, "easing": easing,
+                 "props": {k: v[1] for k, v in pairs.items()}},
+            ]
+            ops.append({"type": "set_keyframes", "track": kind,
+                        "clip_id": clip_id, "keyframes": merged})
+        if not ops:
+            raise CommandError("no clip had a positive duration to animate")
+        return ops, {}, {"op": cmd.type, "easing": easing,
+                         "clips": [f"{k}:{c}" for k, c in targets],
+                         "props": sorted(pairs)}
+
+    if cmd.type == "ChangeTransition":
+        from_item = str(p.get("from_item") or "")
+        to_item = str(p.get("to_item") or "")
+        if not to_item:
+            raise CommandError(
+                "ChangeTransition needs to_item (the outgoing clip's neighbour)")
+        ops = [{"type": "set_transition", "track": "video", "clip_id": from_item,
+                "to_item": to_item,
+                "transition": {"from_item": from_item, "to_item": to_item,
+                               "type": p.get("transition_type"),
+                               "duration": float(p.get("duration") or 0.5)}}]
+        return ops, {}, {"op": "change_transition", "from_item": from_item,
+                         "to_item": to_item,
+                         "type": str(p.get("transition_type") or "")}
 
     raise CommandError(f"command '{cmd.type}' has no apply implementation")
 

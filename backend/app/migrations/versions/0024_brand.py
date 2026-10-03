@@ -21,7 +21,7 @@ def upgrade(session) -> None:
             updated_at TIMESTAMP NOT NULL,
             workspace_id VARCHAR(36) NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
             name VARCHAR(160) NOT NULL DEFAULT '',
-            is_default BOOLEAN NOT NULL DEFAULT 0,
+            is_default BOOLEAN NOT NULL DEFAULT FALSE,
             status VARCHAR(20) NOT NULL DEFAULT 'active'
         )
     """))
@@ -90,7 +90,7 @@ def upgrade(session) -> None:
             updated_at TIMESTAMP NOT NULL,
             workspace_id VARCHAR(36) NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
             name VARCHAR(160) NOT NULL DEFAULT '',
-            builtin BOOLEAN NOT NULL DEFAULT 0,
+            builtin BOOLEAN NOT NULL DEFAULT FALSE,
             preset_json JSON NOT NULL DEFAULT '{}'
         )
     """))
@@ -121,6 +121,34 @@ def upgrade(session) -> None:
         CREATE INDEX IF NOT EXISTS uq_brand_override_subject
         ON brand_overrides (workspace_id, subject_type, subject_id)
     """))
+    # W11.5 F3: the ORM declares this UNIQUE (brand.py), so enforce it.
+    # Installs that already ran the plain index above get a dedupe + upgrade
+    # to a real UNIQUE index (same keep-newest pattern as 0002).
+    from sqlalchemy import inspect as _sa_inspect
+    _insp = _sa_inspect(session.bind)
+    if "brand_overrides" in set(_insp.get_table_names()):
+        _already_unique = any(
+            idx.get("name") == "uq_brand_override_subject" and idx.get("unique")
+            for idx in _insp.get_indexes("brand_overrides")
+        )
+        if not _already_unique:
+            session.execute(text("""
+                DELETE FROM brand_overrides
+                WHERE id NOT IN (
+                    SELECT id FROM (
+                        SELECT id, ROW_NUMBER() OVER (
+                            PARTITION BY workspace_id, subject_type, subject_id
+                            ORDER BY created_at DESC
+                        ) AS rn
+                        FROM brand_overrides
+                    ) AS keep_newest WHERE rn = 1
+                )
+            """))
+            session.execute(text("DROP INDEX IF EXISTS uq_brand_override_subject"))
+            session.execute(text("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_brand_override_subject
+                ON brand_overrides (workspace_id, subject_type, subject_id)
+            """))
 
     session.execute(text("""
         CREATE TABLE IF NOT EXISTS brand_effective_configs (

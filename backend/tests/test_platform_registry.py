@@ -19,6 +19,7 @@ import pytest
 from app.engine.campaign.platforms import (
     ACCOUNT_PLATFORM,
     CAMPAIGN_PLATFORMS,
+    HANDOFF_PLATFORMS,
     get_profile,
 )
 from app.engine.platform_registry import (
@@ -124,7 +125,15 @@ def test_declared_capabilities_are_sane():
 
     assert set(IMPLEMENTED_CAPABILITIES) == set(ACCOUNT_PLATFORM.values())
     for platform, caps in IMPLEMENTED_CAPABILITIES.items():
-        assert isinstance(caps, frozenset) and caps, platform
+        assert isinstance(caps, frozenset), platform
+        # Work 14: snapchat declares NO legacy capability on purpose -- a user
+        # handoff implements none of the autonomous ones, and it carries
+        # USER_HANDOFF in the Work 14 vocabulary instead. An empty legacy set is
+        # therefore legitimate, but only when a handoff is declared.
+        if not caps:
+            assert platform in HANDOFF_PLATFORMS, (
+                f"{platform} declares no capability and is not a handoff")
+            continue
         assert all(isinstance(c, Capability) for c in caps), platform
         # a PUBLISH_* claim must be backed by a registered publisher
         if caps & PUBLISH_CAPS:

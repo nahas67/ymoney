@@ -108,6 +108,62 @@ _PLATFORM_VOICE: dict[str, dict] = {
             "NONE": "",
         },
     },
+    # -- Work 14: expanded distribution -----------------------------------
+    # Each new platform gets its OWN hook, closer, tag set and CTA phrasing.
+    # Reusing an existing voice here is exactly the "identical metadata renamed
+    # per platform" failure the DoD calls out, and the pairwise-distinct test
+    # in test_campaign_platforms.py enforces it.
+    "threads": {
+        "hook": "One money habit, one thread",
+        "closer": "Reply 'GUIDE' and I'll post the long version.",
+        "tags": ["#money", "#personalfinance", "#threads"],
+        "cta_text": {
+            "FOLLOW": "Follow for daily money threads.",
+            "REPLY": "Reply and I'll send the details.",
+            "COMMENT": "Reply with your number below.",
+            "LEARN_MORE": "Full guide linked in this thread.",
+            "VISIT_PROFILE": "More threads on my profile.",
+            "NONE": "",
+        },
+    },
+    "pinterest": {
+        "hook": "Pin this: the 20% rule",
+        "closer": "Save it for your next payday.",
+        "tags": ["#personalfinance", "#budgeting", "#moneytips"],
+        "cta_text": {
+            "SAVE": "Save this Pin for later.",
+            "LEARN_MORE": "Tap the link for the full guide.",
+            "FOLLOW": "Follow for weekly money Pins.",
+            "VISIT_PROFILE": "More Pins on our profile.",
+            "NONE": "",
+        },
+    },
+    "bluesky": {
+        "hook": "Worth reading if you budget",
+        "closer": "More on the topic in the replies.",
+        "tags": ["#money", "#bluesky", "#personalfinance"],
+        "cta_text": {
+            "FOLLOW": "Follow for short finance posts.",
+            "REPLY": "Reply and I'll send the long version.",
+            "COMMENT": "Reply with your number.",
+            "LEARN_MORE": "Link in the post for the full guide.",
+            "VISIT_PROFILE": "More posts on our profile.",
+            "NONE": "",
+        },
+    },
+    "snapchat": {
+        "hook": "20% first, every single payday",
+        "closer": "Snap it and try it this week.",
+        "tags": ["#money", "#snaptips", "#personalfinance"],
+        # Snapchat has no SERVER-SIDE publish API: this copy is prepared for a
+        # human to publish in the app, so the CTA is Snap-native by design.
+        "cta_text": {
+            "FOLLOW": "Add us on Snap for daily tips.",
+            "VISIT_PROFILE": "More Snaps on our public profile.",
+            "LEARN_MORE": "Link in the Snap for the full guide.",
+            "NONE": "",
+        },
+    },
 }
 
 

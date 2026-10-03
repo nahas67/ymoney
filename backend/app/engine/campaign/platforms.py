@@ -103,6 +103,76 @@ PLATFORM_PROFILES: dict[str, dict] = {
         "cta": ["SUBSCRIBE", "COMMENT", "WATCH_FULL_VIDEO"],
         "posting_windows": [12, 17],
     },
+    # Work 14: Pinterest. Every number is the official PinCreate schema max
+    # (title 100, description 800, link 2048, alt_text 500), not a guess.
+    # Carousels are 2..5 items.
+    "pinterest": {
+        "aspects": ["2:3", "9:16", "1:1"],
+        "preferred_duration": [5.0, 60.0],
+        # No official Pin duration limit is documented.
+        "max_duration": 300.0,
+        "safe_zones": {"top": 0.06, "bottom": 0.10, "left": 0.05, "right": 0.05},
+        "caption": {"max_lines": 3, "max_chars_per_line": 40, "style": "static"},
+        "metadata": {"title_max": 100, "description_max": 800,
+                     "hashtag_max": 8, "hashtag_limit": 4},
+        "thumbnail": {"behavior": "cover-required", "cover_text_max": 40},
+        "cta": ["SAVE", "LEARN_MORE", "FOLLOW", "VISIT_PROFILE"],
+        "posting_windows": [14, 20, 21],
+    },
+    # Work 14: Threads. Numbers are the verified official limits, not estimates:
+    # 500-char text (emoji count as UTF-8 bytes), MOV/MP4 video <=300s,
+    # image width 320-1440. There is no documented Threads title field (the
+    # single `text` field is the caption), so title_max equals that same 500.
+    "threads": {
+        "aspects": ["9:16", "1:1", "4:5", "16:9"],
+        "preferred_duration": [20.0, 60.0],
+        "max_duration": 300.0,
+        "safe_zones": {"top": 0.08, "bottom": 0.20, "left": 0.05, "right": 0.05},
+        "caption": {"max_lines": 3, "max_chars_per_line": 30, "style": "clean-lower"},
+        "metadata": {"title_max": 500, "description_max": 500, "hashtag_max": 30,
+                     "hashtag_limit": 4},
+        "thumbnail": {"behavior": "poster-frame", "cover_text_max": 30},
+        "cta": ["FOLLOW", "COMMENT", "REPLY", "LEARN_MORE", "VISIT_PROFILE"],
+        "posting_windows": [12, 18, 20],
+    },
+    # Work 14: Bluesky. app.bsky.feed.post caps text at 300 graphemes AND 3000
+    # bytes, and allows <=8 tags. No official aspect whitelist exists, so the
+    # canonical output is 9:16 with the others accepted.
+    "bluesky": {
+        "aspects": ["9:16", "1:1", "16:9", "4:5"],
+        "preferred_duration": [20.0, 60.0],
+        # UNVERIFIED in official docs: no max duration is published for video.
+        # 300s is YMONEY's own conservative cap and is labelled as such in the
+        # optimization profile, where it stays UNKNOWN rather than documented.
+        "max_duration": 300.0,
+        "safe_zones": {"top": 0.08, "bottom": 0.20, "left": 0.05, "right": 0.05},
+        "caption": {"max_lines": 3, "max_chars_per_line": 30, "style": "clean-lower"},
+        "metadata": {"title_max": 300, "description_max": 3000,
+                     "hashtag_max": 8, "hashtag_limit": 8},
+        "thumbnail": {"behavior": "poster-frame", "cover_text_max": 30},
+        "cta": ["COMMENT", "FOLLOW", "REPLY", "LEARN_MORE", "VISIT_PROFILE"],
+        "posting_windows": [9, 13, 19],
+    },
+    # Work 14: Snapchat. Organic publishing is a USER_HANDOFF, so there is no
+    # server-side media contract to validate against and no metadata limits are
+    # documented. Every limit is deliberately set to a permissive value with a
+    # comment saying it is UNKNOWN, because inventing platform limits is worse
+    # than not checking them (see the DoD note on not hardcoding limits).
+    "snapchat": {
+        "aspects": ["9:16"],
+        "preferred_duration": [5.0, 60.0],
+        "max_duration": 60.0,
+        "safe_zones": {"top": 0.12, "bottom": 0.20, "left": 0.05, "right": 0.05},
+        "caption": {"max_lines": 2, "max_chars_per_line": 28, "style": "clean-lower"},
+        # No official publishing endpoint documents these; the handoff is
+        # prepared media, so YMONEY uses its own conservative text budget.
+        "metadata": {"title_max": 160, "description_max": 500, "hashtag_max": 8,
+                     "hashtag_limit": 4},
+        "thumbnail": {"behavior": "poster-frame", "cover_text_max": 30},
+        "cta": ["FOLLOW", "VISIT_PROFILE", "LEARN_MORE"],
+        "posting_windows": [12, 18, 21],
+        "publication_mode": "USER_HANDOFF",
+    },
 }
 
 #: Short-form campaign platforms (excludes the long-form master profile).
@@ -114,6 +184,11 @@ CAMPAIGN_PLATFORMS: tuple[str, ...] = (
     # Work 09: LinkedIn/X campaign keys (account namespaces are linkedin|x).
     "linkedin",
     "x",
+    # Work 14: expanded distribution.
+    "threads",
+    "bluesky",
+    "pinterest",
+    "snapchat",
 )
 
 #: Campaign platform -> SocialAccount/publisher namespace.
@@ -125,7 +200,16 @@ ACCOUNT_PLATFORM: dict[str, str] = {
     "youtube_longform": "youtube",
     "linkedin": "linkedin",
     "x": "x",
+    "threads": "threads",
+    "bluesky": "bluesky",
+    "pinterest": "pinterest",
+    "snapchat": "snapchat",
 }
+
+#: Platforms whose publish path is a USER_HANDOFF rather than an autonomous
+#: official API. Campaign/scheduler code reads this instead of branching on
+#: the platform name (Work 14 §8: no `if platform == ...` in campaign code).
+HANDOFF_PLATFORMS: frozenset[str] = frozenset({"snapchat"})
 
 
 def get_profile(platform: str) -> dict:

@@ -226,6 +226,15 @@ def get_provider(platform: str) -> BaseAnalyticsProvider:
     from app.core.config import settings
 
     if settings.mock_analytics:
+        # W11.5 E-MED: parity with the publishing factory -- a mock analytics
+        # provider must never be served in production by config alone.
+        if getattr(settings, "is_production", False) and not getattr(
+            settings, "allow_mock_in_production", False
+        ):
+            raise RuntimeError(
+                "mock_analytics is refused in production "
+                "(set allow_mock_in_production=True to override deliberately)"
+            )
         return MockAnalyticsProvider()
     if platform == "youtube":
         return YouTubeAnalyticsProvider()

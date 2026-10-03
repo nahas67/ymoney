@@ -5,6 +5,8 @@ import pytest
 
 from app.providers import tts as tts_mod
 from app.providers.tts import (
+
+
     ChatterboxTTSProvider,
     QwenTTSProvider,
     TTSError,
@@ -188,4 +190,24 @@ def test_voice_preview_api():
 
     r = client.post(f"/api/v1/workspaces/{ws_id}/assets/voice/preview", headers=headers,
                     json={"text": "hi", "provider": "nope-tts"})
-    assert r.status_code == 503
+    # Work 15.7 §9: this path now delegates to api/v1/preview, which answers 409
+    # for a provider that is not offerable. 409 is the more honest status -- an
+    # unknown provider is a bad request, not a server outage. 503 is reserved
+    # for a provider that was reachable and then failed.
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"]["provider"] == "nope-tts"
+
+# ---------------------------------------------------------------------------
+# Work 15.9 1: billable lanes need an explicit budget owner.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _owner_for_billable_lanes(billable_workspace):
+    """This module drives BILLABLE provider lanes.
+
+    A billable call with no budget owner is now REFUSED before the request
+    leaves -- correct product behaviour. These tests opt into a synthetic
+    workspace scope explicitly rather than the product growing a loophole.
+    """
+    yield billable_workspace

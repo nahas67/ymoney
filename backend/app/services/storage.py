@@ -15,7 +15,33 @@ from pathlib import Path
 
 from loguru import logger
 
-STORAGE_ROOT = Path("data/videos")
+
+def _resolve_storage_root() -> Path:
+    """Root for local media. Overridable with ``STORAGE_ROOT``.
+
+    The default stays **cwd-relative**, exactly as it has always been, because
+    that is what test isolation relies on: a test that chdirs into ``tmp_path``
+    expects ``data/videos`` to follow it there. Anchoring the default to the
+    package directory instead sent every write to ``backend/data/videos`` while
+    the test read ``<tmp>/data/videos``, which broke 16 export/cover/reframe
+    tests at once.
+
+    The container problem is real but it is a *configuration* problem, and it
+    is fixed as configuration: ``docker-compose.prod.yml`` mounts a durable
+    volume at ``/data`` and sets ``STORAGE_ROOT: /data/videos``. An operator who
+    does not set it in a container gets cwd-relative storage inside the image
+    layer, which is the behaviour that has always existed -- now visible and
+    documented instead of silent.
+    """
+    from app.core.config import settings
+
+    configured = (settings.storage_root or "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return Path("data/videos")
+
+
+STORAGE_ROOT = _resolve_storage_root()
 MOCK_ROOT = Path("data/mock_videos")
 
 
@@ -154,6 +180,12 @@ class LocalStorage:
     def open_bytes(self, stored_path: str) -> bytes:
         return Path(stored_path).read_bytes()
 
+    def open_stream(self, stored_path: str, *, chunk_bytes: int | None = None):
+        """Bounded-memory read. ``read_bytes`` on a large asset is an OOM."""
+        from app.services import streaming_io
+
+        return streaming_io.iter_chunks(stored_path, chunk_bytes=chunk_bytes)
+
     def save_media(self, workspace_id: str, data: bytes, filename: str) -> str:
         """Store a generic media blob (e.g. generated images) in the workspace
         directory. Returns the stored path; boundary-checked like videos."""
@@ -276,6 +308,47 @@ class S3Storage:
             obj = self._client().get_object(Bucket=bucket or self.bucket, Key=key)
             return obj["Body"].read()
         return Path(stored_path).read_bytes()
+
+    def open_stream(self, stored_path: str, *, chunk_bytes: int | None = None):
+        """Streaming GET.
+
+        ``get_object`` on a 3 GB asset returns a ``StreamingBody``; calling
+        ``.read()`` on it without a size is the whole-file buffer this replaces.
+        The multipart threshold is a request, not a policy: S3 streams a single
+        ranged GET for anything below it, so nothing is copied through a scratch
+        file unless the object is genuinely larger than the threshold.
+        """
+        if stored_path.startswith("s3://"):
+            _, _, rest = stored_path[5:].partition("/")
+            bucket, _, key = rest.partition("/")
+            obj = self._client().get_object(Bucket=bucket or self.bucket, Key=key)
+            body = obj["Body"]
+            size = max(64 * 1024, int(chunk_bytes or 8 << 20))
+            try:
+                while True:
+                    block = body.read(size)
+                    if not block:
+                        return
+                    yield block
+            finally:
+                close = getattr(body, "close", None)
+                if close is not None:
+                    close()
+        from app.services import streaming_io
+
+        yield from streaming_io.iter_chunks(stored_path, chunk_bytes=chunk_bytes)
+
+    def presigned_url(self, key: str, *, expires_seconds: float = 3600.0) -> str:
+        """Time-limited URL for one object. None when the backend cannot sign."""
+        try:
+            return str(self._client().generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self.bucket, "Key": key},
+                ExpiresIn=int(expires_seconds),
+            ))
+        except Exception as exc:  # noqa: BLE001 - signing is best-effort
+            logger.warning(f"presigned url unavailable for {key}: {exc}")
+            return ""
 
     def save_media(self, workspace_id: str, data: bytes, filename: str) -> str:
         import uuid as _uuid

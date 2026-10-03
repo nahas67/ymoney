@@ -129,6 +129,19 @@ def is_workspace_admin(db: Session, ws: Workspace, user: User) -> bool:
     return _WS_ROLE_ORDER.get(member.role, -1) >= _WS_ADMIN_ORDER
 
 
+def assert_workspace_admin(db: Session, ws: Workspace, user: User, *, action: str) -> None:
+    """Governance actions (QC overrides, FAIL-plan applies) need admin+.
+
+    Added in W11.5 (B-F1): capability checks like ``edit_project`` are vacuous
+    on unlinked targets (the route floor is the only gate there), so a member
+    floor plus a capability is NOT sufficient for governance. Raises 403.
+    """
+    from fastapi import HTTPException
+
+    if not is_workspace_admin(db, ws, user):
+        raise HTTPException(status_code=403, detail=f"{action} requires the admin role")
+
+
 def project_role(db: Session, project_id: str, user_id: str) -> str | None:
     """Project role of a user, or None when they are not a member."""
     return db.scalar(

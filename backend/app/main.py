@@ -10,7 +10,7 @@ Lifespan responsibilities:
 from __future__ import annotations
 
 import asyncio
-import uuid
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -21,6 +21,7 @@ from loguru import logger
 
 import app.engine.agents.registry
 from app.api.v1 import api_router
+from app.api.v1.internal_ops import internal_ops_router
 from app.core.config import settings
 from app.db import engine, session_scope
 from app.engine import autopilot as autopilot_engine
@@ -30,6 +31,23 @@ from app.services import telegram_service
 from app.services import (
     webhooks as webhook_service,  # noqa: F401 (registers webhook.dispatch handler)
 )
+from app.services.observability import logging_setup as obs_logging
+from app.services.observability import metrics as obs_metrics
+
+# Work 12 media intelligence: registration is idempotent and currently a no-op
+# (every media-intel engine runs in-process inside its route), but wiring the
+# seam now means a future GPU-backed lane gets its handler for free. Never let
+# it block app boot.
+try:  # pragma: no cover - import-time side effect
+    from app.engine.intel import jobs as intel_jobs  # noqa: F401
+
+    intel_jobs.register_intel_jobs()
+except Exception as _intel_jobs_exc:
+    import logging
+
+    logging.getLogger("ymoney.intel").warning(
+        "media-intel job registration skipped: %s", _intel_jobs_exc
+    )
 
 _FILE_LOGGING_CONFIGURED = False
 
@@ -57,6 +75,15 @@ def _configure_file_logging() -> None:
 
 
 _configure_file_logging()
+
+# Work 16 §8: attach the structured, redacted JSON sink and declare the static
+# metrics. ``install()`` is additive and idempotent -- it never removes
+# loguru's own stderr handler, so a developer who has not opted into JSON still
+# gets readable output, and a uvicorn worker importing this module twice cannot
+# double-sink.
+if settings.observability_enabled:
+    obs_logging.install(serialize=settings.observability_json_logs)
+obs_metrics.collect_build_info()
 
 if settings.sentry_dsn:
     try:
@@ -112,7 +139,8 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+        expose_headers=["X-Request-ID"],
     )
 
     @app.exception_handler(Exception)
@@ -132,27 +160,89 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(api_router)
+    # Work 16 §9: liveness/readiness + §8/§10 telemetry. Mounted on the app,
+    # not under /api/v1, because these are process-level and carry no
+    # workspace scope -- an orchestrator cannot authenticate as a workspace.
+    app.include_router(internal_ops_router)
 
     # request logging for security audit trail (lightweight)
     @app.middleware("http")
     async def audit_middleware(request: Request, call_next):
-        from app.core.request_context import set_request_id as _set_rid
+        """Correlate, time and measure every inbound request (Work 16 §8).
 
-        rid = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:16]
-        token = _set_rid(rid)
-        try:
-            response = await call_next(request)
-        finally:
-            from app.core.request_context import _request_id
-            _request_id.reset(token)
-        response.headers["X-Request-ID"] = rid
-        if request.method != "GET" and request.url.path.startswith("/api/"):
-            logger.bind(audit=True, request_id=rid).info(
-                f"{request.method} {request.url.path} -> {response.status_code}"
-            )
-        return response
+        Three jobs in order, because they depend on each other:
+
+        1. bind a request id (accepting a caller-supplied ``X-Request-ID``,
+           clamped) so every log line, span and error below shares it;
+        2. open a server span and close it in a ``finally``, so an exception
+           is recorded on the span without being swallowed;
+        3. record latency and a 5xx counter into the metric registry.
+
+        The route label is the TEMPLATED path, never the raw URL. Emitting the
+        raw path would let any client mint an unbounded series set.
+        """
+        from app.services.observability.tracing import SpanKind, SpanStatus, tracer
+
+        inbound = request.headers.get("X-Request-ID")
+        with obs_logging.request_scope(inbound) as rid:
+            started = time.perf_counter()
+            status = 500
+            with tracer.start_span(
+                f"{request.method} {request.url.path}",
+                kind=SpanKind.SERVER,
+                attributes={
+                    "request_id": rid,
+                    "method": request.method,
+                    "path": request.url.path,
+                },
+            ) as span:
+                try:
+                    response = await call_next(request)
+                    status = response.status_code
+                    span.attributes["status_code"] = status
+                    response.headers["X-Request-ID"] = rid
+                    return response
+                except Exception as exc:
+                    span.status = SpanStatus.ERROR
+                    span.error_type = type(exc).__name__
+                    raise
+                finally:
+                    route = _route_template(request)
+                    obs_metrics.record_http_request(
+                        request.method, route, status,
+                        time.perf_counter() - started)
+                    # A structured access line for EVERY request, not just
+                    # writes. An observability stack that logs only mutations
+                    # cannot answer "what did this request do", which is the
+                    # question a request_id exists to answer. DEBUG so a
+                    # default INFO deployment stays quiet.
+                    logger.bind(
+                        request_id=rid, route=route, method=request.method,
+                        status=status, status_class=obs_metrics.status_class_of(status),
+                        latency_ms=round((time.perf_counter() - started) * 1000, 2),
+                    ).opt(colors=False).log("DEBUG", "http request")
+                    # The pre-existing security audit trail is unchanged: only
+                    # non-GET writes under /api/.
+                    if request.method != "GET" and request.url.path.startswith("/api/"):
+                        logger.bind(audit=True, request_id=rid).info(
+                            f"{request.method} {request.url.path} -> {status}"
+                        )
 
     return app
+
+
+def _route_template(request: Request) -> str:
+    """The matched route's path template, e.g. ``/jobs/{job_id}``.
+
+    Falls back to a bounded, ID-free shape when no route matched (a 404 or a
+    middleware-level rejection). A raw 404 path can contain a token in a query
+    string or an unbounded path segment, so it is truncated rather than used.
+    """
+    route = request.scope.get("route")
+    path = getattr(route, "path", None)
+    if isinstance(path, str) and path:
+        return path
+    return f"__unmatched__:{request.url.path[:64]}"
 
 
 app = create_app()

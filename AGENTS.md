@@ -44,6 +44,53 @@ based on score, diversity, budget, capacity, risk and learned patterns; enforces
 pause/stop gates between stages; applies the circuit breaker and Safety Center
 auto-pause triggers; and schedules next cycles.
 
+## Editorial planning (`engine/planning/`)
+
+The Planner turns signals into scheduled work. It is a *proposal* layer that
+references canonical objects — it never owns execution state.
+
+- `signals.py` — `TrendSignal`: an observation with its evidence. A single
+  observation has **no** velocity; the rate is only computed between two real
+  observations. Re-ingesting the same source item refreshes rather than
+  duplicating, so a re-syncing source cannot manufacture recurrence. Evidence
+  verification is **derived**, not caller-asserted: only self-resolving sources
+  (research, connectors, official platform APIs) with evidence ids count as
+  verified, and an operator's word never does.
+- `opportunities.py` — `ContentOpportunity` with a `basis` of `OBSERVED` /
+  `INFERRED` / `RECOMMENDED`. A factor with no data contributes 0 and says so;
+  `RECOMMENDED` is capped so a suggestion cannot outrank measured demand. No
+  virality, revenue, or success-probability field exists.
+- `dedup.py` — `NEW` / `RELATED` / `DUPLICATE` / `SATURATED`, with an explicit
+  series exception that lifts a block while recording why.
+- `capacity.py` — capacity columns are **rates** (`shorts_per_day`) scaled to
+  the horizon, compared against a committed count. An unset pool is unbounded,
+  not zero. The ledger is locale-scoped, so one market's limits are not spent
+  on another's work.
+- `calendar.py` — placement only. It writes the existing `ScheduleEntry` store
+  and never enqueues a job. `run_at` is stored in **UTC** (the Scheduler reads
+  that naive column as UTC), keyed on `ScheduleEntry.plan_item_id` for
+  idempotency. Timing comes from the platform's seed window unless measured
+  data exists; no statistical optimum is claimed without it.
+- `autonomy.py` — `DISABLED` / `RECOMMEND` / `APPROVAL` / `AUTONOMOUS`, gated
+  through `assert_may_advance`. **Planning autonomy is not publishing
+  autonomy**: `PUBLISH` is refused at every mode, unconditionally.
+- `engine.py` — `ContentPlanningEngine`. Consults GlobalMemory first; a topic
+  memory already covers is `SETTLED` and is not re-researched.
+- `orchestration.py` — trend → campaign, idempotent and resumable. Produces a
+  campaign DRAFT; creating a draft is not approval. Every stage goes through
+  the full gate, so an AUTONOMOUS allowlist naming only `SCHEDULE` runs nothing
+  else.
+- `feedback.py` — measured outcomes, and lessons that need `MIN_SAMPLE` items
+  and a real effect size. Only the **latest** `PostMetric` snapshot per post is
+  counted (they are cumulative). Reports `effect_size`, never a "confidence"
+  derived from a rate delta.
+
+Outbound fetches go through `core/netguard.py` + `core/fetch.py`: hostname
+resolution, a deny-by-default `is_global` gate, per-hop redirect revalidation,
+and address pinning against DNS rebinding. This covers fetches **YMONEY**
+performs; a URL handed to a platform to fetch is out of scope and is checked
+separately by that provider.
+
 ## Adding an agent
 
 1. Create a class inheriting `BaseAgent` with a unique `meta.key`.

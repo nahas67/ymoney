@@ -70,6 +70,43 @@ class Opportunity(Base, PKMixin, TimestampMixin):
     selected: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     skipped_reason: Mapped[str] = mapped_column(String(300), default="")
 
+    # -- Work 15 §2/§3: planning provenance -------------------------------
+    # How this opportunity was derived. OBSERVED = seen in real evidence;
+    # INFERRED = derived by scoring/clustering; RECOMMENDED = an AI suggestion
+    # with no measurement. A RECOMMENDED row may never be scheduled as demand.
+    basis: Mapped[str] = mapped_column(String(20), default="INFERRED")
+    angle: Mapped[str] = mapped_column(String(400), default="")
+    audience: Mapped[str] = mapped_column(String(200), default="")
+    platforms_json: Mapped[list] = mapped_column(JSON, default=list)
+    format: Mapped[str] = mapped_column(String(40), default="")
+    evidence_json: Mapped[list] = mapped_column(JSON, default=list)
+    brand_fit: Mapped[float] = mapped_column(Float, default=0.0)
+    freshness: Mapped[str] = mapped_column(String(12), default="")
+    competition_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    estimated_effort_hours: Mapped[float] = mapped_column(Float, default=0.0)
+    estimated_cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    priority_inputs_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Work 15 §10: NEW | RELATED | DUPLICATE | SATURATED
+    dedupe_verdict: Mapped[str] = mapped_column(String(20), default="")
+    dedupe_reason: Mapped[str] = mapped_column(String(400), default="")
+    plan_item_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+    @property
+    def platforms(self) -> list:
+        return list(self.platforms_json or [])
+
+    @property
+    def evidence(self) -> list:
+        return list(self.evidence_json or [])
+
+    @property
+    def competition_evidence(self) -> dict:
+        return dict(self.competition_json or {})
+
+    @property
+    def priority_inputs(self) -> dict:
+        return dict(self.priority_inputs_json or {})
+
 
 class ContentItem(Base, PKMixin, TimestampMixin):
     __tablename__ = "content_items"
@@ -136,6 +173,50 @@ class Video(Base, PKMixin, TimestampMixin):
     status: Mapped[str] = mapped_column(
         String(20), default="RENDERING", index=True
     )  # RENDERING|READY|FAILED
+
+    # --- Work 15.5 §7: the paid-submission contract ---------------------
+    # `status` above is the RENDER pipeline's concern and is deliberately NOT
+    # widened. A paid submit that may have been billed is a different fact, and
+    # folding it into `status` would force every reader of the render state to
+    # handle a state they have no business interpreting.
+    #
+    # PREPARED | SUBMISSION_ATTEMPTED | REMOTE_ID_CONFIRMED | PROCESSING |
+    # SUCCEEDED | FAILED | SUBMISSION_UNKNOWN
+    #
+    # SUBMISSION_UNKNOWN is the load-bearing one: the provider may have created
+    # and billed the job and we cannot prove otherwise. It forbids automatic
+    # resubmission and requires reconciliation or a human decision.
+    submission_state: Mapped[str] = mapped_column(
+        String(24), default="PREPARED", index=True)
+    #: the provider's durable id, for reconciling an ambiguous submission.
+    provider_task_id: Mapped[str] = mapped_column(String(160), default="")
+    #: why the submission state is what it is, for audit.
+    submission_detail: Mapped[str] = mapped_column(String(600), default="")
+    #: sent upstream as the provider's idempotency key, so a lost response can
+    #: be retried without buying a second job.
+    idempotency_key: Mapped[str] = mapped_column(String(80), default="")
+    # --- Work 15.8 §6: the durable paid-submission record ----------------
+    # `submission_state` above already IS the structural execution outcome (it
+    # holds the canonical `SubmissionState` vocabulary and is indexed), so this
+    # change adds NO second execution column -- two spellings of "may have been
+    # billed" is how two dashboards end up disagreeing. What was missing is the
+    # MONEY half and the correlation id:
+    #
+    # `cost_outcome` holds the canonical `CostOutcome` vocabulary
+    # (NOT_APPLICABLE|ACTUAL|ESTIMATED|UNKNOWN_EXPOSURE) so an operator can
+    # filter "renders whose cost is unknown" with a WHERE clause. Without it the
+    # only place that fact existed was a reservation row id held in memory.
+    cost_outcome: Mapped[str] = mapped_column(String(24), default="", index=True)
+    #: The canonical operation id of this attempt (PaidSubmission.submission_id).
+    #: Nothing before this linked the Video row to the ledger row for the same
+    #: submit, so a crash between the two made the pairing unrecoverable.
+    submission_operation_id: Mapped[str] = mapped_column(String(64), default="",
+                                                         index=True)
+    #: When the request actually LEFT. `created_at` is when the row was made,
+    #: which is not the same fact: a row created and never submitted must not
+    #: look like an attempt that may have been billed.
+    submission_attempted_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True)
     progress: Mapped[int] = mapped_column(Integer, default=0)
     file_path: Mapped[str] = mapped_column(Text, default="")
     thumbnail_path: Mapped[str] = mapped_column(Text, default="")
@@ -208,6 +289,21 @@ class PublishedPost(Base, PKMixin, TimestampMixin):
     title: Mapped[str] = mapped_column(String(300), default="")
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_mock: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Work 14: the four honest outcomes. `is_mock` is KEPT because existing
+    # readers still use it, but it can no longer express a handoff, so the
+    # mode is authoritative for anything user-visible. See
+    # app/engine/distribution/modes.py.
+    #
+    # The default is UNAVAILABLE, NOT live: a row that did not declare a mode
+    # has declared nothing, and defaulting to LIVE would let a mock (or a
+    # half-written) row claim a live publication. The publish flow always sets
+    # the mode explicitly; failing closed is the safe default.
+    publication_mode: Mapped[str] = mapped_column(
+        String(12), default="UNAVAILABLE", index=True)
+    # Handoff detail: where the prepared media lives + how the user publishes.
+    handoff_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    handoff_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True)
     # Work 04 Lane A: lineage back to the platform variant + campaign.
     platform_variant_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     campaign_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
@@ -249,6 +345,13 @@ class ScheduleEntry(Base, PKMixin, TimestampMixin):
     )
     content_item_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     campaign_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # Work 15: the planner's idempotency key. campaign_id and content_item_id are
+    # BOTH null for a plan item that has produced nothing yet, so keying on them
+    # alone collapsed every such item on a platform onto one row -- and
+    # re-planning one silently moved the other's time. NULL for every
+    # pre-Work-15 entry, and ignored by the canonical Scheduler.
+    plan_item_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True, index=True)
     platform: Mapped[str] = mapped_column(String(30))
     run_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     # PENDING is waiting for its run_at, DISPATCHING holds a short recovery

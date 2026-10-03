@@ -1657,43 +1657,100 @@ class DubBody(BaseModel):
 
 
 class VoicePreviewBody(BaseModel):
-    text: str = Field(min_length=1, max_length=600)
+    text: str = Field(min_length=1, max_length=4000)
     voice: str = Field(default="", max_length=120)
-    provider: str = Field(default="", max_length=30, description="edge|kokoro|chatterbox|qwen3|mock (blank = workspace default)")
+    provider: str = Field(default="", max_length=40, description="blank = workspace default")
     exaggeration: float = Field(default=0.5, ge=0.0, le=1.0)
     language: str = Field(default="", max_length=12)
     rate: float = Field(default=1.0, ge=0.5, le=2.0)
 
-@assets_router.post("/voice/preview", summary="Preview any voice-stack provider with extras")
-def voice_preview(body: VoicePreviewBody, ws: Workspace = Depends(require_workspace_role("member"))):
-    """Narrate a sample through a chosen provider (clone/emotion aware).
 
-    Uses the workspace default provider when blank. Returns raw audio bytes
-    with provider headers — the manual surface of the Voice Designer.
+@assets_router.post("/voice/preview",
+                    summary="Preview a voice (delegates to the preview router)")
+def voice_preview(body: VoicePreviewBody,
+                  ws: Workspace = Depends(require_workspace_role("member"))):
+    """ADAPTER. The preview logic lives in ``api/v1/preview.py`` and only there.
+
+    Work 15.7 §9. This used to be a second, independent implementation: its own
+    body model, its own provider resolution, its own call to ``synthesize`` --
+    and NO cost guard at all. Two preview implementations mean two places where
+    the budget can be enforced and, in practice, one place where it was. A
+    client hitting this path spent ElevenLabs characters with nothing counting
+    them.
+
+    It stays because ``frontend/src/pages/SystemHealth.tsx`` posts to it, and
+    deleting a route a shipped UI calls is a worse outage than a thin adapter.
+    What it no longer does is decide anything: it maps its body onto the one
+    implementation's model and calls it, so the cache, the DB-atomic
+    reservation, the settlement and the provider offerability rules are all the
+    same objects the ``/voice-preview`` router uses.
+
+    The one thing this path does not get is a MediaAsset row: it has no request
+    session of its own, and the preview route writes one from its own
+    dependency. Both responses are byte-identical audio for identical input, and
+    the rate/dollar refusals are the same 429/402 with the same reason words.
     """
-    from fastapi.responses import Response
+    from app.api.v1.preview import VoicePreviewBody as CanonicalVoicePreviewBody
+    from app.api.v1.preview import preview_voice as canonical_preview
 
-    from app.providers.tts import TTSError, get_tts_provider
-    from app.services import provider_settings as _ps
-
-    try:
-        with _ps.workspace_scope(ws.id):
-            provider = get_tts_provider(body.provider) if body.provider else get_tts_provider()
-            result = provider.synthesize(
-                body.text, voice=body.voice, rate=body.rate,
-                language=body.language, exaggeration=body.exaggeration,
-            )
-    except TTSError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
-    media = "audio/wav" if result.format == "wav" else "audio/mpeg"
-    return Response(
-        content=result.audio_bytes,
-        media_type=media,
-        headers={
-            "X-TTS-Provider": result.provider,
-            "X-TTS-Mock": "1" if result.is_mock else "0",
-        },
+    return canonical_preview(
+        CanonicalVoicePreviewBody(
+            text=body.text,
+            voice=body.voice,
+            provider=body.provider,
+            rate=body.rate,
+            language=body.language,
+            exaggeration=body.exaggeration,
+        ),
+        ws=ws,
+        db=None,
     )
+
+
+#: Ledger category for a narration call made by a route that is not a preview
+#: (the avatar route's driving-audio step). Distinct from the preview category so
+#: a preview rate limit cannot be consumed by, or hide, production narration.
+_SPEAK_CATEGORY = "tts_speak"
+
+
+def _reserve_speak(workspace_id: str, text: str, provider: str):
+    """Take an atomic spend permission for a narration call, or refuse.
+
+    Same three refusals as the preview router, because they are the same three
+    decisions: out of rate, out of money, or allowed. A route that invented its
+    own status codes for the same refusal is how a client ends up retrying a
+    permanent refusal in a loop.
+    """
+    from app.api.v1.preview import PREVIEW_MAX_PER_WINDOW, preview_estimated_usd
+    from app.services import cost as _cost
+
+    estimated = preview_estimated_usd(len(text or ""))
+    try:
+        return _cost.reserve_spend(
+            workspace_id, estimated, category=_SPEAK_CATEGORY,
+            provider=str(provider or ""), max_events=int(PREVIEW_MAX_PER_WINDOW),
+            window_seconds=60.0)
+    except _cost.RateLimitExceeded as exc:
+        raise HTTPException(status_code=429, detail={
+            "reason": "speak_rate_exceeded", "message": str(exc)[:200],
+            "scope": "workspace", "authority": "database"}) from exc
+    except _cost.BudgetExceededError as exc:
+        raise HTTPException(status_code=402, detail={
+            "reason": "budget_exhausted", "message": str(exc)[:200],
+            "scope": "workspace", "authority": "database"}) from exc
+
+
+def _settle_speak(workspace_id: str, provider, result, text: str, reservation) -> None:
+    """Settle a narration reservation with the SAME policy the preview uses.
+
+    Delegated rather than reimplemented: the mock / priced-audio /
+    unknown-exposure trichotomy is the part that has to be right, and a second
+    copy of it in this file would be a second chance to record a real charge as
+    ``$0``.
+    """
+    from app.api.v1.preview import _settle_preview
+
+    _settle_preview(workspace_id, provider, result, len(text or ""), reservation)
 
 
 @assets_router.get("/dub/status", summary="Dubbing pipeline availability")
@@ -1872,6 +1929,14 @@ def render_avatar_clip(body: AvatarBody, ws: Workspace = Depends(require_workspa
 
     Requires image + exactly one of audio/text; fails closed with remediation
     when no backend is ready.
+
+    Work 15.7 §9: when ``text`` is supplied this route synthesizes narration
+    itself, and that synthesis bills ElevenLabs characters exactly as a preview
+    does. It had no gate of its own, so the workspace's daily cap was not
+    consulted before the call -- only afterwards, if anything called
+    ``track_cost`` at all. The voice step now takes the SAME atomic reservation
+    the preview router takes, and the route itself refuses with the same 402/429
+    vocabulary when the workspace is out of room.
     """
     from app.providers.avatar import AvatarError, render_avatar
     from app.providers.tts import TTSError, get_tts_provider
@@ -1884,11 +1949,17 @@ def render_avatar_clip(body: AvatarBody, ws: Workspace = Depends(require_workspa
         if body.text.strip():
             import time as _t
 
+            # Reserving BEFORE the call is the only ordering that protects
+            # anything; a gate after the synthesis has already been paid for.
+            # The reservation is held (never voided on failure) because a TTS
+            # fault may still have been billed.
+            reservation = _reserve_speak(ws.id, body.text, body.provider)
             try:
                 prov = get_tts_provider(body.provider) if body.provider else get_tts_provider()
                 res = prov.synthesize(body.text, voice=body.voice)
             except TTSError as exc:
                 raise AvatarError(f"voice step failed: {exc}") from exc
+            _settle_speak(ws.id, prov, res, body.text, reservation)
             ext = "wav" if res.format == "wav" else "mp3"
             driving = get_storage().save_media(
                 ws.id, data=res.audio_bytes, filename=f"avatar_voice_{int(_t.time())}.{ext}")

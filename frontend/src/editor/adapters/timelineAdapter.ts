@@ -10,6 +10,15 @@ export type Clip = {
   fade_in?: number; fade_out?: number;
   transform?: Record<string, any>; text?: Record<string, any>;
   transition_in?: string; transition_out?: string;
+  /** Work 13: real word timing (stored, never synthesised) + its flag. */
+  words?: { word: string; start_s: number; end_s: number; speaker_id?: string | null }[];
+  word_level?: boolean;
+  /** Work 13: stored semantic emphasis, editable and renderer-visible. */
+  emphasis?: { word: string; start: number; end: number; kind: string; source: string }[];
+  /** Work 13: a validated transition object (from_item/to_item/type/duration). */
+  transition?: Record<string, any> | null;
+  /** Work 13: per-caption animation keyframes (config, never pixels). */
+  keyframes?: { t: number; [k: string]: any }[];
 };
 
 export type Track = { id: string; kind: string; name: string; clips: Clip[] };
@@ -121,6 +130,110 @@ export function applyOpsLocal(doc: any, ops: any[]): any {
       if (op.start != null) c.start = op.start;
       if (op.duration != null) c.duration = op.duration;
       if (op.style != null) c.text = { ...(c.text ?? {}), preset: op.style };
+    } else if (op.type === "update_caption_style") {
+      // Work 13: a typed style patch + preset. Mirrors the backend op, which
+      // validates through app.engine.captions.style before persisting.
+      const c = tr.clips.find((x: any) => x.id === op.clip_id);
+      if (!c) continue;
+      if (op.preset != null) c.text = { ...(c.text ?? {}), preset: op.preset };
+      if (op.style && typeof op.style === "object") {
+        c.text = { ...(c.text ?? {}) };
+        const patch: any = op.style;
+        if (patch.animation && typeof patch.animation === "object") {
+          c.text.animation = { ...(c.text.animation ?? {}), ...patch.animation };
+          delete patch.animation;
+        }
+        Object.assign(c.text, patch);
+      }
+    } else if (op.type === "set_caption_words") {
+      // Word timing is STORED, never derived: an empty list clears it and
+      // word_level follows the list so the renderer knows not to animate words.
+      const c = tr.clips.find((x: any) => x.id === op.clip_id);
+      if (!c) continue;
+      c.words = Array.isArray(op.words) ? op.words : [];
+      c.word_level = c.words.length > 0;
+      if (op.emphasis) c.emphasis = op.emphasis;
+    } else if (op.type === "apply_effect") {
+      const c = tr.clips.find((x: any) => x.id === op.clip_id);
+      if (!c) continue;
+      const effects = Array.isArray(c.effects) ? [...c.effects] : [];
+      const next = {
+        type: String(op.effect?.type ?? "").toUpperCase(),
+        params: { ...(op.effect?.params ?? {}) },
+        enabled: op.effect?.enabled !== false,
+      };
+      const at = effects.findIndex(
+        (e: any) => String(e?.type ?? "").toUpperCase() === next.type
+      );
+      if (at >= 0) effects[at] = next;
+      else effects.push(next);
+      c.effects = effects;
+    } else if (op.type === "remove_effect") {
+      const c = tr.clips.find((x: any) => x.id === op.clip_id);
+      if (!c) continue;
+      const want = String(op.effect ?? "").toUpperCase();
+      c.effects = (Array.isArray(c.effects) ? c.effects : []).filter(
+        (e: any) => String(e?.type ?? "").toUpperCase() !== want
+      );
+    } else if (op.type === "set_transition") {
+      const c = tr.clips.find((x: any) => x.id === op.clip_id);
+      if (!c) continue;
+      c.transition = { ...(op.transition ?? {}) };
+      c.transition_in =
+        Number(op.transition?.duration ?? 0) > 0 ? "crossfade" : "cut";
+    } else if (op.type === "add_keyframe") {
+      // Work 13.1 canonical keyframes. Sorted by (t, id) so the local preview
+      // matches the server's canonical ordering exactly.
+      const c = tr.clips.find((x: any) => x.id === op.clip_id);
+      if (!c) continue;
+      const chain = Array.isArray(c.keyframes) ? [...c.keyframes] : [];
+      const frame = { ...(op.keyframe ?? {}) };
+      if (!frame.id) frame.id = `kf${chain.length + 1}`;
+      if (frame.easing == null) frame.easing = "LINEAR";
+      if (frame.props == null) frame.props = {};
+      const at = chain.findIndex((f: any) => f?.id === frame.id);
+      if (at >= 0) chain[at] = frame;
+      else chain.push(frame);
+      c.keyframes = chain.sort(
+        (a: any, b: any) => Number(a.t) - Number(b.t) ||
+          String(a.id).localeCompare(String(b.id))
+      );
+    } else if (op.type === "update_keyframe") {
+      const c = tr.clips.find((x: any) => x.id === op.clip_id);
+      if (!c) continue;
+      c.keyframes = (Array.isArray(c.keyframes) ? c.keyframes : []).map((f: any) =>
+        f?.id === op.keyframe_id
+          ? { ...f, ...(op.keyframe ?? {}), id: f.id }
+          : { ...f }
+      );
+    } else if (op.type === "move_keyframe") {
+      const c = tr.clips.find((x: any) => x.id === op.clip_id);
+      if (!c) continue;
+      c.keyframes = (Array.isArray(c.keyframes) ? c.keyframes : []).map((f: any) =>
+        f?.id === op.keyframe_id ? { ...f, t: Number(op.t) } : { ...f }
+      );
+      c.keyframes.sort(
+        (a: any, b: any) => Number(a.t) - Number(b.t) ||
+          String(a.id).localeCompare(String(b.id))
+      );
+    } else if (op.type === "delete_keyframe") {
+      const c = tr.clips.find((x: any) => x.id === op.clip_id);
+      if (!c) continue;
+      c.keyframes = (Array.isArray(c.keyframes) ? c.keyframes : []).filter(
+        (f: any) => f?.id !== op.keyframe_id
+      );
+    } else if (op.type === "set_keyframes") {
+      const c = tr.clips.find((x: any) => x.id === op.clip_id);
+      if (!c) continue;
+      const chain = (Array.isArray(op.keyframes) ? op.keyframes : []).map((f: any) => ({
+        ...f,
+        easing: f?.easing ?? "LINEAR",
+        props: { ...(f?.props ?? {}) },
+      }));
+      c.keyframes = chain.sort(
+        (a: any, b: any) => Number(a.t) - Number(b.t) ||
+          String(a.id).localeCompare(String(b.id))
+      );
     }
     tr.clips.sort((a: any, b: any) => a.start - b.start);
   }
@@ -156,8 +269,16 @@ export function inverseOps(doc: any, ops: any[]): any[] {
       inverse.push({ type: "delete_item", track: op.track, clip_id: op.clip.id });
     } else if ((op.type === "update_transform" || op.type === "update_volume" ||
         op.type === "update_speed" || op.type === "update_text" ||
-        op.type === "update_caption") && c) {
+        op.type === "update_caption" || op.type === "update_caption_style" ||
+        op.type === "set_caption_words" || op.type === "apply_effect" ||
+        op.type === "remove_effect" || op.type === "set_transition" ||
+        op.type === "add_keyframe" || op.type === "update_keyframe" ||
+        op.type === "move_keyframe" || op.type === "delete_keyframe" ||
+        op.type === "set_keyframes") && c) {
       const back: any = { ...op };
+      // `let`-like rebinding below: some keyframe inverses replace the op shape
+      // entirely (a partial inverse would not restore the chain ORDER).
+      let inverseOp: any = back;
       if (op.transform) back.transform = { ...(c.transform ?? {}) };
       if (op.volume != null) {
         back.volume = c.volume ?? 1;
@@ -176,7 +297,79 @@ export function inverseOps(doc: any, ops: any[]): any[] {
         if (op.duration != null) back.duration = c.duration;
         if (op.style != null) back.style = c.text?.preset ?? "minimal";
       }
-      inverse.push(back);
+      // Work 13 inverses: each captures the PRE-edit value so undo restores
+      // the exact prior state (a missing branch here would make a Work 13 edit
+      // silently un-undoable).
+      if (op.type === "update_caption_style") {
+        back.style = { ...(c.text ?? {}) };
+        if (op.preset != null) back.preset = c.text?.preset ?? "minimal";
+      }
+      if (op.type === "set_caption_words") {
+        back.words = (c.words ?? []).map((w: any) => ({ ...w }));
+        if (op.emphasis) back.emphasis = (c.emphasis ?? []).map((e: any) => ({ ...e }));
+      }
+      if (op.type === "apply_effect") {
+        const want = String(op.effect?.type ?? "").toUpperCase();
+        const before = (c.effects ?? []).find(
+          (e: any) => String(e?.type ?? "").toUpperCase() === want
+        );
+        back.effect = before ? { ...before, params: { ...(before.params ?? {}) } } : null;
+      }
+      if (op.type === "remove_effect") {
+        const want = String(op.effect ?? "").toUpperCase();
+        const before = (c.effects ?? []).find(
+          (e: any) => String(e?.type ?? "").toUpperCase() === want
+        );
+        back.effect = before ? { ...before, params: { ...(before.params ?? {}) } } : null;
+      }
+      if (op.type === "set_transition") {
+        back.transition = c.transition ? { ...c.transition } : null;
+      }
+      // Work 13.1 keyframe inverses. The whole chain is captured (a deep copy)
+      // rather than a single frame, because add/delete/move all mutate an
+      // ORDERED list: a partial inverse would restore the frames but not the
+      // order the renderer depends on.
+      if (op.type === "add_keyframe") {
+        const id = op.keyframe?.id;
+        const before = (c.keyframes ?? []).find((f: any) => f?.id === id);
+        if (before) {
+          // replacing an existing keyframe: undo restores the prior frame
+          inverseOp = { type: "set_keyframes", track: op.track, clip_id: op.clip_id,
+            keyframes: (c.keyframes ?? []).map((f: any) => ({ ...f })) };
+        } else {
+          // genuinely new: undo removes exactly that one
+          inverseOp = { type: "delete_keyframe", track: op.track,
+            clip_id: op.clip_id, keyframe_id: id };
+        }
+      }
+      if (op.type === "update_keyframe" || op.type === "move_keyframe") {
+        // Pre-edit chain: it already holds the prior frame at its prior time,
+        // so restoring it verbatim undoes both the value and the re-ordering.
+        const chainBefore: any[] = Array.isArray(c.keyframes) ? c.keyframes : [];
+        inverseOp = { type: "set_keyframes", track: op.track, clip_id: op.clip_id,
+          keyframes: chainBefore.map((f: any) => ({
+            ...f, props: { ...(f?.props ?? {}) } })) };
+      }
+      if (op.type === "delete_keyframe") {
+        // `doc` here is the PRE-edit timeline, so the chain already contains
+        // the frame being deleted: the inverse is that chain verbatim, NOT the
+        // chain plus the deleted frame (which would duplicate it).
+        const chainBefore: any[] = Array.isArray(c.keyframes) ? c.keyframes : [];
+        if (chainBefore.some((f: any) => f?.id === op.keyframe_id)) {
+          inverseOp = { type: "set_keyframes", track: op.track,
+            clip_id: op.clip_id,
+            keyframes: chainBefore.map((f: any) => ({ ...f })) };
+        } else {
+          // nothing to restore: keep a no-op-safe inverse
+          inverseOp = { type: "delete_keyframe", track: op.track,
+            clip_id: op.clip_id, keyframe_id: op.keyframe_id };
+        }
+      }
+      if (op.type === "set_keyframes") {
+        inverseOp = { type: "set_keyframes", track: op.track, clip_id: op.clip_id,
+          keyframes: (c.keyframes ?? []).map((f: any) => ({ ...f })) };
+      }
+      inverse.push(inverseOp);
     }
   }
   return inverse;

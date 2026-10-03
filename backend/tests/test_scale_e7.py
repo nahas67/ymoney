@@ -4,6 +4,24 @@ from __future__ import annotations
 import pytest
 
 
+def _drain_queue() -> None:
+    """Empty the job queue so the claim-order assertions below are deterministic.
+
+    W11.5: ``autopilot.start_schedule_sweep()`` runs at app startup and enqueues
+    a ``system.schedule_sweep`` job through its OWN committing ``session_scope``.
+    The suite shares one SQLite file, so that row survives every ``db_session``
+    rollback and any earlier test that starts the app leaves the queue
+    non-empty. ``_claim_next()`` returns the oldest eligible job, so both
+    "the queue is empty" and "the next claim is my job" assertions were
+    order-dependent and failed intermittently in full-suite runs.
+    """
+    from app.db import session_scope
+    from app.models import Job
+
+    with session_scope() as s:
+        s.query(Job).filter(Job.status == "QUEUED").delete()
+
+
 class FakeRedis:
     def __init__(self, fail: bool = False):
         self.items: list[str] = []
@@ -112,6 +130,7 @@ async def test_gpu_jobs_deferred_without_worker(tmp_path, monkeypatch):
     from app.services import jobs as jobs_mod
 
     monkeypatch.chdir(tmp_path)
+    _drain_queue()
     monkeypatch.setattr(config_mod.settings, "gpu_worker", False)
     jid = jobs_mod.enqueue("cycle.build", {"requires_gpu": True}, workspace_id="ws-x")
     assert await jobs_mod._claim_next() is None
@@ -136,6 +155,7 @@ async def test_plain_jobs_unaffected_by_gpu_gate(tmp_path, monkeypatch):
     from app.services import jobs as jobs_mod
 
     monkeypatch.chdir(tmp_path)
+    _drain_queue()
     monkeypatch.setattr(config_mod.settings, "gpu_worker", False)
     jid = jobs_mod.enqueue("cycle.find", {}, workspace_id="ws-x")
     ctx = await jobs_mod._claim_next()

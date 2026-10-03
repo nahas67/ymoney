@@ -44,7 +44,86 @@ Status convention: ✅ COMPLETE · 🟢 WORKING · 🟡 PARTIAL · 🔵 NEXT · 
 ♻️ Vendored `MoneyPrinterTurbo/` worktree copy deleted (HTTP adapter is the only integration; 286 unstaged deletions visible in `git status`, uncommitted)
 🔵 Unique-prefix enforcement for future migrations (hygiene test fails on new collisions)
 
-## Evidence (Work 01 + Work 02 + Work 03 + Work 04 + Work 05 + Work 06 + Work 07 + Work 08 + Work 09 + Work 10 + Work 11, 2026-09-23/29)
+## Evidence (Work 01 + Work 02 + Work 03 + Work 04 + Work 05 + Work 06 + Work 07 + Work 08 + Work 09 + Work 10 + Work 11 + Work 11.5, 2026-09-23/30)
+
+### Work 11.5 (this slice) - Full System Reconciliation + Critical Hardening (Works 01-12)
+- **Premise corrected**: the work order claimed a 1296-test post-Work-11
+  baseline; the repository was actually at **1754** (1687 fast / 67 slow) at
+  HEAD `212d409`, with migration `0029`, a 23-file `engine/intel/` tree and
+  the Editor panels. **Work 12 was already complete**, so this pass
+  reconciled Works 01-12 and the next feature phase is **Work 13**.
+- Method: **6 read-only audit lanes** (migrations/DB, RBAC/isolation,
+  connectors+security, canonical truth + CompletionVerifier, providers/
+  autonomy/budget/memory, test-quality/licenses/perf/git). **Every finding
+  was independently verified by the orchestrator** before accept/fix/defer;
+  no subagent ever wrote code. Several lane claims were corrected on
+  verification.
+- **Every BLOCKER / CRITICAL / HIGH resolved** (detail in
+  `docs/YMONEY_PRODUCTION_GAP_MATRIX.md`): 1 BLOCKER (migration
+  `DEFAULT ""` is a PostgreSQL *identifier*), 1 CRITICAL (`assert_can_spend`
+  had **zero call sites**, so daily/per-video caps were read but never
+  enforced - now gated before `engine.submit`), and 13 HIGH: 6 in migrations
+  (PG-invalid derived-table alias, 13 x `BOOLEAN DEFAULT 0/1`,
+  BrandOverride + never-created Opportunity UNIQUE drift, `scenes.idx`),
+  2 privilege escalations (member could record a QC-FAIL override; the whole
+  review lifecycle sat at the viewer floor), 1 SSRF (`allow_private` was
+  self-serve), 2 CompletionVerifier gaps (`Video.READY` and `PublishedPost`
+  written with no verifier), 1 verifier soundness bug (`check_video` stat'ed
+  raw DB paths and matched assets by bare basename), and 2 uncosted spend
+  paths (browser + DecisionEngine never ledgered).
+- **New migration `0030_reconciliation_backfill.py`**: idempotent re-apply of
+  every step an install could have missed. Fresh replay **30 applied**, second
+  run **REPLAY_NOOP**, 104 tables, all 102 ORM tables compile under the
+  **PostgreSQL** dialect.
+- **Governance hardened**: new `assert_workspace_admin()`; QC override and
+  QC-FAIL apply require admin; review + revision lifecycle floors raised
+  viewer -> member (the Work 11 lock that *allowed* viewer revisions was the
+  defect, so that assertion was inverted with the reasoning recorded).
+- **Mock/real boundaries explicit**: video-engine `mock` and `mock_analytics`
+  are now refused in production (new `allow_mock_in_production` hatch).
+- **Found by the gates themselves, mid-pass**:
+  - `platform_variants.status` was **never set to `PUBLISHED`** -
+    `_mark_variant` opened a nested committing session after the publish
+    transaction had already flushed, so SQLite's write lock deadlocked it and
+    a bare `except` swallowed the error. Hidden because only the FAILED path
+    asserted variant status. Fixed; E2E runtime 41.55s -> 12.43s.
+  - The first version of the D-F2 verifier wiring made that same nested-
+    session mistake and turned E2E red. Fixed by reusing the ambient
+    session, which also makes publication + evidence one atomic commit.
+  - `test_brains_e6` used hardcoded RSS dates and aged out on its own at
+    2026-09-30T10:00:00Z (entry age 1441.7h vs a 1440h window) with zero code
+    changes; fixture is now built from relative offsets.
+  - Job-queue test isolation: `jobs.enqueue` commits via its own session and
+    app startup enqueues a `system.schedule_sweep`, so the shared test DB is
+    never queue-empty, making two `test_scale_e7` assertions order-dependent.
+    Fixed with a `_drain_queue()` helper - assertions left unchanged.
+- **Investigated and REFUTED** (no change, no false test written):
+  `GlobalMemory.list` appears to apply `limit` before the freshness-band
+  filter, but the SQL pre-filter uses the identical predicate - verified
+  empirically on a throwaway SQLite DB.
+- **New regression battery** `backend/tests/test_reconciliation_115.py`
+  (14 tests) pinning each fixed finding, including static proofs that no
+  `DEFAULT ""`, `BOOLEAN DEFAULT 0/1` or alias-less derived table remains.
+- **Verified clean**: no committed secrets (`.env` untracked + gitignored +
+  never committed, history clean); 0 true zero-assertion tests; no
+  `unittest.mock` in production; `pass`/`NotImplementedError` triage = **0
+  reachable placeholders**; LivePortrait/InsightFace have **zero** code
+  references; no new runtime dependency (`uv.lock` holds zero ML packages).
+- **PostgreSQL runtime = `EXTERNAL/UNVERIFIED`**: a local PG 18 cluster cannot
+  start in this environment (child processes die with `0xC0000142`), so the PG
+  findings are static analysis + dialect compilation only. **No PostgreSQL
+  pass was faked.**
+- **Final gates (all exit 0)**: fast **1701 passed / 4 skipped / 0 failed**
+  (444.87s) - delta vs the 1687-passed baseline is exactly **+14** (the new
+  battery), with no pre-existing test weakened; slow **67 passed / 0 failed**
+  (349.51s); migration replay 30 + REPLAY_NOOP; Postman 60 folders / 414
+  requests (3/3); OpenAPI 365 paths; backend import OK; Ruff **19 findings,
+  all pre-existing, 0 introduced**; `tsc -b --force` exit 0; frontend build
+  exit 0; named security/RBAC/E2E/verifier/connector batteries **89 passed**.
+- Docs: `docs/YMONEY_SYSTEM_RECONCILIATION.md` and
+  `docs/YMONEY_PRODUCTION_GAP_MATRIX.md`.
+- Git: **no commits** - every fix lives in the working tree at `212d409`
+  (0 ahead / 0 behind); **37 modified / 31 untracked / 0 deleted**.
 
 ### Work 11 (this slice) — Collaboration + Review + Export + Enterprise Ops
 - Full suite: fast lane **1283 passed, 4 skipped, 13 deselected** (508s);
@@ -412,3 +491,68 @@ Status convention: ✅ COMPLETE · 🟢 WORKING · 🟡 PARTIAL · 🔵 NEXT · 
 - Work 11: `caption`/`asset` comment anchor types are backend-supported
   but not offered by the editor Comments panel (no such objects are in
   view there).
+- Work 11.5: a workspace VIEWER can still write/resolve comments (the
+  `comment` cap admits REVIEWER and the route floor is viewer) - a
+  documented Work 11 collaboration decision, kept deliberately; needs an
+  owner call if viewer-commenting should close.
+- Work 11.5: video-engine `mock` and `mock_analytics` are refused in
+  production by default (new `allow_mock_in_production` escape hatch);
+  `wavlip_dir` still only *discloses* the LRS2 non-commercial terms
+  without a `commercial_mode` refusal (unlike the media-intel adapters).
+- Work 11.5: CC-BY-4.0 attribution for `wespeaker` / `community-1` has no
+  product surface yet (both providers stay `REVIEW_REQUIRED`, so the
+  commercial path already refuses).
+- Work 11.5: no verifier kind exists for campaign-complete, long-form,
+  short-render, localization, UGC, avatar/lip-sync, connector sync or
+  review/approval; each needs a contract amendment. Video + publication are
+  now wired (the two that had a status-over-evidence hole).
+- Work 11.5: `0029.parent_asset_id` has no FK in the DDL (the ORM declares
+  one); adding it needs a dedupe pass over live rows.
+- Work 11.5: connector DNS-rebinding TOCTOU remains (the host is validated,
+  then httpx re-resolves); SSRF guards still re-run on every hop.
+- Work 11.5: `PublishingPlan.items_json.{approval_state,publication_state}`
+  duplicates `PlatformVariant.status` + `PublishedPost` with two writers;
+  collapsing it is a data-model refactor, not a patch.
+- Work 11.5: status vocabulary remains fragmented (`COMPLETE` / `COMPLETED` /
+  `READY` / `SUCCEEDED` / `DONE`, upper vs lower); nothing misreads it today.
+- Work 11.5: `test_zz_debug.py` is a 1-line docstring with **0 collected
+  tests** and 0 references - verified safe to delete, but test-file removal
+  is a human decision, so it was left in place.
+- Work 11.5: runtime PostgreSQL verification is `EXTERNAL/UNVERIFIED` - an
+  ephemeral local PG 18 cluster cannot start in this environment (child
+  processes die with `0xC0000142`), so the PG findings are static analysis
+  plus PostgreSQL-dialect compilation only. No PG pass was faked.
+- Work 11.5: `test_knowledge_memory.py::test_list_filters_order_and_limit_clamp`
+  is an intermittent PRE-EXISTING flake (passes isolated, in file-pair runs and
+  in full-suite run 3; failed only in run 2). Root factor: this host's clock has
+  ~1 ms granularity, so its 205 tight-loop inserts share `created_at` and the
+  `created_at DESC, id ASC` tie-break becomes load-bearing. Give the test
+  explicit distinct timestamps rather than relying on clock resolution.
+- Work 11.5: `jobs.enqueue` commits via its OWN session and app startup enqueues
+  a `system.schedule_sweep` job, so the suite's shared SQLite file is never
+  queue-empty - which made `test_scale_e7`'s two claim-order assertions
+  order-dependent and intermittently red. Fixed with a `_drain_queue()` helper
+  (assertions kept unchanged). The class of defect - any write through its own
+  committing session leaking past the `db_session` rollback - still needs a
+  session-wide fix.
+- Work 11.5: **never open a committing session inside an ambient write
+  transaction.** The D-F2 verifier wiring first used a nested `session_scope()`
+  and deadlocked SQLite (`database is locked` at `verifier.py:458` ->
+  `ledger.py:65`), turning the E2E gate red; it now runs on the ambient
+  session, which also makes publication + evidence one atomic commit. The
+  D-F1 wiring in `agents/production.py` is safe only because `_update_video()`
+  closes its session first - that fragile invariant is commented in the code.
+- Work 11.5: `_mark_variant` nested a committing session inside the flushed
+  publish transaction, so on the SUCCESS path `platform_variants.status` was
+  never set to `PUBLISHED` (deadlock swallowed by a bare `except`) and every
+  publish burned a 5s busy-timeout. It hid because only the FAILED path
+  asserted variant status. Fixed by threading the caller's session; the
+  FAILED-path calls keep their own session because they raise immediately
+  (an ambient write would be rolled back). Success path now asserted.
+- Work 11.5: `engine/agents/discovery.py:168` nests `DecisionEngine._persist`
+  inside an open scope and survives only because `autoflush=False` - one flush
+  away from the same deadlock. Copy the `context_bridge.py:136` /
+  `media_intel_runs.py:199` shape (commit first, then emit).
+- Work 11.5: `GlobalMemory.list` applies its band re-check after `stmt.limit()`
+  - investigated and **refuted** as a defect (the SQL pre-filter uses the
+  identical predicate, verified on a throwaway DB). No change made.

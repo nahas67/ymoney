@@ -13,7 +13,7 @@ def upgrade(session: Session) -> None:
             workspace_id VARCHAR(36) NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
             capability_type VARCHAR(16) NOT NULL,
             capability_key VARCHAR(120) NOT NULL,
-            allowed BOOLEAN NOT NULL DEFAULT 1,
+            allowed BOOLEAN NOT NULL DEFAULT TRUE,
             updated_by VARCHAR(36)
         )
     """))

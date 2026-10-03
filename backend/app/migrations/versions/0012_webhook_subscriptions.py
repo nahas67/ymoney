@@ -13,7 +13,7 @@ def upgrade(session) -> None:
             url VARCHAR(2000) NOT NULL DEFAULT '',
             secret_enc TEXT NOT NULL DEFAULT '',
             events_json JSON NOT NULL DEFAULT '[]',
-            active BOOLEAN NOT NULL DEFAULT 1
+            active BOOLEAN NOT NULL DEFAULT TRUE
         )
     """))
     session.execute(text("""

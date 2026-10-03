@@ -241,25 +241,37 @@ def test_dismissed_allowed_for_creator(client):
 
 
 def test_revision_unlinked_floors_actual(client):
-    """Unlinked target: create falls to the route floor (viewer); DISMISSED by
-    a non-creator resolves `edit_timeline` through the unlinked fallback to the
-    same floor; ADDRESSED keeps the explicit member floor. Locks ACTUAL."""
+    """Unlinked target: every revision-lifecycle mutation needs the MEMBER
+    floor.
+
+    W11.5 B-F2 raised ``POST /revisions`` and the revision state route from the
+    viewer floor to ``member``: a reviewer opening a revision is a
+    governance action, so it must not be reachable by a workspace viewer. The
+    locked Work 11 assertion (viewer could create on an unlinked target) was
+    the *cause* of the finding, so it is updated here and the viewer refusal
+    is asserted instead. Unlinked targets still fall back to the route floor
+    (contracts §3), which is now ``member``.
+    """
     ws, h, _ = _register(client)
     viewer_h, _ = _add_user(client, ws, "viewer")
     member_h, _ = _add_user(client, ws, "member")
 
-    # ws viewer may CREATE on an unlinked target (floor viewer + §3 fallback)
+    # a workspace VIEWER may NOT open a revision (floor member)
     r = _create_revision(client, ws, viewer_h, target_id="tl-unlinked")
+    assert r.status_code == 403, r.text
+
+    # a MEMBER may (unlinked target -> the route floor is the enforcement line)
+    r = _create_revision(client, ws, member_h, target_id="tl-unlinked")
     assert r.status_code == 201, r.text
     rev = r.json()["items"][0]
 
-    # a non-creator member may DISMISS it (unlinked edit_timeline fallback)
+    # a member may DISMISS it
     r = client.post(f"/api/v1/workspaces/{ws}/revisions/{rev['id']}/state",
                     headers=member_h, json={"state": "DISMISSED"})
     assert r.status_code == 200, r.text
     assert r.json()["state"] == "DISMISSED"
 
-    # ADDRESSED still needs the member floor: ws viewer -> 403
+    # ADDRESSED keeps the explicit member floor: ws viewer -> 403
     r = client.post(f"/api/v1/workspaces/{ws}/revisions/{rev['id']}/state",
                     headers=viewer_h, json={"state": "ADDRESSED"})
     assert r.status_code == 403, r.text

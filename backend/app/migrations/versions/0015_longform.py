@@ -1,5 +1,7 @@
 """Upgrade 0015: long-form projects/chapters + scene.chapter_id (Work 03)."""
 
+from app.migrations.ddl import add_columns_if_missing, create_index_if_missing, has_column
+
 
 def upgrade(session) -> None:
     from sqlalchemy import text
@@ -62,13 +64,35 @@ def upgrade(session) -> None:
             status VARCHAR(20) NOT NULL DEFAULT 'PLANNED'
         )
     """))
-    session.execute(text("""
-        CREATE INDEX IF NOT EXISTS ix_chapter_project
-        ON longform_chapters (project_id, idx)
-    """))
-    for _col in ("chapter_id VARCHAR(36)", "beats_json JSON NOT NULL DEFAULT '[]'"):
-        try:
-            session.execute(text(f"ALTER TABLE scenes ADD COLUMN {_col}"))
-        except Exception as exc:  # noqa: BLE001 — duplicate-column means applied
-            if "duplicate" not in str(exc).lower() and "exists" not in str(exc).lower():
-                raise
+    # The ordering column has two spellings in this schema and the index has to
+    # name whichever one the table actually has. ``LongFormChapter`` declares it
+    # as ``index`` (a Python attribute named after the SQL keyword), so
+    # ``create_all`` -- which the runner does BEFORE migrations -- builds the
+    # table with ``index`` and its own ``Index("ix_chapter_project", ...)``. This
+    # migration's ``CREATE TABLE IF NOT EXISTS`` is then a no-op, so ``idx``
+    # exists only when the table came from the migration path instead.
+    #
+    # SQLite short-circuits ``CREATE INDEX IF NOT EXISTS`` on the index NAME and
+    # never validates the column list, so the mismatch stayed hidden for the
+    # whole life of this migration. PostgreSQL resolves the column list FIRST and
+    # raises 42703 even though the index already exists. Read the real name.
+    order_col = "index" if has_column(session, "longform_chapters", "index") else "idx"
+    create_index_if_missing(
+        session, "ix_chapter_project", "longform_chapters",
+        f"project_id, {order_col}",
+    )
+    # The old guard was ``try/except`` around each ALTER, ignoring "duplicate
+    # column". Harmless on SQLite; on PostgreSQL the swallowed error aborts the
+    # transaction (25P02) and every statement after it fails. A catalog check
+    # cannot fail, so the migration stays replay-safe on both backends.
+    # ``scenes`` is created by migration 0014, so it must exist here -- the old
+    # code re-raised a missing-table error, and this preserves that.
+    add_columns_if_missing(
+        session,
+        "scenes",
+        [
+            ("chapter_id", "VARCHAR(36)"),
+            ("beats_json", "JSON NOT NULL DEFAULT '[]'"),
+        ],
+        when_absent_table="raise",
+    )

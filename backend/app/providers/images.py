@@ -14,6 +14,16 @@ Providers (selected via IMAGE_PROVIDER):
 
 All providers return raw image bytes + format; callers decide how to persist.
 This module never writes into workspace storage itself.
+
+Work 15.7: every billable image submit goes through the shared paid executor.
+Work 15.9 §3: it goes through :mod:`app.services.paid_provider` instead of a
+local copy of the same ~35 lines. What is left here is what the helper must
+NOT know -- the request body, the endpoint, the polling loop, the CDN fetch, and
+what each provider's HTTP status means. A generated image is not refetchable
+for free, so the three things that cost money are decided once: the reservation
+is taken BEFORE the POST, the remote job id is persisted the moment acceptance
+is known (xKiro returns one and it used to be dropped at the end of the loop),
+and a lost response is recorded as UNKNOWN_EXPOSURE rather than as $0.
 """
 
 from __future__ import annotations
@@ -23,9 +33,93 @@ import hashlib
 import re
 import time
 
+from app.services.paid_executor import (
+    IdempotencySupport,
+    PaidArtifactUndownloadable,
+    PaidJobError,
+    PaidProviderExecutor,
+    PaidSubmissionUnconfirmed,
+    RemoteSubmission,
+)
+from app.services.paid_provider import (
+    PaidOperation,
+    absorb_paid_failure,
+    paid_event,
+    paid_operation,
+)
+
+#: An image we cannot price is not a free image. Both billable image providers
+#: meter against a plan allowance (xKiro's 24h free-image allowance, a vendor
+#: metered gateway) and neither reports a price on the response, so the honest
+#: estimate is "unknown" -- which the ledger records as UNKNOWN_EXPOSURE.
+EST_USD_PER_IMAGE = 0.0
+
+#: Ledger category for a generation. "image", so a scene image costs against the
+#: same daily cap as everything else the workspace buys.
+COST_CATEGORY = "image"
+
 
 class ImageProviderError(Exception):
     pass
+
+
+# ---------------------------------------------------------------------------
+# paid-submission wiring (Work 15.9 §3)
+# ---------------------------------------------------------------------------
+
+
+def current_workspace() -> str:
+    """Workspace that owns this generation, or "" when there is no scope.
+
+    An empty answer is NOT a licence to spend. Since §1 the shared helper
+    refuses an ownerless billable operation before the POST, so "no scope"
+    now means "refused", where it used to mean "sent anyway and booked against
+    ``workspace_id=""``".
+    """
+    scope = _scope_key()
+    return "" if scope == _GLOBAL_SCOPE else scope
+
+
+def _paid(operation: str, *, provider: str, workspace_id: str = "",
+          estimated_cost: float = 0.0,
+          idempotency: IdempotencySupport = IdempotencySupport.UNSUPPORTED,
+          ) -> tuple[PaidOperation, PaidProviderExecutor]:
+    """One billable image operation, on the shared money mechanics.
+
+    Returns ``(paid, executor)``. The HANDLE owns the money: it reserves before
+    the request, persists the remote id the moment acceptance is known, and
+    closes the reservation row in place. The EXECUTOR is provider-facing and
+    knows only about requests: exactly one submit, bounded polling, and an
+    artifact fetch that may be repeated because the artifact is already paid
+    for.
+
+    The two are deliberately separate. A handle that also built the request
+    would be the generic ``url/payload/status/cancel`` adapter this extraction
+    exists to refuse.
+    """
+    paid = paid_operation(
+        provider=provider,
+        operation=operation,
+        workspace_id=str(workspace_id or current_workspace()).strip(),
+        category=COST_CATEGORY,
+        estimated_cost=estimated_cost,
+        idempotency=idempotency,
+        reservation_extra={"lane": "images"},
+    )
+    paid.bind(on_event=lambda phase, level, message:
+              paid_event(paid, phase, level, message))
+    return paid, paid.make_executor()
+
+
+def _header(resp, name: str, default: str = "") -> str:
+    """One response header, tolerating a thin response object.
+
+    ``httpx`` answers with a mapping; a test double may answer with a plain
+    dict or with nothing at all. A vendor request id is a reconciliation
+    handle, not a reason to fail a render.
+    """
+    getter = getattr(getattr(resp, "headers", None), "get", None)
+    return str(getter(name, default)) if callable(getter) else default
 
 
 class BaseImageProvider(abc.ABC):
@@ -145,30 +239,87 @@ class OpenAICompatImageProvider(BaseImageProvider):
                       "response_format": "b64_json"}
         if self.model:
             body["model"] = self.model
-        try:
+        estimate = EST_USD_PER_IMAGE * max(1, n)
+        paid, executor = _paid(
+            "openai_compat.images_generations", provider="openai_compatible",
+            estimated_cost=estimate)
+
+        def submit(_idempotency_key: str) -> RemoteSubmission:
+            # ONE billable POST. Everything that can classify a lost response
+            # (4xx = refused, 5xx/read timeout = possibly billed) is the
+            # executor's job, so this adapter only builds and parses.
             resp = httpx.post(
                 f"{self.base_url}/images/generations",
                 json=body, headers=headers, timeout=self.timeout,
             )
-            resp.raise_for_status()
+            if resp.status_code != 200:
+                # Same reasoning as providers/broll.py: the status has to reach
+                # the paid classifier rather than being flattened into one
+                # "generate failed" string.
+                raise httpx.HTTPStatusError(
+                    f"HTTP {resp.status_code}: {str(getattr(resp, 'text', ''))[:200]}",
+                    request=(getattr(resp, "request", None)
+                             or httpx.Request("POST", f"{self.base_url}/images/generations")),
+                    response=resp)
             data = resp.json()
-        except Exception as exc:
-            raise ImageProviderError(
-                f"openai_compat generate failed: {type(exc).__name__}: {exc}"
-            ) from exc
-        items = data.get("data") or []
-        out: list[bytes] = []
-        for item in items:
-            if item.get("b64_json"):
-                out.append(base64.b64decode(item["b64_json"]))
-            elif item.get("url"):
-                dl = httpx.get(item["url"], timeout=self.timeout,
-                               follow_redirects=True)
-                dl.raise_for_status()
-                out.append(dl.content)
-        if not out:
-            raise ImageProviderError("openai_compat returned no images")
+            items = data.get("data") or []
+            if not items:
+                # A 2xx with no artifact: billed, unfulfilled, unreconcilable.
+                raise PaidSubmissionUnconfirmed(
+                    provider=self.name,
+                    detail="openai_compat returned 2xx with no images; the "
+                           "generation may have been billed",
+                )
+            return RemoteSubmission(
+                remote_id=_header(resp, "x-request-id"),
+                artifact_path="inline", raw={"items": items})
+
+        try:
+            handle = executor.execute(submit, estimated_cost=estimate)
+            out: list[bytes] = []
+            for item in handle.raw.get("items") or []:
+                if item.get("b64_json"):
+                    out.append(base64.b64decode(item["b64_json"]))
+                elif item.get("url"):
+                    # The image is already PAID for. Fetching its bytes may be
+                    # retried; asking the provider for it again would bill
+                    # twice -- which is exactly what the pre-15.7 code invited
+                    # by raising a bare transport error here.
+                    out.append(executor.download(
+                        lambda url=str(item["url"]): self._fetch(url),
+                        remote_id=handle.remote_id, url=str(item["url"])))
+            if not out:
+                raise PaidArtifactUndownloadable(
+                    provider=self.name, remote_id=handle.remote_id,
+                    detail="openai_compat billed the request but returned no "
+                           "image bytes")
+        except ImageProviderError:
+            raise
+        except PaidJobError as exc:
+            # An ambiguous submit and an undownloadable artifact are both paid
+            # states, not provider outages. Whether money is gone is decided
+            # ONCE, in the shared helper; the submission record carries the
+            # state, the remote id and the exposure, so the message must too.
+            absorb_paid_failure(paid, exc)
+            raise ImageProviderError(str(exc)) from exc
+        # The gateway metered this call and reported no price, so the honest
+        # ledger outcome is UNKNOWN_EXPOSURE -- never a "$0 image".
+        paid.mark_succeeded(
+            amount_unknown=True,
+            detail="vendor metered gateway; the response carries no price")
         return out
+
+    def _fetch(self, url: str) -> bytes:
+        import httpx
+
+        resp = httpx.get(url, timeout=self.timeout, follow_redirects=True)
+        if resp.status_code != 200:
+            raise httpx.HTTPStatusError(
+                f"HTTP {resp.status_code}: {str(getattr(resp, 'text', ''))[:200]}",
+                request=(getattr(resp, "request", None)
+                         or httpx.Request("GET", url)),
+                response=resp)
+        return resp.content
 
     def healthy(self) -> bool:
         if not self.base_url:
@@ -237,65 +388,122 @@ class XkiroImageProvider(BaseImageProvider):
         snapped = self._snap_size(size)
         results: list[bytes] = []
         with httpx.Client(timeout=self.timeout) as client:
-            for i in range(max(1, n)):
-                try:
-                    resp = client.post(
-                        f"{self.base_url}/images/generations",
-                        headers=self._headers(),
-                        json={
-                            "model": self.model,
-                            "prompt": prompt,
-                            "n": 1,  # API currently requires 1 per job
-                            "size": snapped,
-                        },
-                    )
-                    resp.raise_for_status()
-                    job = resp.json()
-                except Exception as exc:
-                    raise ImageProviderError(
-                        f"xkiro submit failed: {type(exc).__name__}: {exc}"
-                    ) from exc
-                job_id = job.get("id")
-                if not job_id:
-                    raise ImageProviderError(f"xkiro submit returned no job id: {str(job)[:120]}")
-                results.append(self._poll_and_download(client, job_id, prompt))
+            for _ in range(max(1, n)):
+                paid, executor = _paid(
+                    "xkiro.image_job", provider="xkiro",
+                    estimated_cost=EST_USD_PER_IMAGE)
+                results.append(self._submit_one(paid, executor, client, prompt,
+                                                snapped))
+                # One billable image per job, and the plan allowance is not
+                # priced per request, so the row is an UNKNOWN exposure rather
+                # than a fabricated zero.
+                paid.mark_succeeded(
+                    amount_unknown=True,
+                    detail="plan allowance is not priced per request")
         return results
 
-    def _poll_and_download(self, client, job_id: str, prompt: str) -> bytes:
-        import time as _time
+    def _submit_one(self, paid: PaidOperation, executor: PaidProviderExecutor,
+                    client, prompt: str, snapped: str) -> bytes:
+        """One billable async image job: submit once, poll, download.
 
+        The job id returned by the POST is persisted the moment acceptance is
+        known -- before the first poll -- on BOTH the caller's operation and the
+        reservation row, so a crash between here and the CDN download leaves a
+        recovery handle instead of an unexplained charge.
+        """
 
-        deadline = _time.time() + self._POLL_DEADLINE
-        wait = self._POLL_INTERVAL
-        while _time.time() < deadline:
-            _time.sleep(wait)
-            wait = min(wait * 1.4, 10.0)
-            try:
-                resp = client.get(
-                    f"{self.base_url}/images/generations/{job_id}",
-                    headers=self._headers(),
-                )
-                resp.raise_for_status()
-                job = resp.json()
-            except Exception as exc:
-                raise ImageProviderError(f"xkiro poll failed: {exc}") from exc
-            status = job.get("status")
-            if status == "succeeded":
-                url = ((job.get("data") or [{}])[0].get("url") or "")
-                if not url:
-                    raise ImageProviderError("xkiro job succeeded but no URL returned")
-                try:
-                    dl = client.get(url, timeout=90.0, follow_redirects=True)
-                    dl.raise_for_status()
-                except Exception as exc:
-                    raise ImageProviderError(f"xkiro CDN download failed: {exc}") from exc
-                if len(dl.content) < 1024:
-                    raise ImageProviderError("xkiro CDN image suspiciously small")
-                return dl.content
-            if status in ("failed", "blocked"):
-                msg = (job.get("error") or {}).get("message", status)
-                raise ImageProviderError(f"xkiro job {status}: {msg}")
-        raise ImageProviderError(f"xkiro job {job_id} timed out after {self._POLL_DEADLINE:.0f}s")
+        def submit(_idempotency_key: str) -> RemoteSubmission:
+            resp = client.post(
+                f"{self.base_url}/images/generations",
+                headers=self._headers(),
+                json={
+                    "model": self.model,
+                    "prompt": prompt,
+                    "n": 1,  # API currently requires 1 per job
+                    "size": snapped,
+                },
+            )
+            resp.raise_for_status()
+            job = resp.json()
+            job_id = str(job.get("id") or "")
+            if not job_id:
+                # Accepted, billed, and unidentifiable: not a rejection.
+                raise PaidSubmissionUnconfirmed(
+                    provider=self.name,
+                    detail=f"xkiro submit returned no job id: {str(job)[:120]}")
+            return RemoteSubmission(remote_id=job_id, raw=job)
+
+        try:
+            handle = executor.execute(submit, estimated_cost=EST_USD_PER_IMAGE)
+            return self._poll_and_download(client, handle.remote_id, prompt,
+                                           executor)
+        except ImageProviderError as exc:
+            # The POST is already accepted, so the plan allowance may be spent
+            # even though no image came back. The ledger question -- "may this
+            # have been billed?" -- is genuinely unanswerable here and there is
+            # no status endpoint that would price it later, so the reservation
+            # is KEPT and marked as an unknown exposure. Never released, never
+            # booked as zero.
+            paid.mark_unknown(f"xkiro accepted job {paid.remote_id or '(unknown)'}"
+                              f" but delivered no image: {exc}")
+            raise
+        except PaidJobError as exc:
+            absorb_paid_failure(paid, exc)
+            raise ImageProviderError(str(exc)) from exc
+
+    def _poll_and_download(self, client, job_id: str, prompt: str,
+                           executor: PaidProviderExecutor) -> bytes:
+        """Follow ONE accepted job to its artifact. Never re-submits.
+
+        Polling and the CDN fetch are both safe to repeat, so they go through
+        the executor's ``poll_remote`` / ``download``; neither of those can
+        issue a second billable POST.
+        """
+        deadline = time.monotonic() + self._POLL_DEADLINE
+
+        def fetch(phase_timeout: float) -> tuple[str, dict]:
+            time.sleep(self._POLL_INTERVAL)
+            resp = client.get(
+                f"{self.base_url}/images/generations/{job_id}",
+                headers=self._headers(), timeout=phase_timeout,
+            )
+            resp.raise_for_status()
+            job = resp.json()
+            return str(job.get("status") or "unknown"), job
+
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                # The job is PAID for and still unknown. Reconciliation handle,
+                # not a free failure.
+                raise ImageProviderError(
+                    f"xkiro job {job_id} timed out after "
+                    f"{self._POLL_DEADLINE:.0f}s; it may still complete and is "
+                    f"billable -- poll job {job_id} instead of resubmitting")
+            status, job = executor.poll_remote(fetch, deadline_seconds=remaining)
+            if status in ("succeeded", "failed", "blocked", "cancelled"):
+                break
+            # A non-terminal answer: keep waiting on the SAME job id.
+        if status != "succeeded":
+            msg = (job.get("error") or {}).get("message", status)
+            raise ImageProviderError(f"xkiro job {status}: {msg}")
+        url = ((job.get("data") or [{}])[0].get("url") or "")
+        if not url:
+            raise ImageProviderError("xkiro job succeeded but no URL returned")
+        content = executor.download(
+            lambda: self._cdn_fetch(client, url), remote_id=job_id, url=url,
+            attempts=2)
+        if len(content) < 1024:
+            raise PaidArtifactUndownloadable(
+                provider=self.name, remote_id=job_id, url=url,
+                detail="xkiro CDN image suspiciously small")
+        return content
+
+    @staticmethod
+    def _cdn_fetch(client, url: str) -> bytes:
+        dl = client.get(url, timeout=90.0, follow_redirects=True)
+        dl.raise_for_status()
+        return dl.content
 
     def healthy(self) -> bool:
         import httpx

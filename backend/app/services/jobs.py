@@ -2,16 +2,28 @@
 
 Design:
 - Jobs persist in the `jobs` table with status/priority/next_run_at.
-- Workers claim jobs transactionally (UPDATE ... WHERE status='QUEUED' AND
-  next_run_at <= now) so multiple processes are safe.
+- Workers take a LEASE (`services.job_leases`) and claim jobs transactionally
+  (one conditional UPDATE whose `rowcount` decides), so multiple processes are
+  safe.
+- A running job may be recovered only when its lease EXPIRED. A live worker
+  heartbeats, so a live job is never stolen; a dead worker stops heartbeating,
+  so its job becomes recoverable within one TTL. `recover_orphans()` used to
+  reset *every* RUNNING row on every worker boot, which with two workers meant
+  an unrelated deploy could hand a live, possibly-billed render to a second
+  worker and run it twice.
+- Workers are pooled by workload class (`services.worker_pool`) so a long
+  render cannot starve the planner, inbox sync, publishing or small jobs.
 - Failures retry with exponential backoff; after max_retries they go DEAD
   (dead-letter visible via API).
 - Idempotency keys prevent duplicate submissions.
+- A re-entry attempt consults the paid ledger before it runs
+  (`job_leases.assess_paid_reentry`): a crash after a billable submit must not
+  become a second purchase.
 - cancel_requested is checked by handlers between steps via a token object.
 
 The queue runs inside the FastAPI process as asyncio tasks. For horizontal
-scale, swap this module for a Redis/Celery implementation behind the same
-`enqueue`/handler-registry interface.
+scale, the same `enqueue`/handler-registry interface runs behind more worker
+processes; the lease, not a broker, is what makes that safe.
 """
 
 from __future__ import annotations
@@ -23,18 +35,23 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 
 from loguru import logger
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 from app.core.config import settings
 from app.db import session_scope
 from app.models import AgentRun, Job
 from app.models.base import JobStatus, utcnow
+from app.services import job_leases
+from app.services.job_leases import ClaimedJob, PaidVerdict
 
 Handler = Callable[["JobContext"], Awaitable[dict]]
 
 _handlers: dict[str, Handler] = {}
 _worker_tasks: list[asyncio.Task] = []
 _shutdown = asyncio.Event()
+#: The process-wide pool (services.worker_pool), kept here so `main.py` keeps
+#: calling start_workers/stop_workers unchanged.
+_pool = None
 
 
 def register_handler(job_type: str, handler: Handler) -> None:
@@ -62,6 +79,18 @@ class JobContext:
     cancelled: Callable[[], bool]
     report_progress: Callable[[float], None] = lambda pct: None
     artifacts: dict = field(default_factory=dict)
+    # -- Work 16 §2: what the recovery path decided about this attempt. BLOCKED
+    # never reaches a handler, so a handler reading `recovery_mode` is looking
+    # at "this attempt may adopt an existing paid submission".
+    recovery_mode: str = ""
+    #: The remote job a re-entry attempt must adopt instead of submitting again.
+    paid_remote_id: str = ""
+    #: The ledger row that already owns this operation's money.
+    paid_entry_id: str = ""
+    #: The lease holder, so a handler can log or report ownership.
+    claimed_by: str = ""
+    #: The workload class the pool routed this job to.
+    workload: str = ""
 
 
 def enqueue(
@@ -74,8 +103,26 @@ def enqueue(
     delay_seconds: float = 0.0,
     max_retries: int | None = None,
     idempotency_key: str | None = None,
+    paid: bool = False,
+    workload: str = "",
 ) -> str | None:
-    """Enqueue a job. Returns job id, or None when idempotency dedupes it."""
+    """Enqueue a job. Returns job id, or None when idempotency dedupes it.
+
+    ``paid=True`` is a one-word contract with the recovery path: *this job may
+    spend money*. It is what makes :func:`job_leases.assess_paid_reentry`
+    consult the ledger before a re-entry attempt, instead of running the handler
+    and hoping the handler is idempotent about its own billable calls. It is
+    opt-in deliberately: assuming every job spends money would let one
+    unresolved paid row in a workspace stall every unrelated retry in it, and a
+    stall nobody can explain is worse than the rare duplicate it prevents.
+
+    ``workload`` overrides the pool's routing for this job.
+    """
+    body = dict(payload or {})
+    if paid:
+        body.setdefault("paid", True)
+    if workload:
+        body["workload"] = str(workload)
     with session_scope() as s:
         if idempotency_key:
             existing = s.scalar(select(Job).where(Job.idempotency_key == idempotency_key))
@@ -83,7 +130,7 @@ def enqueue(
                 return None
         job = Job(
             type=job_type,
-            payload=payload,
+            payload=body,
             workspace_id=workspace_id,
             cycle_id=cycle_id,
             priority=priority,
@@ -121,6 +168,14 @@ def _to_dict(job: Job) -> dict:
         "payload": job.payload or {},
         "result": job.result or {},
         "created_at": job.created_at.isoformat() + "Z",
+        # Work 16 §2: ownership, so an operator can see who is running what
+        # without reading the pool's logs.
+        "claimed_by": job.claimed_by or "",
+        "claimed_at": job.claimed_at.isoformat() + "Z" if job.claimed_at else None,
+        "lease_expires_at": (job.lease_expires_at.isoformat() + "Z"
+                             if job.lease_expires_at else None),
+        "heartbeat_at": job.heartbeat_at.isoformat() + "Z" if job.heartbeat_at else None,
+        "lease_state": str(job_leases.lease_state(job)),
     }
 
 
@@ -159,36 +214,111 @@ def list_jobs(workspace_id: str | None = None, status: str | None = None, limit:
 
 
 def recover_orphans() -> int:
-    """On startup, mark RUNNING jobs from a previous process as RETRYING."""
-    with session_scope() as s:
-        res = s.execute(
-            update(Job)
-            .where(Job.status == JobStatus.RUNNING.value)
-            .values(status=JobStatus.RETRYING.value, next_run_at=utcnow())
-        )
-        return res.rowcount
+    """Return lease-EXPIRED running jobs to the queue.
+
+    **Work 16 §2 rewrote this function, and the old one was a live-work
+    incident waiting to happen.** It read::
+
+        UPDATE jobs SET status='RETRYING' WHERE status='RUNNING'
+
+    on every worker boot, with no condition beyond "somebody is running this".
+    One worker therefore decided the fate of every other worker's work: a
+    second replica restarting for an unrelated deploy flipped a live 30-minute
+    render back onto the queue, and whichever worker polled first ran it AGAIN --
+    a duplicate render, a duplicate provider submission, a duplicate publish,
+    and for a paid render a second invoice. Nothing in the schema distinguished
+    "orphaned by a dead worker" from "actively running on a live worker", so the
+    code had to assume the rare one and break the common one.
+
+    Now the only thing that may authorise a steal is a lapsed lease. A live
+    worker renews every third of its TTL, so its jobs are never eligible; a
+    worker that died stops renewing, so its jobs become eligible within one TTL
+    and this returns them. Same repair, restricted to the jobs that actually
+    need it.
+
+    ``status='WAITING'`` is untouched, which is what keeps the GPU slot ledger
+    (``media_intel_runs``) intact: a held slot is parked in ``WAITING``, not
+    ``RUNNING``, precisely so recovery cannot see it.
+    """
+    return len(job_leases.reclaim_expired())
 
 
 async def start_workers(count: int | None = None) -> None:
-    global _shutdown
+    """Start the worker pool.
+
+    ``count`` sizes the default single ``SMALL`` pool, preserving the
+    pre-Work-16 behaviour for every deployment that has not configured
+    ``job_worker_pools``. Startup runs one recovery sweep synchronously -- the
+    crashed-worker jobs are the most urgent thing in the queue at boot -- and
+    the pool then runs its own sweep on a timer, because the worker that died
+    is usually not this process and nothing else would ever reclaim its work.
+    """
+    global _shutdown, _pool
+    from app.services import worker_pool
+
     _shutdown = asyncio.Event()
-    recovered = await asyncio.to_thread(recover_orphans)
-    if recovered:
-        logger.warning(f"recovered {recovered} orphaned job(s) from previous run")
-    n = count or settings.job_worker_count
-    for i in range(n):
-        t = asyncio.create_task(_worker_loop(i), name=f"job-worker-{i}")
-        _worker_tasks.append(t)
+    reclaimed = await asyncio.to_thread(recover_orphans)
+    if reclaimed:
+        logger.warning("recovered {} job(s) whose lease had expired", reclaimed)
+    plan = None
+    if count:
+        # An explicit count is the pre-Work-16 request for "N workers", so it
+        # gets N undifferentiated slots and behaviour identical to before. The
+        # classed plan is the DEFAULT when no count is passed, because a caller
+        # that never asked about pools must still not be able to starve its own
+        # planner with a render.
+        from app.services.worker_pool import PoolPlan
+
+        plan = PoolPlan(slots={None: int(count)})
+    _pool = worker_pool.WorkerPool(plan=plan)
+    await _pool.start(_execute_claimed)
+    _worker_tasks.extend(_pool._tasks)  # noqa: SLF001 - same-module lifecycle
+    await worker_pool._start_reclaim_sweep()  # noqa: SLF001
 
 
-async def stop_workers() -> None:
+async def stop_workers(timeout: float | None = None) -> None:
+    """Drain: stop claiming, let in-flight work finish, bound the wait.
+
+    Past the deadline the pool cancels its worker tasks, which leaves those
+    jobs ``RUNNING`` with a lease that stops being renewed -- so the next
+    recovery sweep picks them up. A job abandoned mid-render is recoverable; a
+    paid render cancelled after the provider accepted it is not.
+    """
+    global _pool
     _shutdown.set()
+    if _pool is not None:
+        await _pool.drain(timeout)
+        _pool = None
     for t in _worker_tasks:
-        try:
-            await asyncio.wait_for(t, timeout=10)
-        except (TimeoutError, asyncio.CancelledError):
+        if not t.done():
             t.cancel()
     _worker_tasks.clear()
+
+
+def pool_ownership() -> dict:
+    """What this process currently holds. Operator/debuggable, no API needed."""
+    from app.services import worker_pool
+
+    running = worker_pool.running()
+    if running is None:
+        return {"worker": "", "slots": {}, "in_flight": []}
+    return {
+        "worker": running.worker,
+        "slots": {str(k): v for k, v in running.plan.slots.items()},
+        "in_flight": sorted(running.in_flight),
+        "draining": running.draining,
+    }
+
+
+# The autopilot cycle is the ONE job type whose handler reconciles its own prior
+# billable submission before it spends: ``production.py`` resolves by variant /
+# request hash, refuses outright on a SUBMISSION_UNKNOWN prior attempt, and
+# reattaches to a live engine task. That is a more precise correlation than the
+# queue layer can make, so the paid re-entry gate records the finding and
+# defers to it instead of blocking a whole cycle on an unrelated unresolved paid
+# row in the same workspace. Declared here, never inferred -- guessing that a
+# handler is idempotent is how one render is purchased twice.
+job_leases.register_paid_job_type("autopilot.start_next_cycle")
 
 
 def _is_cancelled(job_id: str) -> bool:
@@ -210,19 +340,6 @@ class _Backpressure(Exception):
 
 
 
-async def _worker_loop(worker_idx: int) -> None:
-    logger.info(f"job worker #{worker_idx} started")
-    while not _shutdown.is_set():
-        job_ctx = await _claim_next_redis()
-        if not job_ctx:
-            try:
-                await asyncio.wait_for(_shutdown.wait(), timeout=settings.job_poll_interval_seconds)
-                break
-            except TimeoutError:
-                continue
-        await _execute(job_ctx)
-    logger.info(f"job worker #{worker_idx} stopped")
-
 
 def _gpu_enabled() -> bool:
     """This process may run GPU-gated jobs (operator-asserted lane)."""
@@ -230,98 +347,48 @@ def _gpu_enabled() -> bool:
 
 
 def _for_update(query, session):
-    """Row-level lock for the claim SELECT on Postgres; plain read elsewhere."""
-    try:
-        if session.get_bind().dialect.name == "postgresql":
-            return query.with_for_update(skip_locked=True)
-    except Exception:
-        pass
-    return query
+    """Row-level lock for the claim SELECT on Postgres; plain read elsewhere.
+
+    Kept as a name here because the claim moved to :mod:`app.services.job_leases`
+    and this module's existing tests reach for it directly. The behaviour is
+    unchanged and now has one implementation instead of two.
+    """
+    return job_leases._for_update(query, session)
+
+
+def _context_for(claimed: ClaimedJob) -> JobContext:
+    """Build the handler's view of a claimed job."""
+    return JobContext(
+        job_id=claimed.job_id,
+        type=claimed.type,
+        workspace_id=claimed.workspace_id,
+        cycle_id=claimed.cycle_id,
+        payload=dict(claimed.payload or {}),
+        attempt=claimed.attempt,
+        cancelled=lambda jid=claimed.job_id: _is_cancelled(jid),
+        claimed_by=claimed.claimed_by,
+        workload=claimed.workload,
+    )
 
 
 async def _claim_next() -> JobContext | None:
-    """Atomically claim the highest-priority due job.
+    """Claim the next due job this process may run, under a lease.
 
-    Uses a single UPDATE whose target id comes from a correlated subquery;
-    SQLite/Postgres serialize the statement, so two workers can never claim
-    the same row (the loser's outer status check yields rowcount 0). On
-    Postgres the SELECT takes SKIP LOCKED so replicas never block each other.
-    GPU-gated jobs are deferred (requeued +60s) unless this is a GPU worker.
+    Thin wrapper over :mod:`app.services.job_leases` so the historical name and
+    signature keep working for existing callers and tests. The claim itself is
+    one conditional UPDATE whose ``rowcount`` decides the winner -- see
+    ``job_leases._take`` for why that is atomic across processes.
     """
-    def claim():
-        from datetime import timedelta as _td
-
-        now = utcnow()
-        with session_scope() as s:
-            q = (
-                select(Job.id)
-                .where(
-                    Job.status.in_([JobStatus.QUEUED.value, JobStatus.RETRYING.value]),
-                    Job.next_run_at <= now,
-                )
-                .order_by(Job.priority.asc(), Job.next_run_at.asc())
-                .limit(1)
-            )
-            cid = s.scalar(_for_update(q, s))
-            if not cid:
-                return None
-            # Conditional update = atomic claim. Concurrent workers serialize
-            # at the DB write lock; the loser sees rowcount 0 and moves on.
-            res = s.execute(
-                update(Job)
-                .where(Job.id == cid, Job.status.in_([JobStatus.QUEUED.value, JobStatus.RETRYING.value]))
-                .values(status=JobStatus.RUNNING.value, started_at=now)
-            )
-            if res.rowcount != 1:
-                return None
-            job = s.get(Job, cid)
-            if (job.payload or {}).get("requires_gpu") and not _gpu_enabled():
-                job.status = JobStatus.QUEUED.value
-                job.next_run_at = now + _td(seconds=60)
-                logger.info(f"job {job.type}({job.id}) needs a GPU worker; deferred 60s")
-                return None
-            ctx = JobContext(
-                job_id=job.id,
-                type=job.type,
-                workspace_id=job.workspace_id,
-                cycle_id=job.cycle_id,
-                payload=dict(job.payload or {}),
-                attempt=job.retry_count + 1,
-                cancelled=lambda jid=job.id: _is_cancelled(jid),
-            )
-            return ctx
-
-    return await asyncio.to_thread(claim)
+    worker = job_leases.worker_identity(settings.job_worker_identity)
+    claimed = await asyncio.to_thread(job_leases.claim_next, worker)
+    return _context_for(claimed) if claimed else None
 
 
 async def _claim_by_id(job_id: str) -> JobContext | None:
-    """Claim one specific job (Redis-dispatched ids). Same atomicity as above."""
-
-    def claim():
-        now = utcnow()
-        with session_scope() as s:
-            res = s.execute(
-                update(Job)
-                .where(Job.id == job_id,
-                       Job.status.in_([JobStatus.QUEUED.value, JobStatus.RETRYING.value]),
-                       Job.next_run_at <= now)
-                .values(status=JobStatus.RUNNING.value, started_at=now)
-            )
-            if res.rowcount != 1:
-                return None
-            job = s.get(Job, job_id)
-            ctx = JobContext(
-                job_id=job.id,
-                type=job.type,
-                workspace_id=job.workspace_id,
-                cycle_id=job.cycle_id,
-                payload=dict(job.payload or {}),
-                attempt=job.retry_count + 1,
-                cancelled=lambda jid=job.id: _is_cancelled(jid),
-            )
-            return ctx
-
-    return await asyncio.to_thread(claim)
+    """Claim one specific job (Redis-dispatched ids). Same atomicity."""
+    worker = job_leases.worker_identity(settings.job_worker_identity)
+    claimed = await asyncio.to_thread(job_leases.claim_by_id, worker, job_id)
+    return _context_for(claimed) if claimed else None
 
 
 async def _claim_next_redis() -> JobContext | None:
@@ -337,8 +404,75 @@ async def _claim_next_redis() -> JobContext | None:
         claimed = await _claim_by_id(rid)
         if claimed:
             return claimed
-        # id already handled/expired — fall through to a normal poll
+        # id already handled/expired - fall through to a normal poll
     return await _claim_next()
+
+
+async def _execute_claimed(claimed: ClaimedJob) -> None:
+    """The pool's execute hook: paid gate, then handler, then outcome."""
+    ctx = _context_for(claimed)
+
+    # ---- Work 16 §2: the money gate, BEFORE the handler runs --------------
+    # A re-entry attempt (a retry, or a job this very module just recovered from
+    # a dead worker's lease) may already have spent. The pre-16 runner called
+    # the handler unconditionally, which meant a crash between "provider
+    # accepted" and "we wrote the result" became a second billable submit on
+    # the next attempt -- Work 15.6 counted that path as reachable up to four
+    # times per job.
+    verdict = await asyncio.to_thread(
+        job_leases.assess_paid_reentry, claimed, attempt=claimed.attempt)
+    if verdict.verdict is PaidVerdict.BLOCKED:
+        # No execution. A stuck job is an incident; a second purchase is an
+        # invoice, and only one of those can be undone.
+        _finish(ctx, JobStatus.WAITING, permanent=False,
+                error=f"paid re-entry blocked: {verdict.detail}"[:4000],
+                result={"paid_reentry": str(PaidVerdict.BLOCKED),
+                        "remote_id": verdict.remote_id,
+                        "cost_entry_id": verdict.entry_id,
+                        "provider": verdict.provider,
+                        "detail": verdict.detail})
+        _emit_paid_reentry(ctx, verdict)
+        return
+    if verdict.verdict is PaidVerdict.REATTACH:
+        # The provider already has this work. The handler resumes it through
+        # ``ctx.paid_remote_id``; nothing is submitted and nothing is booked a
+        # second time (paid_provider.reattach_by_remote_id owns that).
+        ctx.recovery_mode = str(PaidVerdict.REATTACH)
+        ctx.paid_remote_id = verdict.remote_id
+        ctx.paid_entry_id = verdict.entry_id
+        ctx.artifacts["paid_reattached_cost_row"] = verdict.entry_id
+        logger.warning(
+            "job {} re-entering a paid operation it already bought "
+            "(remote_id={}, cost row={}): the handler must adopt it, not "
+            "submit again", ctx.job_id, verdict.remote_id, verdict.entry_id)
+    elif verdict.verdict is PaidVerdict.DEFERRED:
+        ctx.recovery_mode = str(PaidVerdict.DEFERRED)
+
+    await _execute(ctx)
+
+
+def _emit_paid_reentry(ctx: JobContext, verdict) -> None:
+    """Make a blocked re-entry visible. A job nobody can see is not resolved."""
+    try:
+        from app.services.events import record_event
+
+        record_event(
+            workspace_id=ctx.workspace_id,
+            kind="paid.reentry_blocked",
+            message=(
+                f"Refusing to re-run {ctx.type}: a billable submission for it "
+                f"may already have been made ({verdict.detail}). No provider "
+                f"request was sent; reconcile before re-spending."),
+            level="error",
+            source="jobs",
+            data={"job_id": ctx.job_id, "type": ctx.type,
+                  "remote_id": verdict.remote_id,
+                  "cost_entry_id": verdict.entry_id,
+                  "provider": verdict.provider,
+                  "attempt": ctx.attempt},
+        )
+    except Exception:  # pragma: no cover - telemetry never fails a job
+        pass
 
 
 async def _execute(ctx: JobContext) -> None:
@@ -377,13 +511,17 @@ async def _execute(ctx: JobContext) -> None:
                 else:
                     job.status = JobStatus.DEAD.value
                     job.completed_at = utcnow()
+                # The outcome is written, so the lease is released in the same
+                # statement. A COMPLETED job holding a renewable lease would
+                # keep looking recoverable to an operator reading the queue.
+                job.claimed_by = ""
+                job.lease_expires_at = None
+                job.heartbeat_at = None
                 return job.status
 
         final_status = await asyncio.to_thread(record_failure)
         if final_status == JobStatus.DEAD.value:
             _on_dead(ctx, exc)
-
-
 def _finish(
     ctx: JobContext, status: JobStatus, *, result: dict | None = None, error: str | None = None, permanent: bool = False
 ) -> None:
@@ -397,6 +535,14 @@ def _finish(
         job.last_error = error or ""
         if permanent:
             job.max_retries = 0
+        # Release the lease with the outcome, in one transaction. Leaving a
+        # finished job holding a renewable lease makes it look recoverable to
+        # an operator reading the queue, and leaves ``claimed_by`` naming a
+        # worker that is demonstrably doing nothing.
+        job.claimed_by = ""
+        job.claimed_at = None
+        job.lease_expires_at = None
+        job.heartbeat_at = None
 
 
 def _on_dead(ctx: JobContext, exc: Exception) -> None:

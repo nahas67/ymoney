@@ -5,6 +5,20 @@
 		reverse_proxy backend:8100
 	}
 
+	# Ops endpoints MUST be proxied before the SPA catch-all.
+	#
+	# Without this block, /livez and /readyz fall through to
+	# `try_files {path} /index.html` and are answered with the SPA and HTTP
+	# 200 — so a probe at the public host reports the service healthy forever,
+	# including while the API is down or every replica is un-ready. That
+	# defeats the entire point of separating liveness from readiness.
+	#
+	# /internal/* is included because the metrics scrape, the alert evaluator
+	# and the SLO endpoints are only reachable there.
+	handle /livez, /readyz, /internal/* {
+		reverse_proxy backend:8100
+	}
+
 	handle {
 		root * /srv
 		try_files {path} /index.html
@@ -17,6 +31,10 @@
 # 	encode gzip
 # 	tls {$YMONEY_TLS_EMAIL}
 # 	handle /api/* {
+# 		reverse_proxy backend:8100
+# 	}
+# 	# See the note above: ops endpoints go to the API, never to the SPA.
+# 	handle /livez, /readyz, /internal/* {
 # 		reverse_proxy backend:8100
 # 	}
 # 	handle {

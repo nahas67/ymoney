@@ -144,7 +144,7 @@ def upgrade(session) -> None:
             last_cursor TEXT NOT NULL DEFAULT '',
             last_sync_at TIMESTAMP,
             last_error TEXT NOT NULL DEFAULT '',
-            enabled BOOLEAN NOT NULL DEFAULT 1,
+            enabled BOOLEAN NOT NULL DEFAULT TRUE,
             doc_count INTEGER NOT NULL DEFAULT 0,
             CONSTRAINT uq_connector_kind_name UNIQUE (workspace_id, kind, name)
         )

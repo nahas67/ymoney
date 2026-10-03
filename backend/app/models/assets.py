@@ -48,6 +48,15 @@ class MediaAsset(Base, PKMixin, TimestampMixin):
     file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     checksum: Mapped[str] = mapped_column(String(128), default="")
     meta_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    # ---- Work 12 additive lineage (migration 0029) ----
+    # Derived-only: every intelligence/enhancement output is a NEW row that
+    # points back at the source it came from. NULL for originals.
+    parent_asset_id: Mapped[str | None] = mapped_column(
+        ForeignKey("media_assets.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Processing manifest for the derivation (provider, model/version, params,
+    # processing + gpu time, warnings, before/after quality metrics).
+    derivation_json: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 class Scene(Base, PKMixin, TimestampMixin):

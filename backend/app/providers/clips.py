@@ -16,6 +16,7 @@ import importlib.util
 import json
 import shutil
 import subprocess
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -51,8 +52,28 @@ def scenedetect_available() -> bool:
     return _have_module("scenedetect")
 
 
+def _frame_dimensions(path: Path) -> tuple[int, int]:
+    """``(width, height)`` of an extracted frame; ``(0, 0)`` when unknown."""
+    meta = probe_metadata(path)
+    return int(meta.get("width") or 0), int(meta.get("height") or 0)
+
+
 def face_track_available() -> bool:
-    return _have_module("mediapipe") and _have_module("cv2")
+    """True when the Work 12 ``mediapipe_faces`` provider can actually run.
+
+    Promoted (Work 12 Lane E): the single source of truth for "is face
+    detection available here" is now the Lane A provider layer, whose
+    ``health()`` probe is import-safe in a venv with no ML packages. The bare
+    package probe stays as the fallback so this module keeps working on its own
+    when the intel layer is absent. Signatures are unchanged.
+    """
+    try:
+        from app.engine.intel.registry import get_provider
+
+        health = get_provider("mediapipe_faces").health()
+        return bool(getattr(health, "available", False))
+    except Exception:  # noqa: BLE001 - availability must never raise for a reframe
+        return _have_module("mediapipe") and _have_module("cv2")
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +117,23 @@ CAPTION_PRESETS: dict[str, str] = _registry_presets()
 
 
 def caption_style(preset: str) -> str:
-    return CAPTION_PRESETS.get((preset or "").lower(), CAPTION_PRESETS["minimal"])
+    raw = CAPTION_PRESETS.get((preset or "").lower(), CAPTION_PRESETS["minimal"])
+    return _sanitize_ass_style(raw)
+
+
+def _sanitize_ass_style(style: str) -> str:
+    """Strip filter-graph breakouts from an ASS force_style string (W11.5 C-F4).
+
+    Preset styles come from the template registry (workspace-controlled), and
+    the value is interpolated into ``subtitles=...:force_style='...'``. A
+    ``'``, ``:``, ``\\``, ``[``/``]`` or ``;`` would break out of the quoted
+    value into the filter graph. Legitimate ASS styles (``FontName=Arial,
+    FontSize=14,PrimaryColour=&H00FFFFFF``) never need those characters.
+    """
+    cleaned = str(style or "")
+    for ch in ("\\", "'", ":", "[", "]", ";"):
+        cleaned = cleaned.replace(ch, "")
+    return cleaned or CAPTION_PRESETS["minimal"]
 
 
 def _preset_style(preset: str, workspace_id: str = "") -> str:
@@ -348,17 +385,24 @@ class ClipRepurposer:
 
     def face_track_centers(self, source: SourceInfo,
                            segments: list[tuple[float, float]]) -> dict[int, float]:
-        """Median face x-center (0..1) per segment index; {} when unavailable."""
+        """Median face x-center (0..1) per segment index; {} when unavailable.
+
+        Work 12 Lane E promotion: the detection itself now lives in ONE place --
+        the ``mediapipe_faces`` provider's detector (lazy-imported here), so this
+        reframe path and the media-intel ``face_tracking`` capability cannot
+        drift apart. Signature, the median-of-``n`` sampling and the
+        ``{}``-when-unavailable contract are unchanged.
+        """
         if not face_track_available() or not segments:
             return {}
         try:
-            import cv2
-            import mediapipe as mp
-        except ImportError:
+            from app.engine.intel.impl.mediapipe_faces import build_detector
+            detector = build_detector()
+        except Exception as exc:  # noqa: BLE001 - reframe degrades, never fails
+            logger.info(f"[clips] face tracking unavailable ({type(exc).__name__}); center crop fallback")
             return {}
         out: dict[int, float] = {}
         try:
-            fd = mp.solutions.face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5)
             tmp = self.work_root / "_faces"
             tmp.mkdir(parents=True, exist_ok=True)
             for idx, (start, end) in enumerate(segments):
@@ -375,21 +419,26 @@ class ClipRepurposer:
                     )
                     if proc.returncode != 0 or not frame_p.exists():
                         continue
-                    img = cv2.imread(str(frame_p))
-                    if img is None:
-                        continue
-                    res = fd.process(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-                    if res.detections:
-                        box = max(res.detections, key=lambda d: d.score[0]).location_data.relative_bounding_box
-                        xs.append(max(0.0, min(1.0, box.xmin + box.width / 2)))
+                    width, height = _frame_dimensions(frame_p)
+                    boxes = detector.detect(str(frame_p)) if width and height else []
+                    if boxes:
+                        # one frame contributes ONE centre: the highest-confidence
+                        # face (unchanged E1 semantics, now from the shared detector)
+                        best = max(boxes, key=lambda b: float(b.get("confidence") or 0.0))
+                        xs.append(max(0.0, min(1.0, (
+                            float(best["x"]) + float(best["w"]) / 2.0) / width)))
                     frame_p.unlink(missing_ok=True)
                 if xs:
                     xs.sort()
                     out[idx] = xs[len(xs) // 2]
-            fd.close()
         except Exception as exc:
             logger.info(f"[clips] face tracking failed ({type(exc).__name__}); center crop fallback")
             return {}
+        finally:
+            close = getattr(detector, "close", None)
+            if callable(close):
+                with suppress(Exception):
+                    close()
         return out
 
     # -- cutting ---------------------------------------------------------------

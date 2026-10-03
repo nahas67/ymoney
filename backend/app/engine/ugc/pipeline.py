@@ -30,6 +30,7 @@ generation, so an editor's changes are never clobbered.
 
 from __future__ import annotations
 
+import logging
 import re
 import shutil
 import time
@@ -44,7 +45,16 @@ from app.engine.timeline import (
     validate_timeline,
 )
 from app.engine.ugc.qc import UGCQCReport, probe_has_audio, run_ugc_qc
+
+# ``_check`` / ``_rollup`` are the SAME private helpers Lane C's QC report uses
+# (branding already folds ``_rollup`` in for its own check). Reaching for a
+# hand-rolled severity map would give the music check a different vocabulary
+# from every other check in the report.
+from app.engine.ugc.qc import _check as _check_style  # noqa: PLC2701
+from app.engine.ugc.qc import _rollup as _rollup_style  # noqa: PLC2701
 from app.engine.ugc.voice import narrate_segments, narrate_text, split_segments
+from app.providers.music.base import MUSIC_TRACK_KIND
+from app.services.paid_jobs import SubmissionState
 
 UGC_PRESETS: tuple[str, ...] = (
     "PRODUCT_DEMO",
@@ -87,6 +97,37 @@ class UGCError(Exception):
 
 class UGCBlockedError(UGCError):
     """QC FAIL — the project must not render until a human fixes it."""
+
+
+class _PaidStateObserver(logging.Handler):
+    """Watch the paid-job logger for a submission that may have been billed.
+
+    ``base.music_or_none`` logs ``PaidSubmissionUnconfirmed`` at ERROR precisely
+    because it must not be silent, but its contract is to return ``None``. The
+    pipeline needs to distinguish that case from an ordinary refusal, and the
+    log line is the real signal -- reading it is honest, whereas guessing
+    ``None`` means "nothing billed" is how a double charge happens.
+
+    Only messages the paid-job contract emits for an UNCONFIRMED submission
+    count; everything else is ignored.
+    """
+
+    #: Substring of ``base.music_or_none``'s UNCONFIRMED log line.
+    MARKER = "UNCONFIRMED"
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.ERROR)
+        self.unconfirmed = False
+        self.detail = ""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            message = record.getMessage()
+        except Exception:  # noqa: BLE001 — a malformed record is not our state
+            return
+        if self.MARKER in message.upper():
+            self.unconfirmed = True
+            self.detail = message[:300]
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +231,10 @@ class UGCVideoPipeline:
         self.cta_text: str = ""
         self.product_assets: list[dict] = []
         self.broll_plan: list[dict] = []
+        #: Work 15.6: the generated soundtrack, when one was produced.
+        #: ``{}`` means "no bed" and is always explained in
+        #: ``lineage_json["music"]["reason"]``.
+        self.music: dict[str, Any] = {}
 
     # -- context -----------------------------------------------------------
 
@@ -263,10 +308,12 @@ class UGCVideoPipeline:
         try:
             from app.engine.brand_templates import (
                 apply_template_defaults,
-                brand_gate as _brand_gate,
                 get_template,
-                lineage_markers as _lineage_markers,
                 template_for,
+            )
+            from app.engine.brand_templates import brand_gate as _brand_gate
+            from app.engine.brand_templates import (
+                lineage_markers as _lineage_markers,
             )
 
             gate = _brand_gate(self.session, self.workspace_id,
@@ -463,6 +510,302 @@ class UGCVideoPipeline:
         self._save_lineage()
         return self.segments
 
+    # -- music (Work 15.6) --------------------------------------------------
+
+    def _brand_dna(self) -> Any:
+        """The effective BrandDNA for this workspace, or None.
+
+        Read through the EXISTING resolver so a workspace-default document, a
+        brand row and campaign/content/platform overrides all behave as they do
+        everywhere else. A resolver failure yields None -- an unreadable brand is
+        "no preference stated", never a licence to invent one.
+        """
+        try:
+            from app.engine.brand.dna import effective_dna
+            from app.engine.brand.inheritance import brand_layer
+
+            dna, _brand_id = brand_layer(self.session, self.workspace_id)
+            return effective_dna(dna)
+        except Exception as exc:  # noqa: BLE001 — brand never breaks the pipeline
+            self.lineage["music_brand_error"] = f"{type(exc).__name__}: {exc}"[:200]
+            return None
+
+    def _music_target_duration(self) -> float:
+        """The video length a bed must fit: the narration it will sit under."""
+        return round(sum(float(s.get("duration") or 0.0) for s in self.segments), 3)
+
+    def _music_source_asset(self) -> Any:
+        """The video the music is derived from, if one exists.
+
+        The provider derives audio from a rendered video. The presenter output is
+        the canonical video for this project; when there is no presenter, a
+        previously rendered project asset is used. Returning a row (not bytes)
+        keeps the lineage link a REFERENCE, like every other MediaAsset edge.
+        """
+        from app.models.assets import MediaAsset
+
+        asset_id = str(self.presenter.get("output_asset_id") or "")
+        if not asset_id:
+            asset_id = str(self.project.render_asset_ref or "")
+        if not asset_id:
+            return None
+        row = self.session.get(MediaAsset, asset_id)
+        if row is None or row.workspace_id != self.workspace_id:
+            return None
+        return row
+
+    def stage_music(self) -> dict:
+        """MUSIC: opt-in, brand-governed AI soundtrack on the canonical track.
+
+        Order of refusals, strongest first: BrandDNA hard rule -> workspace
+        policy -> budget -> cancellation -> the provider. Every refusal is
+        RECORDED (``lineage_json["music"]["reason"]``) and returns a no-bed
+        result, because a missing soundtrack degrades the video, it never fails
+        it.
+
+        Generated audio is a NEW, derived asset. It is never written over a
+        source asset: the ``MediaAsset`` row is created with
+        ``origin="generated"``, ``parent_asset_id`` pointing at the video it was
+        derived from, and the bytes land under their own storage key.
+        """
+        from app.providers.music.base import MusicRequest, music_timeline_clip
+        from app.providers.music.policy import (
+            MusicPolicyRefused,
+            duration_within_tolerance,
+            enforce_forbidden_genres,
+            music_policy,
+            recommend_style,
+        )
+
+        state: dict[str, Any] = {"track": MUSIC_TRACK_KIND, "generated": False}
+
+        def record(**fields: Any) -> dict:
+            state.update(fields)
+            self.lineage["music"] = dict(state)
+            self._save_lineage()
+            return dict(state)
+
+        # 1. policy gate: opt-in only, unset means NO generation
+        dna = self._brand_dna()
+        policy = music_policy(getattr(self.project, "workspace_settings", None)
+                              or self._workspace_settings(), dna,
+                              workspace_id=self.workspace_id)
+        if not policy.generate:
+            return record(reason=policy.reason, policy=policy.to_dict())
+
+        # 2. brand hard rules beat any recommendation. Checked against the RAW
+        #    requested genre first: `recommend_style` drops a forbidden one, and
+        #    dropping it silently would hide that the brief asked for something
+        #    the brand forbids.
+        candidate = dict(self.brief.get("music") or {})
+        raw_genre = str(candidate.get("genre") or "").strip().lower()
+        try:
+            enforce_forbidden_genres([raw_genre] if raw_genre else [], policy)
+        except MusicPolicyRefused as exc:
+            return record(reason="forbidden_genre", detail=str(exc),
+                          policy=policy.to_dict())
+        recommend_style(candidate, policy)   # filtered suggestion; brand wins
+
+        duration = self._music_target_duration()
+        if duration <= 0:
+            return record(reason="no_timeline_duration")
+
+        source = self._music_source_asset()
+        source_path = ""
+        if source is not None:
+            from app.services.storage import managed_path
+
+            resolved = managed_path(self.workspace_id, str(source.storage_key or ""))
+            source_path = str(resolved or "")
+
+        request = MusicRequest(
+            workspace_id=self.workspace_id,
+            duration_seconds=duration,
+            video_path=source_path,
+            video_asset_id=str(getattr(source, "id", "") or ""),
+            video_title=self.topic,
+            script_excerpt=self.script[:600],
+            campaign_id=str(self.brief.get("campaign_id") or ""),
+            brand_music_preference=str(self.brief.get("music_preference") or ""),
+            brand_tone=str(self.brief.get("tone") or ""),
+            keywords=[str(k) for k in (self.brief.get("keywords") or [])][:6],
+        )
+        policy.apply_to(request)
+
+        # 3. budget gate BEFORE any billable call
+        estimated = self._music_estimate(request, policy.provider_key)
+        try:
+            from app.services.cost import assert_can_spend
+
+            assert_can_spend(self.workspace_id, estimated)
+        except Exception as exc:  # noqa: BLE001 — BudgetExceededError and lookup failures
+            from app.services.cost import BudgetExceededError
+
+            reason = ("budget_rejected" if isinstance(exc, BudgetExceededError)
+                      else "budget_check_failed")
+            return record(reason=reason, detail=str(exc)[:200],
+                          estimated_cost_usd=estimated)
+
+        # 4. cancellation: never spend money on an abandoned job
+        try:
+            cancelled = bool(self._ctx().cancelled())
+        except Exception:  # noqa: BLE001
+            cancelled = False
+        if cancelled:
+            return record(reason="cancelled")
+
+        # 5. the paid provider.
+        result, outcome = self._music_submit(policy.provider_key, request)
+        state_name = str(outcome.state)
+        if state_name == SubmissionState.SUBMISSION_UNKNOWN:
+            # Billed-or-not: loud, permanent, and never a retry trigger. This is
+            # recorded from the SAME classifier the provider uses, so a lost
+            # submit response can never be re-sent by a later run.
+            return record(reason="submission_unknown", provider=policy.provider_key,
+                          state=state_name, remote_id=outcome.remote_id,
+                          detail=outcome.detail, must_not_resubmit=True,
+                          may_resubmit=outcome.may_resubmit)
+        if result is None:
+            return record(reason="unavailable_or_failed",
+                          provider=policy.provider_key, state=state_name,
+                          detail=outcome.detail)
+
+        measured = float(result.duration_seconds or 0.0)
+        if not duration_within_tolerance(measured, duration, tolerance=0.25):
+            return record(reason="duration_mismatch", provider=result.provider,
+                          state=state_name, measured_duration=measured,
+                          expected_duration=duration)
+
+        asset = self._persist_music_asset(result, source, estimated, request)
+        self.music = {"asset_id": asset.id, "asset": asset,
+                      "duration": measured, "provider": result.provider,
+                      "clip": music_timeline_clip(asset.id, measured)}
+        return record(generated=True, reason="generated",
+                      provider=result.provider, state=state_name,
+                      asset_id=asset.id, storage_key=asset.storage_key,
+                      duration_seconds=measured, parent_asset_id=asset.parent_asset_id,
+                      estimated_cost_usd=estimated,
+                      prompt=result.prompt, provenance=dict(result.provenance),
+                      policy=policy.to_dict())
+
+    def _music_submit(self, provider_key: str, request: Any):
+        """ONE paid submission through the EXISTING ``generate_music`` entry point.
+
+        Returns ``(MusicResult | None, SubmissionRecord)``.
+
+        ``generate_music`` is the package's never-raises contract: it returns
+        ``None`` for a refusal AND for a submission that may already have been
+        billed. Collapsing those two is exactly what the paid-job contract
+        forbids, so this wrapper observes the loud ``ERROR`` that
+        ``base.music_or_none`` already emits for ``PaidSubmissionUnconfirmed``
+        and records ``SUBMISSION_UNKNOWN`` -- read from the real signal, never
+        inferred. Any other no-track outcome is recorded as a failure.
+
+        Exactly ONE submit is attempted. A lost response ends the stage here and
+        is never retried, by this stage or by a later run.
+        """
+        from app.services.paid_jobs import SubmissionRecord
+
+        record = SubmissionRecord(workspace_id=self.workspace_id,
+                                  provider=str(provider_key))
+        observer = _PaidStateObserver()
+        music_logger = logging.getLogger("ymoney.music")
+        music_logger.addHandler(observer)
+        try:
+            # Resolved from the module (not a captured local) so an injected
+            # provider at the package seam is honoured, exactly as the lane's
+            # tests and any future provider swap require.
+            from app.providers.music import generate_music
+
+            result = generate_music(provider_key, request,
+                                    workspace_id=self.workspace_id)
+        finally:
+            music_logger.removeHandler(observer)
+
+        if observer.unconfirmed:
+            record.state = SubmissionState.SUBMISSION_UNKNOWN
+            record.detail = observer.detail
+        elif result is None:
+            record.state = SubmissionState.FAILED
+            record.detail = ("no track returned; no UNCONFIRMED submission was "
+                             "reported, but this is not proof of a clean refusal")
+        else:
+            record.state = getattr(result, "state", SubmissionState.SUCCEEDED)
+            record.remote_id = str(getattr(result, "remote_id", "") or "")
+            record.detail = ""
+        return result, record
+
+    def _music_estimate(self, request: Any, provider_key: str) -> float:
+        """The provider's own estimate, or an honest refusal of the call."""
+        try:
+            from app.providers.music import get_music_provider
+
+            provider = get_music_provider(provider_key,
+                                          workspace_id=self.workspace_id)
+            return max(0.0, float(provider.estimate_cost(request)))
+        except Exception:  # noqa: BLE001 — an unconfigured provider costs nothing
+            return 0.0
+
+    def _persist_music_asset(self, result: Any, source: Any,
+                             estimated: float, request: Any) -> Any:
+        """Copy the generated audio into workspace storage as a NEW MediaAsset.
+
+        Lineage is explicit: ``parent_asset_id`` names the video this bed was
+        derived from, and ``derivation_json`` carries the provider, model, prompt,
+        submission state and cost so a later reader can tell a generated bed from
+        a licensed one. The source asset row is never read-modify-written.
+        """
+        from pathlib import Path
+
+        from app.models.assets import MediaAsset
+        from app.providers.music.base import MUSIC_TRACK_KIND
+        from app.services.storage import get_storage
+
+        data = Path(str(result.path)).read_bytes()
+        name = f"music_{result.provider}_{int(time.time() * 1000)}.mp3"
+        key = get_storage().save_media(self.workspace_id, data=data, filename=name)
+        row = MediaAsset(
+            workspace_id=self.workspace_id,
+            type="audio",                 # canonical asset type: every consumer
+            origin="generated",           # ... already understands it
+            provider=str(result.provider or ""),
+            storage_key=str(key),
+            mime_type="audio/mpeg",
+            duration_seconds=float(result.duration_seconds or 0.0),
+            file_size=int(result.file_size or len(data)),
+            audio_codec=str(result.audio_codec or ""),
+            sample_rate=int(result.sample_rate or 0) or None,
+            channels=int(result.channels or 0) or None,
+            checksum=str(result.checksum or ""),
+            parent_asset_id=str(getattr(source, "id", "") or "") or None,
+            derivation_json={
+                "kind": "music_bed",
+                "provider": str(result.provider or ""),
+                "state": str(getattr(getattr(result, "state", None), "value",
+                                     getattr(result, "state", "")) or ""),
+                "remote_id": str(result.remote_id or ""),
+                "model": str((result.provenance or {}).get("model_id") or ""),
+                "prompt": str(result.prompt or "")[:1000],
+                "requested_duration_seconds": float(
+                    getattr(request, "duration_seconds", 0.0) or 0.0),
+                "measured_duration_seconds": float(result.duration_seconds or 0.0),
+                "estimated_cost_usd": round(float(estimated), 6),
+                "cost_is_estimate": True,
+                "warnings": [str(w)[:200] for w in (result.warnings or [])][:10],
+            },
+            meta_json={"work": "15.6", "track": MUSIC_TRACK_KIND,
+                       "provenance": dict(result.provenance or {})},
+        )
+        self.session.add(row)
+        self.session.flush()
+        return row
+
+    def _workspace_settings(self) -> dict:
+        from app.models import Workspace
+
+        row = self.session.get(Workspace, self.workspace_id)
+        return dict(getattr(row, "settings_json", None) or {})
+
     def stage_product_assets(self) -> list[dict]:
         """PRODUCT ASSETS: resolve user-uploaded MediaAssets (never invented)."""
         from app.engine.ugc.assets import resolve_product_assets
@@ -619,6 +962,19 @@ class UGCVideoPipeline:
                      duration=cta_dur,
                      text={"content": self.cta_text[:120], "size": 56})
 
+        # the AI soundtrack, if one was generated: a clip on the EXISTING music
+        # track, so the existing render (timeline_render.py mixes
+        # voice/music/sfx) picks it up with no new render path.
+        music = self.music or {}
+        clip = dict(music.get("clip") or {})
+        if clip.get("source", {}).get("asset_id"):
+            add_clip(doc, track=MUSIC_TRACK_KIND, clip_id=str(clip.get("id") or "music_0"),
+                     name=str(clip.get("name") or "AI music bed"),
+                     start=float(clip.get("start") or 0.0),
+                     duration=float(clip.get("duration") or 0.0),
+                     source=dict(clip.get("source") or {}),
+                     volume=float(clip.get("volume", 0.18)))
+
         # visuals: user product assets tiled under an optional presenter clip
         visual_refs = self._visual_assets(total)
         cursor = 0.0
@@ -740,6 +1096,31 @@ class UGCVideoPipeline:
                     if k in brand_check}
         except Exception:  # noqa: BLE001 — brand never breaks UGC QC
             pass
+        # Music (Work 15.6): the soundtrack decision is a VISIBLE QC check so an
+        # operator can see whether the bed is present and, when it is not, the
+        # recorded reason. A missing bed is never a failure -- the render is
+        # still valid -- so this reports `pass` or `warning` only.
+        music_state = dict(self.lineage.get("music") or {})
+        if music_state:
+            clips = [c for tr in doc.get("tracks", [])
+                     if tr.get("kind") == MUSIC_TRACK_KIND
+                     for c in tr.get("clips", [])]
+            if music_state.get("generated"):
+                report.checks["music_decision"] = _check_style(
+                    "pass" if clips else "warning",
+                    (f"{len(clips)} music clip(s) on the canonical track"
+                     if clips else
+                     "a bed was generated but no clip reached the timeline"))
+            else:
+                # A DECLINED soundtrack is the system working, so it must not
+                # warn: warning here would downgrade every policy-refused run to
+                # PASS_WITH_WARNINGS for something nobody asked for. The reason
+                # is carried in the detail so the fact stays visible.
+                report.checks["music_decision"] = _check_style(
+                    "pass",
+                    f"no soundtrack by policy: "
+                    f"{music_state.get('reason') or 'not attempted'}")
+            report.status = _rollup_style(report.checks)
         self.project.qc_json = report.to_dict()
         self.project.status = _status_for(report.status)
         self._save_lineage()
@@ -848,6 +1229,10 @@ class UGCVideoPipeline:
             self.session.commit()
             self.stage_presenter_render()
             self.session.commit()
+            # MUSIC after voice/CTA (the narration it must fit is known) and
+            # before the timeline (whose doc the bed is placed on).
+            self.stage_music()
+            self.session.commit()
             self.stage_timeline()
             self.session.commit()
         except Exception as exc:
@@ -865,7 +1250,8 @@ class UGCVideoPipeline:
                   "script": self.script,
                   "stages": ["brief", "audience", "hook", "script", "presenter",
                              "voice", "product_assets", "broll", "cta",
-                             "timeline", "qc"]}
+                             "music", "timeline", "qc"],
+                  "music": dict(self.lineage.get("music") or {})}
         if render and report.status != "FAIL":
             result["render"] = self.render()
         return result

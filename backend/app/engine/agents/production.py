@@ -13,19 +13,30 @@ from __future__ import annotations
 
 import time
 
+from loguru import logger
+
 from app.core.config import settings
 from app.db import session_scope
 from app.engine.agents.base import AgentMeta, BaseAgent
 from app.models import Video, Workspace
+from app.models.base import utcnow
 from app.providers.video_engine.base import (
     STATE_COMPLETE,
     STATE_FAILED,
     STATE_NOT_FOUND,
     RenderRequest,
     VideoEngineError,
+    VideoEngineSubmissionUnknown,
 )
 from app.services import jobs as jobs_service
+from app.services.cost import BudgetExceededError
 from app.services.events import record_event
+from app.services.paid_executor import (
+    CostOutcome,
+    IdempotencySupport,
+    Reconciliation,
+)
+from app.services.paid_provider import paid_operation
 
 
 def _emit(ws: str | None, kind: str, message: str, level: str = "info", **data):
@@ -56,6 +67,26 @@ def _update_video(video_id: str, **fields) -> None:
             return
         for k, v in fields.items():
             setattr(row, k, v)
+
+
+def _remember_ambiguous_request(video_id: str, fingerprint: str) -> None:
+    """Record WHICH request may have been billed, on the row itself.
+
+    ``submission_detail`` explains what happened; it is not a key. The engine's
+    task list has no request hash to match against, so without this the only way
+    to reconcile an ambiguous submit after a restart is to guess. The adapter
+    supplies the value because it is the only place that knows what was actually
+    sent (``mpt.submission_unknown``).
+    """
+    if not str(fingerprint or ""):
+        return
+    with session_scope() as s:
+        row = s.get(Video, video_id)
+        if row is None:
+            return
+        params = dict(row.params_json or {})
+        params["ambiguous_request_hash"] = fingerprint
+        row.params_json = params
 
 
 class VideoProducerAgent(BaseAgent):
@@ -106,7 +137,7 @@ class VideoProducerAgent(BaseAgent):
                 subject=topic,
                 script=script,
                 workspace_id=ctx.workspace_id or "",
-                keywords=keywords or [w for w in topic.split()[:4]],
+                keywords=keywords or topic.split()[:4],
                 aspect_ratio=aspect_ratio,
                 language=language or "",
                 voice_name=voice_name or "en-US-AndrewNeural",
@@ -117,6 +148,64 @@ class VideoProducerAgent(BaseAgent):
             resolution = self._resolve_existing(engine, variant_id, req_hash, topic)
             existing_task = resolution.get("engine_task_id")
             video_id = resolution.get("video_id")
+
+            # Work 15.5 §7: an AMBIGUOUS prior submission stops the pipeline.
+            # The engine may already have accepted and billed this job, so
+            # continuing to a submit here would buy a second one. This halts
+            # before the budget gate, because even reaching that gate means
+            # planning to spend.
+            if resolution["kind"] == "unknown":
+                _emit(ctx.workspace_id, "video.generation.submission_unknown",
+                      "A previous submission of this render is in an unknown "
+                      "state and may already have been billed. Refusing to "
+                      "resubmit; reconcile with the engine first.",
+                      level="error",
+                      data={"video_id": video_id or "",
+                            "request_hash": req_hash})
+                raise RuntimeError(
+                    "submission state is UNKNOWN for a prior attempt of this "
+                    "render (the provider may have accepted and billed it). "
+                    "Refusing to resubmit automatically. Reconcile the engine "
+                    "task list for this request hash, or clear the video row "
+                    "explicitly once the outcome is known."
+                )
+
+            # W11.5 E-F1 (CRITICAL) + Work 15.8 §6: the pre-spend gate.
+            # `assert_can_spend` existed with ZERO call sites repo-wide, so the
+            # daily/per-video caps were only ever *read* (decision.py, autopilot
+            # QC) and never enforced. What was enforced here was the ADVISORY
+            # read, which cannot exclude a concurrent spender; §6 replaced it with
+            # an atomic reservation, so the gate and the proof that it ran are one
+            # committed transaction. A reattach to an in-flight task is not new
+            # spend and is deliberately NOT reserved.
+            estimate = float(engine.estimate_cost(req) or 0.0)
+            paid = paid_operation(
+                provider=engine.engine_name,
+                operation="video_render_submit",
+                workspace_id=ctx.workspace_id or "",
+                category="video",
+                estimated_cost=estimate,
+                # MoneyPrinterTurbo documents no idempotency header, so the local
+                # key plus the SUBMISSION_UNKNOWN refusal are the only protection
+                # against a second purchase.
+                idempotency=IdempotencySupport.UNSUPPORTED,
+                reconciliation=Reconciliation.RECONCILE,
+                reservation_extra={"request_hash": req_hash,
+                                   "aspect_ratio": aspect_ratio,
+                                   "engine": engine.engine_name},
+            )
+            if not existing_task:
+                try:
+                    paid.authorize()
+                except BudgetExceededError as exc:
+                    # no Video row may exist yet at this point (the row is
+                    # created below), so mark the run failed via the id we have
+                    if video_id:
+                        _update_video(video_id, status="FAILED", error=f"budget: {exc}")
+                    _emit(ctx.workspace_id, "video.generation.budget_blocked",
+                          f"Render blocked by budget: {exc}",
+                          level="warning", data={"video_id": video_id or ""})
+                    raise RuntimeError(f"budget exceeded: {exc}") from exc
             if resolution["kind"] == "ready":
                 return {"summary": "render already complete (idempotent)",
                         "video_id": video_id}
@@ -150,16 +239,89 @@ class VideoProducerAgent(BaseAgent):
                       f"Reattached to engine task {existing_task[:12]} after restart/retry",
                       data={"video_id": video_id})
             else:
+                # Work 15.8 §6: the durable record. The attempt is written BEFORE
+                # `engine.submit` is called, so a process that dies with the
+                # request in flight still leaves proof that money may be gone.
+                # Each writer below owns ONE fact: `on_attempt` is evidence that
+                # the request is about to leave, `on_execution` is where the
+                # request got to, `on_cost_outcome` is what the ledger may say.
+                # Conflating them into one status string is what Work 15.5 §7 had
+                # to undo.
+                def _record_attempt(operation_id: str) -> None:
+                    _update_video(
+                        video_row_id,
+                        submission_state="SUBMISSION_ATTEMPTED",
+                        submission_operation_id=operation_id,
+                        submission_attempted_at=utcnow(),
+                        cost_outcome=str(CostOutcome.ESTIMATED),
+                        submission_detail=(
+                            f"one submit to {engine.engine_name} for "
+                            f"request {req_hash[:12]}"))
+
+                def _record_execution(state: str, detail: str = "") -> None:
+                    if state == "SUBMISSION_UNKNOWN":
+                        # Money may be gone and we cannot prove it was not, so
+                        # this is the state that forbids an automatic resubmit --
+                        # and the business status is left alone, because FAILED
+                        # would invite exactly that resubmit.
+                        _update_video(video_row_id,
+                                      submission_state="SUBMISSION_UNKNOWN",
+                                      submission_detail=detail,
+                                      error=detail)
+                        return
+                    _update_video(video_row_id,
+                                  submission_state=state,
+                                  submission_detail=detail)
+
+                paid.bind(
+                    on_attempt=_record_attempt,
+                    on_execution=_record_execution,
+                    on_cost_outcome=lambda outcome: _update_video(
+                        video_row_id, cost_outcome=outcome),
+                    on_remote_id=lambda remote_id: _update_video(
+                        video_row_id, provider_task_id=remote_id),
+                )
+                paid.mark_attempt()
                 try:
                     handle = engine.submit(req)
+                except VideoEngineSubmissionUnknown as exc:
+                    # Work 15.6 §5: the submit was DELIVERED and no durable id
+                    # came back. The engine may have accepted and billed the
+                    # job, so this is NOT a failure and NOT retryable -- writing
+                    # FAILED would both lose the reference and invite a re-buy.
+                    # The adapter names the request it actually sent, so the
+                    # record survives a restart with a usable reconciliation key
+                    # instead of a bare "something went wrong".
+                    fingerprint = getattr(exc, "request_fingerprint", "") or req_hash
+                    paid.mark_unknown(str(exc))
+                    _remember_ambiguous_request(video_row_id, fingerprint)
+                    _emit(ctx.workspace_id, "video.generation.submission_unknown",
+                          "Render submit was delivered but unconfirmed. The "
+                          "engine may have accepted and billed it; refusing to "
+                          "resubmit automatically. Reconcile the engine task "
+                          "list before retrying.",
+                          level="error",
+                          data={"video_id": video_row_id,
+                                "request_hash": req_hash,
+                                "ambiguous_request_hash": fingerprint})
+                    raise RuntimeError(str(exc)) from exc
                 except VideoEngineError as exc:
+                    # Anything that is NOT an ambiguity left this adapter means
+                    # the engine provably created no task: a 4xx, a 429, or a
+                    # connection that never opened. mpt.submit routes a read
+                    # failure and a post-create 5xx to SubmissionUnknown
+                    # explicitly, so nothing billable reaches this branch -- which
+                    # is why the reservation is released and the budget returns.
+                    paid.mark_rejected(str(exc), nothing_billed=True)
                     _update_video(video_row_id, status="FAILED", error=f"submit failed: {exc}")
                     if getattr(exc, "retryable", False):
                         raise
                     raise RuntimeError(str(exc)) from exc
                 except jobs_service._Cancelled:
+                    paid.mark_cancelled("cancelled before submit")
                     _update_video(video_row_id, status="FAILED", error="cancelled before submit")
                     raise
+                paid.mark_accepted(handle.engine_task_id)
                 _update_video(video_row_id, engine_task_id=handle.engine_task_id)
                 video_id = video_row_id
                 _emit(ctx.workspace_id, "video.generation.created",
@@ -249,9 +411,103 @@ class VideoProducerAgent(BaseAgent):
                 params_json=params,
                 error="",
             )
+            # W11.5 D-F1 (HIGH): READY was written with NO verifier call, so a
+            # DB status could stand in for missing evidence (a DB status saying
+            # COMPLETE must not override failed evidence). Ledger the independent
+            # check right after the status flip: video file, ffprobe validity,
+            # QC score and MediaAsset registration. A failure does NOT rewrite
+            # READY (the verifier records NOT_VERIFIED evidence, and downstream
+            # QC/approval reads it) -- it makes the gap auditable instead of
+            # invisible. Runs in its own session because this one may be mid-
+            # transaction, and a ledger failure must never fail the render.
+            #
+            # FRAGILE INVARIANT (W11.5): this is safe ONLY because
+            # `_update_video()` opens and closes its own `session_scope()`, so
+            # no transaction is open here. If that ever changes, do NOT nest a
+            # committing session here -- `append_evidence` commits internally
+            # and will deadlock against an outer SQLite write lock
+            # ("database is locked"). Use the ambient session instead, as
+            # `publish_flow.py` does.
+            if not str(video_path or "").startswith("mock:"):
+                try:
+                    with session_scope() as vs:
+                        from app.engine.intelligence.verifier import (
+                            CompletionContract,
+                        )
+                        from app.engine.intelligence.verifier import (
+                            verify as verify_completion,
+                        )
+
+                        evidence = verify_completion(
+                            vs, ctx.workspace_id or "",
+                            CompletionContract(kind="video", subject_id=video_id,
+                                               expectations={"duration_seconds": duration}
+                                               if duration else {}),
+                        )
+                    _emit(ctx.workspace_id, "video.generation.verified",
+                          f"Completion evidence: {evidence.verification_status}",
+                          level="success" if str(evidence.verification_status) in
+                          ("VERIFIED", "PARTIALLY_VERIFIED") else "warning",
+                          data={"video_id": video_id,
+                                "verification": str(evidence.verification_status)})
+                except Exception as exc:  # noqa: BLE001 — never fail a render on evidence
+                    _emit(ctx.workspace_id, "video.generation.verified",
+                          f"Completion verification failed to run: {exc}",
+                          level="warning", data={"video_id": video_id})
             estimate = engine.estimate_cost(req)
-            self.track_cost(ctx, "video", estimate, provider=engine.engine_name,
-                            detail={"task_id": handle.engine_task_id, "estimate": True})
+            if paid.reservation is not None:
+                # Work 15.8 §6: the reservation taken BEFORE the submit IS this
+                # operation's ledger row, and closing it in place is the booking.
+                # A second track_cost would bill one render twice: the estimate
+                # already counted against the daily cap. `close_book` keeps the
+                # row an ESTIMATE, because MoneyPrinterTurbo reports no amount
+                # and `settle_reservation` would stamp it ACTUAL.
+                paid.close_book()
+                ctx.artifacts["cost_usd"] = ctx.artifacts.get("cost_usd", 0.0) + estimate
+            else:
+                # Work 15.9 §5: a REATTACH must not buy a second time.
+                #
+                # There is no reservation on this path because the submit
+                # happened before the crash, so its money is already on a ledger
+                # row -- possibly written by a previous process that then died.
+                # Booking again here created a SECOND cost_entries row for the
+                # SAME remote task, which is a double-book: the render is
+                # charged twice and the daily cap is consumed twice for one
+                # purchase.
+                #
+                # ``reattach_by_remote_id`` finds the row that already owns
+                # this remote job and reports it, so the accounting identity is
+                # exactly-once even though the network call was not ours.
+                # Nothing new is written; the existing row stays authoritative.
+                recovered = None
+                try:
+                    from app.services.paid_provider import reattach_by_remote_id
+
+                    recovered = reattach_by_remote_id(
+                        str(handle.engine_task_id or ""))
+                except Exception as exc:  # noqa: BLE001 - never fail a render
+                    logger.warning(
+                        "reattach accounting lookup failed for task {}: {}",
+                        str(handle.engine_task_id or "")[:12], exc)
+                if recovered is not None:
+                    ctx.artifacts["reattached_cost_row"] = recovered.entry_id
+                    ctx.artifacts["cost_usd"] = ctx.artifacts.get(
+                        "cost_usd", 0.0)
+                else:
+                    # No row owns this remote job. That is NOT permission to
+                    # invent one: the money may already be gone and unrecorded,
+                    # so this becomes a visible unknown exposure rather than a
+                    # second charge.
+                    logger.warning(
+                        "reattached to engine task {} but no cost row owns it; "
+                        "recording an unknown exposure rather than a second "
+                        "charge", str(handle.engine_task_id or "")[:12])
+                    _emit(ctx.workspace_id, "video.generation.reattach_unowned",
+                          "Reattached to an engine task with no cost row of its "
+                          "own; recorded as unknown exposure, not re-charged.",
+                          level="warning",
+                          data={"video_id": video_id,
+                                "engine_task_id": handle.engine_task_id or ""})
             _emit(ctx.workspace_id, "video.generation.completed",
                   f"Video ready ({duration:.0f}s)" if duration else "Video ready",
                   level="success", data={"video_id": video_id})
@@ -302,6 +558,9 @@ class VideoProducerAgent(BaseAgent):
           reattach   — RENDERING row with a persisted engine task; resume it
           adopt      — RENDERING row without task id, but the engine holds an
                        orphaned matching task (crash between submit & persist)
+          unknown    — the engine may have accepted AND BILLED the job and we
+                       cannot prove it did not. A human must decide; the
+                       pipeline must NOT resubmit.
           fresh      — start over
         """
         if not variant_id:
@@ -338,9 +597,21 @@ class VideoProducerAgent(BaseAgent):
                             s.flush()
                             return {"kind": "adopt", "video_id": row.id,
                                     "engine_task_id": t["task_id"]}
-                row.status = "FAILED"
-                row.error = "submit interrupted before engine accepted the job"
+                # Work 15.5 §7: the no-orphan branch is AMBIGUOUS, not failed.
+                # The engine may have accepted and billed this job; writing
+                # FAILED both destroys the reference and invites a re-buy.
+                # SUBMISSION_UNKNOWN forbids automatic resubmission and forces
+                # reconciliation or an explicit human decision.
+                row.submission_state = "SUBMISSION_UNKNOWN"
+                row.submission_detail = (
+                    "submit was interrupted before the engine task id was "
+                    "persisted and no matching orphan was found; the job may "
+                    "have been accepted and billed. Do not resubmit without "
+                    "reconciling with the engine first."
+                )
+                row.error = row.submission_detail
                 s.flush()
+                return {"kind": "unknown", "video_id": row.id}
         return {"kind": "fresh"}
 
 

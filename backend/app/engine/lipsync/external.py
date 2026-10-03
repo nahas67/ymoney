@@ -11,11 +11,20 @@ Talks to an operator-configured base URL (GPU box, queue service, vendor API):
 Transient failures (connect/timeout/5xx/429) raise `LipSyncTransient` so the
 worker queue retries them with bounded exponential backoff; everything else
 fails closed with remediation. Nothing is called at import time.
+
+Work 15.7: ``POST /jobs`` is the billable submit, and the generic retry loop
+above used to re-POST it after a lost response -- buying the same render up to
+three times. The submit now runs exactly once through
+:class:`~app.services.paid_executor.PaidProviderExecutor`, which persists the
+returned ``job_id`` immediately and turns an ambiguous outcome into
+``PaidSubmissionUnconfirmed``. The worker retries the POLL and the RESULT fetch
+against that id and never the create.
 """
 
 from __future__ import annotations
 
 import httpx
+from loguru import logger
 
 from app.engine.lipsync.base import (
     HEALTH_AVAILABLE,
@@ -32,6 +41,16 @@ from app.engine.lipsync.base import (
     env_str,
     gpu_present,
 )
+from app.services.paid_executor import (
+    CostOutcome,
+    CostRecord,
+    IdempotencySupport,
+    PaidProviderExecutor,
+    PaidSubmission,
+    PaidSubmissionUnconfirmed,
+    RemoteSubmission,
+    SubmissionState,
+)
 
 REMEDIATION_NOT_CONFIGURED = (
     "No lip-sync endpoint configured: set LIPSYNC_EXTERNAL_BASE_URL to a "
@@ -43,11 +62,106 @@ REMEDIATION_UNREACHABLE = (
     "URL/firewall, or fall back to LIPSYNC_PROVIDER=auto (fails closed)."
 )
 
+#: Records of the billable submissions this adapter made, newest last. The
+#: worker reads the tail of this list to persist the remote id on BOTH the
+#: success and the ambiguity branch -- a job id we held but never wrote is an
+#: invoice nobody can reconcile.
+SUBMISSIONS: list[PaidSubmission] = []
+
+#: Bounded so a long-running process cannot grow it without limit.
+MAX_RETAINED_SUBMISSIONS = 64
+
+
+def _paid(operation: str, *, workspace_id: str = "") -> PaidProviderExecutor:
+    """Executor for one billable ``POST /jobs``.
+
+    ``persist`` is best-effort: the durable record is written by the worker onto
+    the ``lipsync_jobs`` row, and telemetry must never be able to abort a render
+    that has already been paid for.
+    """
+    def persist(record: PaidSubmission) -> None:
+        SUBMISSIONS.append(record)
+        if len(SUBMISSIONS) > MAX_RETAINED_SUBMISSIONS:
+            del SUBMISSIONS[:-MAX_RETAINED_SUBMISSIONS]
+        try:
+            from app.services.events import record_event
+
+            record_event(record.workspace_id or None, kind="paid.submission",
+                         message=f"{record.provider}.{record.operation} "
+                                 f"{record.state} (submission {record.submission_id})",
+                         level="warning" if record.state
+                         is SubmissionState.SUBMISSION_UNKNOWN else "info",
+                         source="lipsync.external", data=record.to_dict())
+        except Exception as exc:  # noqa: BLE001 - telemetry never breaks a render
+            logger.warning("paid lipsync submission not recorded: "
+                           f"{type(exc).__name__}: {exc}")
+
+    def cost_hook(record: PaidSubmission) -> None:
+        # The worker reports the real cost_usd from the result payload; this
+        # hook only has to make sure an unpriced exposure is never booked $0.
+        amount = record.cost.ledger_value
+        if amount is None or amount <= 0:
+            logger.warning("lipsync submission %s has no reported cost; "
+                           "exposure=%s", record.submission_id,
+                           str(record.cost.outcome))
+            return
+        try:
+            from app.services import cost as cost_service
+
+            cost_service.track_cost(
+                record.workspace_id or "", "video", amount,
+                provider=record.provider,
+                is_estimate=record.cost.outcome is CostOutcome.ESTIMATED,
+                detail=record.to_dict())
+        except Exception as exc:  # noqa: BLE001 - ledger must not break a render
+            logger.warning("lipsync cost not booked: %s: %s",
+                           type(exc).__name__, exc)
+
+    return PaidProviderExecutor(
+        workspace_id=workspace_id,
+        provider="external_lipsync_worker",
+        operation=operation,
+        persist=persist,
+        cost_hook=cost_hook,
+        submit_budget=lambda: _assert_lipsync_budget(workspace_id),
+        idempotency=IdempotencySupport.UNSUPPORTED,
+    )
+
+
+def _assert_lipsync_budget(workspace_id: str) -> None:
+    """Pre-spend gate. BEFORE ``POST /jobs``, or it is not a gate.
+
+    The amount is unknown up front -- the worker reports ``cost_usd`` per job,
+    which arrives with the result -- so this enforces the caps against an
+    estimated spend derived from the GPU rate the queue is configured with.
+    """
+    from app.services.cost import assert_can_spend
+
+    estimate = 0.0
+    try:
+        estimate = round(env_float("LIPSYNC_GPU_USD_PER_HOUR", 0.0)
+                         * env_float("LIPSYNC_TIMEOUT_SECONDS", 900.0) / 3600.0, 6)
+    except Exception:  # noqa: BLE001 - an unparseable env must not guess money
+        estimate = 0.0
+    assert_can_spend(workspace_id, estimate)
+
+
+def last_submission() -> PaidSubmission | None:
+    """The most recent billable submission record, or ``None``."""
+    return SUBMISSIONS[-1] if SUBMISSIONS else None
+
 
 class ExternalAdapter(LipSyncProvider):
-    """Remote lip-sync worker over plain HTTP."""
+    """Remote lip-sync worker over plain HTTP.
+
+    ``submit_is_billable = True`` is the declaration the worker queue reads to
+    decide whether an ambiguous submit may be retried: the job is billed by the
+    remote operator, so the queue persists the ambiguity and stops instead of
+    POSTing /jobs again.
+    """
 
     name = "external"
+    submit_is_billable = True
 
     def __init__(
         self,
@@ -161,23 +275,60 @@ class ExternalAdapter(LipSyncProvider):
                 f"external lip-sync unavailable: {health.detail}",
                 remediation=health.remediation,
             )
-        data = self._request(
-            "POST",
-            "/jobs",
-            json_body={
-                "video_ref": video_ref,
-                "audio_ref": audio_ref,
-                "workspace_id": workspace_id,
-                "opts": dict(opts or {}),
-            },
-        )
-        job_id = str(data.get("job_id") or data.get("id") or "").strip()
-        if not job_id:
-            raise LipSyncError(
-                "lip-sync endpoint did not return a job id",
-                remediation="the worker must answer POST /jobs with {job_id}",
+        executor = _paid("lipsync.job_submit", workspace_id=workspace_id or "")
+
+        def create(_idempotency_key: str) -> RemoteSubmission:
+            data = self._request(
+                "POST",
+                "/jobs",
+                json_body={
+                    "video_ref": video_ref,
+                    "audio_ref": audio_ref,
+                    "workspace_id": workspace_id,
+                    "opts": dict(opts or {}),
+                },
             )
-        return job_id
+            job_id = str(data.get("job_id") or data.get("id") or "").strip()
+            if not job_id:
+                # Accepted (or not) with no handle: we cannot tell a refusal
+                # from a billable job we lost track of, so we refuse to guess
+                # and the caller must NOT resubmit on this answer.
+                raise PaidSubmissionUnconfirmed(
+                    provider="external_lipsync_worker",
+                    detail="lip-sync endpoint did not return a job id for "
+                           "POST /jobs",
+                )
+            return RemoteSubmission(remote_id=job_id, raw=data)
+
+        # ONE POST. On ambiguity this raises and the remote id (if the worker
+        # gave us one before the failure) is already in SUBMISSIONS for the
+        # worker to persist. It is never resubmitted from here.
+        return executor.execute(create).remote_id
+
+    def settle_submission(self, *, actual_cost: float | None = None,
+                          detail: str = "") -> PaidSubmission | None:
+        """Close the book on the last submit once the result is known.
+
+        ``cost_usd`` comes back with the job result, so the amount is only ever
+        recorded once the worker actually reported it. Without it the exposure
+        stays UNKNOWN rather than being booked as zero.
+        """
+        record = last_submission()
+        if record is None:
+            return None
+        if actual_cost is not None:
+            record.cost = CostRecord(outcome=CostOutcome.ACTUAL,
+                                     estimated=record.estimated_cost,
+                                     actual=float(actual_cost))
+        else:
+            record.cost = CostRecord(outcome=CostOutcome.UNKNOWN_EXPOSURE,
+                                     estimated=record.estimated_cost)
+        if detail:
+            record.detail = f"{record.detail} | {detail}"
+        record.touch()
+        executor = _paid(record.operation, workspace_id=record.workspace_id)
+        executor.mark_succeeded(record)
+        return record
 
     def status(self, job_id: str) -> dict:
         data = self._request("GET", f"/jobs/{job_id}")
@@ -215,4 +366,4 @@ class ExternalAdapter(LipSyncProvider):
         }
 
 
-__all__ = ["ExternalAdapter"]
+__all__ = ["SUBMISSIONS", "ExternalAdapter", "last_submission"]

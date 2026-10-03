@@ -5,6 +5,8 @@ import pytest
 
 from app.providers import tts as tts_mod
 from app.providers.tts import (
+
+
     ElevenLabsTTSProvider,
     TTSError,
     get_tts_provider,
@@ -133,3 +135,18 @@ def test_voice_designer_records_estimate(tmp_path, monkeypatch):
     out = agent_mod.VoiceDesignerAgent().design(ctx, text=text, provider="elevenlabs")
     assert out["provider"] == "elevenlabs"
     assert ctx.artifacts["cost_usd"] == pytest.approx(len(text) * ElevenLabsTTSProvider.EST_USD_PER_CHAR)
+
+# ---------------------------------------------------------------------------
+# Work 15.9 1: billable lanes need an explicit budget owner.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _owner_for_billable_lanes(billable_workspace):
+    """This module drives BILLABLE provider lanes.
+
+    A billable call with no budget owner is now REFUSED before the request
+    leaves -- correct product behaviour. These tests opt into a synthetic
+    workspace scope explicitly rather than the product growing a loophole.
+    """
+    yield billable_workspace

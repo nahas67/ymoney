@@ -368,16 +368,47 @@ def register_publish_handlers() -> None:
                 raise RuntimeError(f"no publisher for {platform}: {exc}") from exc
             try:
                 meta = _publish_metadata(p)
+                # Call the publisher with the REAL BasePublisher signature.
+                # This previously passed `metadata=`/`account_id=`, which no
+                # real publisher accepts (they all take `(video_path, meta,
+                # account)`) -- the call only ever "worked" because tests
+                # inject a mock that swallows **kwargs, so a live publish
+                # would have failed with a TypeError. The account DICT carries
+                # the decrypted token, which is what the providers need; the
+                # account ID is still used below for the verification check.
+                from app.services.oauth_service import get_decrypted_account
+
+                account_dict = (get_decrypted_account(account)
+                                if account is not None else {})
                 result = publisher.publish(
-                    video_path=p.get("video_path", "") or p.get("file_path", ""),
-                    metadata=meta,
-                    account_id=getattr(account, "id", "") or "",
+                    p.get("video_path", "") or p.get("file_path", ""),
+                    meta,
+                    account_dict,
                 )
             except Exception as exc:
                 _mark_variant(ctx.workspace_id, variant_id, short_id, platform, "FAILED")
                 raise RuntimeError(f"publish failed on {platform}: {exc}") from exc
             remote_id = getattr(result, "remote_post_id", "") or getattr(result, "post_id", "") or ""
             remote_url = getattr(result, "remote_url", "") or getattr(result, "url", "") or ""
+
+            # -- Work 14 §5/§9: classify BEFORE writing the row ------------
+            # A handoff platform prepares media and a human publishes it. That
+            # is recorded as HANDOFF and the variant is NOT marked PUBLISHED;
+            # treating it as published is the single failure this guards.
+            from app.engine.distribution.modes import (
+                PublicationMode,
+                classify_publication,
+            )
+            from app.providers.publishers.factory import HANDOFF_PLATFORMS
+
+            handoff_required = acct_platform in HANDOFF_PLATFORMS
+            mode = classify_publication(
+                handoff_required=handoff_required,
+                unavailable_reason="" if remote_id or handoff_required
+                else "provider returned no remote id",
+                remote_id=remote_id)
+            handoff_payload = (getattr(result, "handoff", None)
+                              or _handoff_payload_from(result))
             # Link back: PublishedPost.video_id carries the short id when no
             # render video exists (column is a plain string, no FK).
             post = s.scalar(
@@ -399,24 +430,89 @@ def register_publish_handlers() -> None:
                     title=str((p.get("metadata") or {}).get("title", ""))[:300],
                     platform_variant_id=p.get("platform_variant_id") or None,
                     campaign_id=campaign_id or None,
+                    publication_mode=mode.value,
+                    is_mock=mode is PublicationMode.MOCK,
+                    handoff_payload=handoff_payload or None,
                 )
                 s.add(post)
             else:
                 post.remote_post_id = remote_id
                 post.remote_url = remote_url
+                post.publication_mode = mode.value
+                post.is_mock = mode is PublicationMode.MOCK
+                if handoff_payload:
+                    post.handoff_payload = handoff_payload
                 if p.get("platform_variant_id"):
                     post.platform_variant_id = p["platform_variant_id"]
                 if campaign_id:
                     post.campaign_id = campaign_id
             s.flush()
-            _mark_variant(ctx.workspace_id, variant_id, short_id, platform, "PUBLISHED",
-                          published_post_id=post.id)
+            # A handoff is PREPARED, not published: the variant stays out of
+            # PUBLISHED so nothing downstream treats it as live.
+            variant_status = ("PUBLISHED" if mode.is_live
+                              else "AWAITING_HANDOFF" if mode is PublicationMode.HANDOFF
+                              else "FAILED")
+            _mark_variant(ctx.workspace_id, variant_id, short_id, platform,
+                          variant_status, published_post_id=post.id, session=s)
+            # W11.5 D-F2 (HIGH): a PublishedPost row was written with no
+            # verifier call, so `remote_post_id` present == success. Ledger the
+            # independent check (receipt, remote id, row, account/platform,
+            # single-record idempotency) so the evidence is auditable; a mock
+            # publisher verifies ONLY as mock, never live.
+            #
+            # It MUST run on the ambient session, never a nested one: the outer
+            # transaction already holds SQLite's write lock, so opening a second
+            # session here and committing deadlocks ("database is locked") and
+            # broke the E2E gate. Sharing `s` also makes the publication and its
+            # evidence one atomic commit. Never raises: the publish succeeded.
+            try:
+                from app.engine.intelligence.verifier import (
+                    CompletionContract,
+                )
+                from app.engine.intelligence.verifier import (
+                    verify as verify_completion,
+                )
+
+                verify_completion(
+                    s, ctx.workspace_id or "",
+                    CompletionContract(kind="publication", subject_id=post.id),
+                )
+            except Exception as exc:  # noqa: BLE001 — never fail a publish on evidence
+                emit_campaign_event(
+                    ctx.workspace_id or "", "campaign.publication_unverified",
+                    f"Completion verification failed to run: {exc}"[:300],
+                    campaign_id=campaign_id, variant_id=variant_id,
+                )
         emit_campaign_event(
             ctx.workspace_id or "", "campaign.completed",
             f"Variant {variant_id} published on {platform}",
             campaign_id=campaign_id, variant_id=variant_id, platform=platform,
+            mode=mode.value,
         )
-        return {"published": True, "platform": platform, "remote_post_id": remote_id}
+        return {"published": mode.is_live, "mode": mode.value,
+                "platform": platform, "remote_post_id": remote_id,
+                "requires_human": mode is PublicationMode.HANDOFF}
+
+
+def _handoff_payload_from(result) -> dict:
+    """Extract a handoff record from a publisher result, if it produced one.
+
+    The handoff publisher returns the prepared-work record; anything else
+    returns no payload, which is what keeps non-handoff platforms clean.
+    """
+    for attribute in ("handoff", "handoff_payload"):
+        value = getattr(result, attribute, None)
+        if isinstance(value, dict) and value:
+            return value
+    if not getattr(result, "remote_post_id", ""):
+        # A result with no remote id that still succeeded is, by construction,
+        # prepared work rather than a publication. Record that explicitly so a
+        # later reader cannot infer "published" from the absence of an error.
+        return {"mode": "HANDOFF", "requires_human": True,
+                "instruction": getattr(result, "error", "") or
+                "no remote id was returned: this is prepared work, not a "
+                "publication"}
+    return {}
 
 
 def _publish_metadata(payload: dict):
@@ -433,13 +529,23 @@ def _publish_metadata(payload: dict):
 
 
 def _mark_variant(workspace_id: str, variant_id: str, short_id: str, platform: str,
-                  status: str, published_post_id: str | None = None) -> None:
-    """Best-effort variant status update; siblings untouched. Never raises."""
+                  status: str, published_post_id: str | None = None,
+                  session=None) -> None:
+    """Best-effort variant status update; siblings untouched. Never raises.
+
+    W11.5: pass the CALLER's session. On the success path the publish
+    transaction has already flushed the PublishedPost, so it holds SQLite's
+    write lock; opening a second connection here made the nested write wait out
+    ``busy_timeout`` (5s), fail with "database is locked", and get swallowed by
+    the ``except`` below -- leaving ``platform_variants.status`` stale at its
+    pre-publish value while the publish itself reported success. The FAILED
+    path escaped this only because nothing had been flushed yet.
+    """
     try:
         from app.db import session_scope
         from app.engine.campaign.variants import default_store
 
-        with session_scope() as s:
+        def _apply(s) -> None:
             store = default_store(s)
             rec = store.get(short_id, platform)
             if rec is None:
@@ -450,6 +556,12 @@ def _mark_variant(workspace_id: str, variant_id: str, short_id: str, platform: s
             if published_post_id:
                 rec.published_post_id = published_post_id
             store.upsert(rec)
+
+        if session is not None:
+            _apply(session)
+        else:
+            with session_scope() as own:
+                _apply(own)
     except Exception:
         pass
 

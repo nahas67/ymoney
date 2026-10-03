@@ -62,10 +62,19 @@ services:
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?set your domain}
       SENTRY_DSN: ${SENTRY_DSN:-}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      # Canonical local media MUST live on the mounted volume below. Left unset,
+      # the app falls back to `<app root>/data/videos`, which is inside the
+      # image's writable layer and is destroyed by any container recreate.
+      STORAGE_ROOT: /data/videos
       S3_BUCKET: ${S3_BUCKET:-}
       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
       S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+    volumes:
+      # Renders, proxies, thumbnails and archives. Without this the backend had
+      # no persistent filesystem at all and every produced asset died with the
+      # container.
+      - backenddata:/data
     depends_on:
       postgres:
         condition: service_healthy
@@ -87,3 +96,5 @@ services:
 volumes:
   pgdata:
   redisdata:
+  # Canonical media for the backend service (see STORAGE_ROOT above).
+  backenddata:

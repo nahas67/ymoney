@@ -80,13 +80,32 @@ def check_video(session, workspace_id: str, contract: CompletionContract) -> tup
 
     path = video.file_path or ""
     is_mock = path.startswith("mock:")
-    real_path = None if is_mock else Path(path) if path else None
+    # W11.5 D-F5: prefer the storage boundary -- a raw DB path must not be
+    # stat'ed blindly (a row carrying an absolute path outside workspace
+    # storage would otherwise be trusted). Fall back to the path AS-IS only
+    # when the boundary refuses it, because real installs store engine output
+    # under a provider-owned path outside data/videos; the boundary result is
+    # reported in the detail so the provenance stays auditable.
+    real_path = None
+    via_boundary = False
+    if path and not is_mock:
+        try:
+            from app.services.storage import managed_path
+
+            real_path = managed_path(workspace_id, path)
+            via_boundary = real_path is not None
+        except Exception:
+            real_path = None
+        if real_path is None:
+            candidate = Path(path)
+            real_path = candidate if candidate.exists() else None
     exists = bool(real_path is not None and real_path.exists())
     size = real_path.stat().st_size if exists else 0
     checks.append(CheckResult("record_registered", True,
                               f"video {video.id} status={video.status}"))
     checks.append(CheckResult("file_real_nonzero", exists and size > 0,
-                              f"path={path[:120]} size={size} mock={is_mock}"))
+                              f"path={path[:120]} size={size} mock={is_mock} "
+                              f"via_storage_boundary={via_boundary}"))
 
     meta: dict = {}
     if exists and size > 0:
@@ -129,13 +148,25 @@ def check_video(session, workspace_id: str, contract: CompletionContract) -> tup
                                   critical=False))
 
     asset = None
-    try:
-        asset = session.query(MediaAsset).filter(
-            MediaAsset.workspace_id == workspace_id,
-            MediaAsset.storage_key == Path(path).name if path and not is_mock else "__none__",
-        ).first()
-    except Exception:
-        asset = None
+    if path and not is_mock:
+        try:
+            # W11.5 D-F5: storage keys are workspace-relative paths
+            # (data/videos/<ws>/...), so a bare-basename comparison can never
+            # match. Try the exact key first, then a same-workspace basename
+            # suffix (the workspace filter keeps the suffix from leaking across).
+            from sqlalchemy import or_
+
+            wanted = Path(path).name
+            # exact key, the workspace-relative suffix form, or the legacy
+            # bare-basename key that pre-boundary rows still carry
+            asset = session.query(MediaAsset).filter(
+                MediaAsset.workspace_id == workspace_id,
+                or_(MediaAsset.storage_key == path,
+                    MediaAsset.storage_key == wanted,
+                    MediaAsset.storage_key.like(f"%/{wanted}")),
+            ).first()
+        except Exception:
+            asset = None
     checks.append(CheckResult("db_asset_registered", asset is not None or is_mock,
                               "mock render" if is_mock else (
                                   f"asset={asset.id}" if asset else "no MediaAsset row"),
@@ -149,6 +180,7 @@ def check_video(session, workspace_id: str, contract: CompletionContract) -> tup
 
 def check_publication(session, workspace_id: str,
                       contract: CompletionContract) -> tuple[str, str, list[dict]]:
+    from app.engine.distribution.modes import PublicationMode
     from app.models import PublishedPost
 
     post = session.get(PublishedPost, contract.subject_id)
@@ -156,12 +188,113 @@ def check_publication(session, workspace_id: str,
         return "UNKNOWN", *_blocked(BLOCKED_CROSS_WORKSPACE)
     exp = contract.expectations or {}
     checks: list[CheckResult] = []
-    execution = "COMPLETED" if post.remote_post_id else "FAILED"
 
-    checks.append(CheckResult("receipt_present", bool(post.remote_post_id),
-                              f"remote_post_id={post.remote_post_id[:60]}"))
-    checks.append(CheckResult("remote_id_present", bool(post.remote_post_id),
+    # -- Work 14 §9: the FOUR modes, resolved before anything else --------
+    # `publication_mode` is authoritative. `is_mock` is a backstop for rows
+    # whose mode was never written: a row that claims LIVE while its own
+    # is_mock flag says otherwise is a contradiction, resolved in favour of
+    # MOCK (fail closed) -- never in favour of LIVE.
+    raw_mode = str(getattr(post, "publication_mode", "") or "").strip().upper()
+    if raw_mode not in {m.value for m in PublicationMode}:
+        raw_mode = PublicationMode.UNAVAILABLE.value
+    contradicted = bool(post.is_mock and raw_mode == PublicationMode.LIVE.value)
+    if post.is_mock and raw_mode != PublicationMode.MOCK.value:
+        raw_mode = PublicationMode.MOCK.value
+    try:
+        mode = PublicationMode(raw_mode)
+    except ValueError:  # pragma: no cover - guarded above
+        mode = PublicationMode.UNAVAILABLE
+    _ = contradicted
+
+    execution = ("COMPLETED" if mode is PublicationMode.LIVE
+                 else "PENDING" if mode is PublicationMode.HANDOFF
+                 else "FAILED")
+
+    # A remote id is the evidence of a LIVE post -- but ONLY a live one. A mock
+    # or handoff carrying one is a contradiction and must be surfaced, because
+    # that is exactly the confusion this check exists to catch.
+    has_remote = bool(post.remote_post_id)
+    if has_remote and mode in (PublicationMode.HANDOFF,
+                               PublicationMode.UNAVAILABLE):
+        # A real contradiction here: a prepared/unavailable row must not carry
+        # a remote id, because a remote id is what reads as proof downstream.
+        # A MOCK row is exempt -- the mock publisher legitimately mints a
+        # synthetic id, which is noted rather than treated as a finding.
+        checks.append(CheckResult(
+            "remote_id_without_live_mode", False,
+            f"a remote id is present but the mode is {mode}; a remote id is "
+            f"only evidence of a LIVE publication"))
+    checks.append(CheckResult(
+        "mode_declared", True,
+        f"{mode}" + (" (live)" if mode.is_live else
+                     " (not evidence of a live publication)"),
+        critical=False))
+    if contradicted:
+        checks.append(CheckResult(
+            "mode_contradiction", False,
+            "the row claimed LIVE while is_mock=True; resolved as MOCK "
+            "(fail closed) rather than trusting the mode"))
+    checks.append(CheckResult("receipt_present", has_remote,
+                              f"remote_post_id={post.remote_post_id[:60] or '(none)'}"))
+
+    # -- handoff-specific contract --------------------------------------
+    if mode is PublicationMode.HANDOFF:
+        payload = getattr(post, "handoff_payload", None) or {}
+        checks.append(CheckResult(
+            "handoff_recorded", bool(payload),
+            f"handoff payload keys={sorted(payload)[:6] if payload else '(none)'}"))
+        checks.append(CheckResult(
+            "handoff_is_not_publication", not has_remote,
+            "a user handoff carries no remote id: the human has not published yet"))
+        checks.append(CheckResult(
+            "handoff_requires_human", bool(payload.get("requires_human", True)),
+            "handoff is recorded as requiring a human to publish", critical=False))
+        if exp.get("live") is True:
+            checks.append(CheckResult(
+                "live_proof", False,
+                "a USER_HANDOFF cannot verify a live publication: the media is "
+                "prepared but nobody has published it"))
+            return execution, "NOT_VERIFIED", [c.as_dict() for c in checks]
+        return execution, "NOT_VERIFIED", [c.as_dict() for c in checks]
+
+    if mode is PublicationMode.UNAVAILABLE:
+        checks.append(CheckResult(
+            "not_a_publication", False,
+            "mode is UNAVAILABLE: the capability or its preconditions were not "
+            "met, so this is not a publication"))
+        return execution, "NOT_VERIFIED", [c.as_dict() for c in checks]
+
+    if mode is PublicationMode.MOCK:
+        checks.append(CheckResult("mock_classified", True,
+                                  "MOCK-labeled: verifies as mock only, never live",
+                                  critical=False))
+        if exp.get("live") is True:
+            checks.append(CheckResult("live_proof", False,
+                                      "mock result cannot verify a live publication"))
+            return execution, "NOT_VERIFIED", [c.as_dict() for c in checks]
+        # A mock verifies as a mock on its own; it only FAILS when a live
+        # publication was explicitly expected, which is handled above.
+        if exp.get("mock") is False:
+            checks.append(CheckResult(
+                "mock_expected", False,
+                "expected a live publication but the mode is MOCK"))
+        # duplicate check + platform/account still apply
+        checks.extend(_publication_shape_checks(session, post, exp))
+        return execution, _verdict(checks), [c.as_dict() for c in checks]
+
+    # -- LIVE ------------------------------------------------------------
+    checks.append(CheckResult("remote_id_present", has_remote,
                               f"remote_url={(post.remote_url or '')[:120]}"))
+    checks.extend(_publication_shape_checks(session, post, exp))
+    checks.append(CheckResult("mode", True, "verified as live", critical=False))
+    return execution, _verdict(checks), [c.as_dict() for c in checks]
+
+
+def _publication_shape_checks(session, post, exp: dict) -> list[CheckResult]:
+    """The checks that apply to any recorded publication, live or mock."""
+    from app.models import PublishedPost
+
+    checks: list[CheckResult] = []
     dupes = session.query(PublishedPost).filter(
         PublishedPost.video_id == post.video_id,
         PublishedPost.platform == post.platform).count()
@@ -170,26 +303,11 @@ def check_publication(session, workspace_id: str,
     if "platform" in exp:
         checks.append(CheckResult("platform_match", post.platform == exp["platform"],
                                   f"expected {exp['platform']} got {post.platform}"))
-    if "account_id" in exp and exp["account_id"]:
+    if exp.get("account_id"):
         checks.append(CheckResult("account_match",
                                   (post.account_id or "") == exp["account_id"],
                                   f"expected {exp['account_id']} got {post.account_id}"))
-
-    mode = "mock" if post.is_mock else "live"
-    if post.is_mock:
-        checks.append(CheckResult("mock_classified", True,
-                                  "MOCK-labeled: verifies as mock only, never live",
-                                  critical=False))
-        if exp.get("live") is True:
-            checks.append(CheckResult("live_proof", False,
-                                      "mock result cannot verify a live publication"))
-            return execution, "NOT_VERIFIED", [c.as_dict() for c in checks]
-    elif exp.get("mock") is True:
-        checks.append(CheckResult("mock_classified", False,
-                                  f"expected mock but post is live ({mode})"))
-        return execution, "NOT_VERIFIED", [c.as_dict() for c in checks]
-    checks.append(CheckResult("mode", True, f"verified as {mode}", critical=False))
-    return execution, _verdict(checks), [c.as_dict() for c in checks]
+    return checks
 
 
 # ---------------------------------------------------------------------------

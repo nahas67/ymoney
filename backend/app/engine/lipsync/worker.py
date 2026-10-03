@@ -9,8 +9,14 @@ One daemon thread per job, admission gated by a concurrency (VRAM) semaphore
 * progress polling written to the `lipsync_jobs` row + activity events;
 * fail-closed terminal writes (conditional, so a cancelled row stays cancelled).
 
-Adapters are pluggable; tests inject an instant fake adapter (mocks live in
-tests only).
+Work 15.7 changed one of those bullets on purpose. "Bounded retries for
+transient submit failures" used to re-``POST`` the billable job, so a read
+timeout -- which proves the request was DELIVERED and only the answer was lost
+-- could buy the same render up to three times. The submit is now attempted
+exactly once. A ``PaidSubmissionUnconfirmed`` from the adapter means the worker
+may already have created and billed the job, so it is persisted as
+``SUBMISSION_UNKNOWN`` with whatever remote id we hold and is never resubmitted;
+the retry budget applies to the POLL and to the RESULT fetch, which are free.
 """
 
 from __future__ import annotations
@@ -37,8 +43,27 @@ from app.engine.lipsync.base import (
     env_float,
     env_int,
 )
+from app.services.paid_executor import (
+    CostOutcome,
+    RetryVerdict,
+    verdict_for,
+)
+from app.services.paid_jobs import PaidJobError, PaidSubmissionUnconfirmed
 
 _UNKNOWN_STATUS_LIMIT = 5
+
+#: Paid-submission state for a submit that may already have been billed. It
+#: matches the value `engine/agents/production.py` writes for a render whose
+#: submit was delivered but unconfirmed, so both lanes speak one vocabulary.
+#: It is recorded in the job row's ``cost_json``, not in ``status``: the status
+#: vocabulary belongs to `lipsync/base.py`, which this lane does not own.
+SUBMISSION_UNKNOWN_STATE = "SUBMISSION_UNKNOWN"
+
+#: Adapter attribute naming a submit that a retry could charge for. An
+#: adapter that does not declare it is treated as operator compute, so its
+#: transient retry budget is unchanged; the billable adapter declares it
+#: and loses its automatic submit retry on purpose.
+BILLABLE_SUBMIT_ATTR = "submit_is_billable"
 
 
 class _Entry:
@@ -229,10 +254,26 @@ class LocalWorkerQueue:
                 )
                 return False
 
+    def _max_attempts(self) -> int:
+        return max(1, self.max_retries + 1)
+
     def _submit_with_retries(self, entry: _Entry) -> str | None:
-        max_attempts = max(1, self.max_retries + 1)
-        last_error: Exception | None = None
+        """Submit the job, retrying only what a retry cannot charge for.
+
+        Work 15.7. The billable adapter (``ExternalAdapter``) declares
+        ``submit_is_billable = True``, and for it an ambiguous submit is
+        terminal: the POST may have been delivered AND billed, so the job is
+        persisted as SUBMISSION_UNKNOWN with the remote id and stops. A local
+        operator-compute adapter (MuseTalk, and the test doubles) costs CPU per
+        retry, not money, so its transient retry budget is unchanged.
+
+        The name is historical in exactly one respect: the billable lane now
+        attempts the submit ONCE.
+        """
+        from app.services.cost import BudgetExceededError
+
         attempt = 0
+        max_attempts = self._max_attempts()
         while attempt < max_attempts:
             attempt += 1
             entry.attempts = attempt
@@ -245,44 +286,165 @@ class LocalWorkerQueue:
                 adapter_job = self.provider.submit(
                     entry.video_ref, entry.audio_ref, entry.workspace_id, entry.opts
                 )
-                entry.adapter_job_id = adapter_job
-                job_rows.set_adapter_job(entry.job_id, adapter_job)
-                return adapter_job
             except LipSyncUnavailable as exc:
                 self._fail(entry, exc, status_note="provider unavailable")
                 return None
-            except LipSyncError as exc:
-                last_error = exc
-                if isinstance(exc, LipSyncTransient) and attempt < max_attempts:
+            except PaidJobError as exc:
+                # THE money branch, and it is authoritative: the adapter
+                # classified the submit through the shared paid contract. A
+                # verdict of RETRY means the connection was never established,
+                # so a second POST cannot bill twice; anything else is unknown
+                # and terminal.
+                if self._may_resubmit(exc) and attempt < max_attempts:
                     self._sleep_backoff(entry, attempt)
                     continue
-                if isinstance(exc, LipSyncTransient):
+                if self._is_ambiguous(exc):
+                    self._record_unknown_submission(entry, exc, attempts=attempt)
+                    return None
+                self._fail(entry, LipSyncError(
+                    f"submit failed after {attempt} attempt(s): {exc}",
+                    remediation=(getattr(exc, "remediation", None)
+                                 or "the lip-sync backend refused the job; "
+                                    "check its validation rules"),
+                ))
+                return None
+            except BudgetExceededError as exc:
+                # The provider's pre-spend gate refused BEFORE the request left.
+                # Nothing was sent, so this is a plain failure, not ambiguity.
+                self._fail(entry, LipSyncError(
+                    f"budget refused the submit: {exc}",
+                    remediation="raise the workspace budget, or wait for the "
+                                "spending window to reset",
+                ))
+                return None
+            except LipSyncError as exc:
+                transient = isinstance(exc, LipSyncTransient)
+                if transient and self._submit_may_bill() and not self._provably_undelivered(exc):
+                    # Billable adapter outside the paid contract: assume the
+                    # worst, because a second render is the expensive mistake.
+                    self._record_unknown_submission(entry, exc, attempts=attempt)
+                    return None
+                if transient:
+                    if attempt < max_attempts:
+                        self._sleep_backoff(entry, attempt)
+                        continue
                     # Retries exhausted: report the bound, not just the last error.
-                    self._fail(
-                        entry,
-                        LipSyncError(
-                            f"submit failed after {attempt} attempt(s): {exc}",
-                            remediation=(
-                                exc.remediation
-                                or "the lip-sync backend never became reachable — "
-                                "check its logs"
-                            ),
-                        ),
-                    )
-                else:
-                    self._fail(entry, exc)
+                    self._fail(entry, LipSyncError(
+                        f"submit failed after {attempt} attempt(s): {exc}",
+                        remediation=(exc.remediation
+                                     or "the lip-sync backend never became "
+                                        "reachable — check its logs"),
+                    ))
+                    return None
+                self._fail(entry, exc)
                 return None
             except Exception as exc:  # pragma: no cover - unexpected adapter bug
                 self._fail(entry, LipSyncError(f"adapter submit crashed: {exc}"))
                 return None
-        self._fail(
-            entry,
-            LipSyncError(
-                f"submit failed after {attempt} attempt(s): {last_error}",
-                remediation="the lip-sync backend never became reachable — check its logs",
-            ),
-        )
+            # Accepted. Persist the remote id BEFORE polling so a crash mid-poll
+            # still leaves an addressable job.
+            entry.adapter_job_id = adapter_job
+            job_rows.set_adapter_job(entry.job_id, adapter_job)
+            return adapter_job
         return None
+
+    def _submit_may_bill(self) -> bool:
+        """Whether re-POSTing this adapter's submit could cost money.
+
+        An adapter that says nothing is assumed to be operator compute, which
+        is what every local lane (MuseTalk) and every test double is. The one
+        adapter that bills declares ``submit_is_billable = True``, and that
+        declaration is what switches this worker from "retry the transient" to
+        "persist the ambiguity and stop". Guessing the wrong way round here is
+        how a read timeout bought three renders, so the declaration is read
+        from the adapter rather than inferred from its message.
+        """
+        return bool(getattr(self.provider, BILLABLE_SUBMIT_ATTR, False))
+
+    # -- paid-submission helpers ------------------------------------------
+
+    @staticmethod
+    def _record_of(exc):
+        return getattr(exc, "submission", None)
+
+    @classmethod
+    def _may_resubmit(cls, exc) -> bool:
+        """Reuse the contract's own rule instead of re-deriving one here."""
+        record = cls._record_of(exc)
+        if record is not None:
+            return verdict_for(record) is RetryVerdict.RETRY
+        return bool(getattr(exc, "provably_undelivered", False))
+
+    @classmethod
+    def _is_ambiguous(cls, exc) -> bool:
+        """True when the adapter says money may already have been spent."""
+        if cls._record_of(exc) is not None:
+            return verdict_for(cls._record_of(exc)) is RetryVerdict.RECONCILE
+        return isinstance(exc, PaidSubmissionUnconfirmed) and not cls._may_resubmit(exc)
+
+    @classmethod
+    def _provably_undelivered(cls, exc) -> bool:
+        """Did the classifier prove the request never reached the worker?
+
+        An adapter outside the paid contract carries no flag, so a transient is
+        treated as UNDELIVERED only when it says so. Assuming "transient means
+        retry me" is exactly what bought three renders.
+        """
+        record = cls._record_of(exc)
+        if record is not None:
+            return verdict_for(record) is RetryVerdict.RETRY
+        flagged = getattr(exc, "provably_undelivered", None)
+        if flagged is not None:
+            return bool(flagged)
+        text = str(exc).lower()
+        return "timed out" in text and "connect" in text
+
+    @staticmethod
+    def _remote_id_of(exc) -> str:
+        record = getattr(exc, "submission", None)
+        if record is not None and getattr(record, "remote_id", ""):
+            return str(record.remote_id)
+        return str(getattr(exc, "remote_id", "") or "")
+
+    def _record_unknown_submission(self, entry: _Entry, exc, *,
+                                   attempts: int = 1) -> None:
+        """Terminal write for a submit that may already have been billed.
+
+        The job row's status vocabulary has no SUBMISSION_UNKNOWN member and
+        this worker does not own that module, so the paid state is recorded in
+        the fields it does own: ``cost_json`` carries the submission state, the
+        exposure and the resubmit prohibition, and the error text names it. No
+        ``mirror_cost`` here -- it would write ``amount_usd = 0.0`` for a job
+        that may well have been paid for, which is the lie this lane removes.
+        """
+        remote_id = self._remote_id_of(exc)
+        if remote_id:
+            # A billed job nobody can address is an invoice nobody can
+            # reconcile, so the id is persisted even on this branch.
+            entry.adapter_job_id = remote_id
+            job_rows.set_adapter_job(entry.job_id, remote_id)
+        record = self._record_of(exc)
+        cost = self._cost(None)
+        cost.update({
+            "submission_state": SUBMISSION_UNKNOWN_STATE,
+            "resubmit_forbidden": True,
+            "exposure": CostOutcome.UNKNOWN_EXPOSURE.value,
+            "remote_id": remote_id,
+            "submission_id": str(getattr(record, "submission_id", "") or ""),
+            "attempts": attempts,
+        })
+        message = (
+            "submit was delivered but not confirmed: the lip-sync worker may "
+            "have accepted and billed this job. DO NOT RESUBMIT -- reconcile "
+            "the worker's job list first"
+            + (f" (remote job id: {remote_id})" if remote_id else "")
+        )
+        job_rows.finish_job(entry.job_id, JOB_FAILED, error=message, cost=cost)
+        job_rows.emit(entry.workspace_id, "lipsync.submission_unknown", message,
+                      level="error",
+                      data={"job_id": entry.job_id, "remote_id": remote_id,
+                            "attempts": attempts})
+        logger.error("lipsync job %s: %s", entry.job_id, message)
 
     def _poll(self, entry: _Entry, adapter_job: str, started: float) -> None:
         deadline = started + self.timeout_seconds
@@ -383,21 +545,48 @@ class LocalWorkerQueue:
                 elapsed=elapsed,
             )
             return
+        reported = _as_float(result.get("cost_usd"))
         cost = {
             "gpu_seconds": _as_float(result.get("gpu_seconds")) or round(elapsed, 3),
-            "cost_usd": _as_float(result.get("cost_usd")) or round(
-                elapsed * self.gpu_usd_per_hour / 3600.0, 6
-            ),
+            "cost_usd": reported or round(elapsed * self.gpu_usd_per_hour / 3600.0, 6),
             "provider": str(result.get("provider") or getattr(self.provider, "name", "")),
             "attempts": entry.attempts,
+            # ``cost_priced`` says whether the amount is the worker's own
+            # invoice or a local guess. A billed job whose amount nobody
+            # reported must not read as $0 in the books.
+            "cost_priced": bool(reported or self.gpu_usd_per_hour),
         }
         job_rows.finish_job(entry.job_id, JOB_SUCCEEDED, asset_ref=asset_ref,
                             cost=cost, progress=1.0)
-        job_rows.mirror_cost(entry.workspace_id, entry.job_id, cost,
-                             getattr(self.provider, "name", ""))
+        if cost["cost_priced"]:
+            job_rows.mirror_cost(entry.workspace_id, entry.job_id, cost,
+                                 getattr(self.provider, "name", ""))
+        else:
+            # No invoice, no price: record the exposure instead of a zero row.
+            logger.warning("lipsync job %s succeeded with no reported cost; "
+                           "exposure recorded as UNKNOWN rather than $0",
+                           entry.job_id)
+        self._settle_paid_submission(entry, reported or None)
         job_rows.emit(entry.workspace_id, "lipsync.succeeded",
                       f"Lip-sync finished ({cost['gpu_seconds']:.1f}s GPU)",
                       data={"job_id": entry.job_id, "asset_ref": asset_ref})
+
+    def _settle_paid_submission(self, entry: _Entry,
+                                actual_cost: float | None) -> None:
+        """Close the paid-submission record for this job, when the adapter has one.
+
+        Only an adapter that speaks the paid contract can settle it; the rest
+        have no record to settle and are left alone.
+        """
+        settle = getattr(self.provider, "settle_submission", None)
+        if settle is None:
+            return
+        try:
+            settle(actual_cost=actual_cost,
+                   detail=f"lipsync job {entry.job_id} succeeded")
+        except Exception as exc:  # noqa: BLE001 - bookkeeping never fails a render
+            logger.debug("lipsync submission not settled: %s: %s",
+                         type(exc).__name__, exc)
 
     def _fail(self, entry: _Entry, exc: Exception, *, elapsed: float | None = None,
               status_note: str = "") -> None:

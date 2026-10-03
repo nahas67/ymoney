@@ -111,6 +111,18 @@ class VideoEngineRequestInvalid(VideoEngineError):
     retryable = False
 
 
+class VideoEngineSubmissionUnknown(VideoEngineError):
+    """The submit was DELIVERED but no durable id came back.
+
+    Not an outage: the engine may have accepted and billed the job, so an
+    automatic retry buys a second render. The caller must persist
+    ``SUBMISSION_UNKNOWN`` and reconcile against the engine's task list before
+    anything is resubmitted.
+    """
+
+    retryable = False
+
+
 CAPABILITIES = {
     "VIDEO_GENERATION",
     "SUBTITLES",

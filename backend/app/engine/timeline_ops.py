@@ -25,7 +25,13 @@ TRACK_FAMILIES: dict[str, set[str]] = {
 
 OP_TYPES = ("add_item", "delete_item", "move_item", "trim_item", "split_item",
             "duplicate_item", "move_to_track", "update_transform",
-            "update_volume", "update_speed", "update_text", "update_caption")
+            "update_volume", "update_speed", "update_text", "update_caption",
+            # Work 13 typed caption / motion / effect ops
+            "update_caption_style", "set_caption_words", "apply_effect",
+            "remove_effect", "set_transition",
+            # Work 13.1 canonical keyframe operations
+            "add_keyframe", "update_keyframe", "delete_keyframe",
+            "move_keyframe", "set_keyframes")
 
 
 class TimelineOpError(ValueError):
@@ -243,6 +249,110 @@ def _op_update_text(doc: dict, op: dict) -> None:
         clip["duration"] = duration
 
 
+def _op_set_keyframes(doc: dict, op: dict) -> None:
+    """Replace a clip's whole keyframe chain with a validated one.
+
+    Used by the CreativeDirector animation commands: one command owns the
+    properties it animates and must not silently erase the clip's OTHER
+    keyframed properties, so the caller sends the merged chain explicitly.
+    """
+    from app.engine.motion.graph import validate_keyframes
+
+    clip = find_clip(doc, op["track"], op["clip_id"])
+    raw = op.get("keyframes")
+    if not isinstance(raw, list):
+        raise TimelineOpError("keyframes must be a list")
+    merged, problems = validate_keyframes(raw,
+                                          clip_duration=_clip_duration(clip))
+    if problems:
+        raise TimelineOpError(str(problems[0]))
+    clip["keyframes"] = merged
+
+
+def _op_add_keyframe(doc: dict, op: dict) -> None:
+    """Add ONE canonical keyframe, validating through the graph schema."""
+    from app.engine.motion.graph import validate_keyframes
+
+    clip = find_clip(doc, op["track"], op["clip_id"])
+    frame = op.get("keyframe")
+    if not isinstance(frame, dict):
+        raise TimelineOpError("keyframe must be an object")
+    existing = list(clip.get("keyframes") or [])
+    # Validate the incoming frame in isolation first, then against the clip.
+    _probe, problems = validate_keyframes([frame], clip_duration=_clip_duration(clip))
+    if problems:
+        raise TimelineOpError(str(problems[0]))
+    merged, problems = validate_keyframes(existing + [frame],
+                                          clip_duration=_clip_duration(clip))
+    if problems:
+        raise TimelineOpError(str(problems[0]))
+    clip["keyframes"] = merged
+
+
+def _op_update_keyframe(doc: dict, op: dict) -> None:
+    """Update an existing keyframe's props/easing (never its identity)."""
+    from app.engine.motion.graph import validate_keyframes
+
+    clip = find_clip(doc, op["track"], op["clip_id"])
+    target = str(op.get("keyframe_id") or "")
+    existing = [dict(f) for f in (clip.get("keyframes") or [])]
+    found = False
+    for frame in existing:
+        if str(frame.get("id")) == target:
+            frame.update({k: v for k, v in (op.get("keyframe") or {}).items()
+                          if k in ("t", "easing", "props")})
+            found = True
+    if not found:
+        raise TimelineOpError(f"keyframe {target!r} not found on this clip")
+    merged, problems = validate_keyframes(existing,
+                                          clip_duration=_clip_duration(clip))
+    if problems:
+        raise TimelineOpError(str(problems[0]))
+    clip["keyframes"] = merged
+
+
+def _op_delete_keyframe(doc: dict, op: dict) -> None:
+    clip = find_clip(doc, op["track"], op["clip_id"])
+    target = str(op.get("keyframe_id") or "")
+    existing = [f for f in (clip.get("keyframes") or [])
+                if str(f.get("id")) != target]
+    if len(existing) == len(clip.get("keyframes") or []):
+        raise TimelineOpError(f"keyframe {target!r} not found on this clip")
+    clip["keyframes"] = existing
+
+
+def _op_move_keyframe(doc: dict, op: dict) -> None:
+    """Re-time a keyframe, keeping deterministic ordering by (t, id)."""
+    from app.engine.motion.graph import validate_keyframes
+
+    clip = find_clip(doc, op["track"], op["clip_id"])
+    target = str(op.get("keyframe_id") or "")
+    try:
+        at = float(op.get("t"))
+    except (TypeError, ValueError):
+        raise TimelineOpError("t must be a number") from None
+    existing = [dict(f) for f in (clip.get("keyframes") or [])]
+    found = False
+    for frame in existing:
+        if str(frame.get("id")) == target:
+            frame["t"] = at
+            found = True
+    if not found:
+        raise TimelineOpError(f"keyframe {target!r} not found on this clip")
+    merged, problems = validate_keyframes(existing,
+                                          clip_duration=_clip_duration(clip))
+    if problems:
+        raise TimelineOpError(str(problems[0]))
+    clip["keyframes"] = merged
+
+
+def _clip_duration(clip: dict) -> float:
+    try:
+        return float(clip.get("duration", 0.0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _op_update_caption(doc: dict, op: dict) -> None:
     clip = find_clip(doc, op["track"], op["clip_id"])
     if "text" in op:
@@ -256,3 +366,124 @@ def _op_update_caption(doc: dict, op: dict) -> None:
         clip["duration"] = duration
     if "style" in op:
         clip.setdefault("text", {})["preset"] = str(op["style"])[:40]
+
+
+# -- Work 13 typed ops -------------------------------------------------------
+# Every one of these validates through the Work 13 schema BEFORE touching the
+# document, so an invalid style/effect/transition can never be persisted, and
+# each produces a plain dict patch the frontend `inverseOps` can mirror for
+# undo.
+
+
+def _op_update_caption_style(doc: dict, op: dict) -> None:
+    """Apply a typed caption style (and/or preset) to a caption/text clip."""
+    from app.engine.captions.style import CaptionStyle, CaptionStyleError
+
+    clip = find_clip(doc, op["track"], op["clip_id"])
+    preset = op.get("preset")
+    if preset:
+        from app.engine.captions.presets import UnknownPresetError, get_preset
+
+        try:
+            base = get_preset(str(preset)).style
+        except UnknownPresetError as exc:
+            raise TimelineOpError(str(exc)) from exc
+        clip.setdefault("text", {})["preset"] = str(preset)[:40]
+    else:
+        base = CaptionStyle.from_dict(clip.get("text") or {})
+    patch = op.get("style")
+    try:
+        if patch:
+            resolved = base.patch(patch)
+        elif preset:
+            resolved = base
+        else:
+            raise TimelineOpError(
+                "update_caption_style needs either 'preset' or 'style'")
+    except CaptionStyleError as exc:
+        raise TimelineOpError(str(exc)) from exc
+    clip["text"] = {**(clip.get("text") or {}), **resolved.to_dict(),
+                    "preset": str(preset)[:40] if preset
+                    else (clip.get("text") or {}).get("preset", "minimal")}
+
+
+def _op_set_caption_words(doc: dict, op: dict) -> None:
+    """Attach real word timings + emphasis to a caption clip.
+
+    Word timings are only ever STORED, never synthesised: an empty list is
+    accepted (it clears the words) but a word without numeric timing is not.
+    """
+    clip = find_clip(doc, op["track"], op["clip_id"])
+    raw = op.get("words")
+    if not isinstance(raw, list):
+        raise TimelineOpError("words must be a list")
+    words: list[dict] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            raise TimelineOpError(f"words[{index}] must be an object")
+        try:
+            start = float(item.get("start_s"))
+            end = float(item.get("end_s"))
+        except (TypeError, ValueError):
+            raise TimelineOpError(
+                f"words[{index}] needs numeric start_s/end_s") from None
+        if end < start:
+            start, end = end, start
+        words.append({
+            "word": str(item.get("word") or "")[:200],
+            "start_s": round(start, 4), "end_s": round(end, 4),
+            "speaker_id": str(item.get("speaker_id") or "") or None,
+            "confidence": item.get("confidence"),
+        })
+    clip["words"] = words
+    clip["word_level"] = bool(words)
+
+
+def _op_apply_effect(doc: dict, op: dict) -> None:
+    """Append a validated effect to a clip (typed registry, §8)."""
+    from app.engine.motion.effects import EffectError, validate_effect
+
+    clip = find_clip(doc, op["track"], op["clip_id"])
+    try:
+        validated = validate_effect(op.get("effect") or {})
+    except EffectError as exc:
+        raise TimelineOpError(str(exc)) from exc
+    effects = list(clip.get("effects") or [])
+    for index, existing in enumerate(effects):
+        if isinstance(existing, dict) and str(existing.get("type")) == validated["type"]:
+            effects[index] = {"type": validated["type"],
+                              "params": validated["params"],
+                              "enabled": validated["enabled"]}
+            clip["effects"] = effects
+            return
+    effects.append({"type": validated["type"], "params": validated["params"],
+                    "enabled": validated["enabled"]})
+    clip["effects"] = effects
+
+
+def _op_remove_effect(doc: dict, op: dict) -> None:
+    clip = find_clip(doc, op["track"], op["clip_id"])
+    target = str(op.get("effect") or op.get("effect_type") or "").upper()
+    effects = list(clip.get("effects") or [])
+    kept = [e for e in effects
+            if not (isinstance(e, dict) and str(e.get("type", "")).upper() == target)]
+    if len(kept) == len(effects):
+        raise TimelineOpError(f"clip has no {target!r} effect to remove")
+    clip["effects"] = kept
+
+
+def _op_set_transition(doc: dict, op: dict) -> None:
+    """Validate a transition against the real document (§9)."""
+    from app.engine.motion.transitions import TransitionError, validate_transition
+
+    clip = find_clip(doc, op["track"], op["clip_id"])
+    spec = dict(op.get("transition") or {})
+    spec.setdefault("from_item", str(clip.get("id")))
+    if not spec.get("to_item"):
+        spec["to_item"] = str(op.get("to_item") or clip.get("next_item") or "")
+    try:
+        validated = validate_transition(spec, doc)
+    except TransitionError as exc:
+        raise TimelineOpError(str(exc)) from exc
+    clip["transition"] = validated
+    clip["transition_in"] = "crossfade" if validated["duration"] > 0 else "cut"

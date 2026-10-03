@@ -1,5 +1,7 @@
 """Upgrade 0016: campaign derivation tables + post lineage columns (Work 04 Lane A)."""
 
+from app.migrations.ddl import add_columns_if_missing
+
 
 def upgrade(session) -> None:
     from sqlalchemy import text
@@ -69,12 +71,19 @@ def upgrade(session) -> None:
             status VARCHAR(20) NOT NULL DEFAULT 'DRAFT'
         )
     """))
-    for _col in ("platform_variant_id VARCHAR(36)", "campaign_id VARCHAR(36)"):
-        try:
-            session.execute(text(f"ALTER TABLE published_posts ADD COLUMN {_col}"))
-        except Exception as exc:  # noqa: BLE001 — duplicate-column means applied
-            if "duplicate" not in str(exc).lower() and "exists" not in str(exc).lower():
-                raise
+    # Catalog check instead of try/except: swallowing the duplicate-column error
+    # is fine on SQLite but aborts the transaction on PostgreSQL, so every
+    # statement after it would fail with 25P02. ``when_absent_table="raise"``
+    # preserves the old behaviour of re-raising a missing-table error.
+    add_columns_if_missing(
+        session,
+        "published_posts",
+        [
+            ("platform_variant_id", "VARCHAR(36)"),
+            ("campaign_id", "VARCHAR(36)"),
+        ],
+        when_absent_table="raise",
+    )
     session.execute(text("""
         CREATE INDEX IF NOT EXISTS ix_published_posts_campaign
         ON published_posts (campaign_id)

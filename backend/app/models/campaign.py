@@ -13,7 +13,11 @@ from app.db import Base
 from app.models.base import PKMixin, TimestampMixin
 
 PLAN_STATUSES = ("DRAFT", "RUNNING", "READY", "FAILED", "COMPLETE")
-VARIANT_STATUSES = ("DRAFT", "READY", "SCHEDULED", "PUBLISHED", "FAILED")
+#: Work 14 adds AWAITING_HANDOFF: media prepared, a human still has to publish
+#: it. It is deliberately NOT PUBLISHED, so nothing downstream can mistake a
+#: Snapchat handoff for a live post.
+VARIANT_STATUSES = ("DRAFT", "READY", "SCHEDULED", "PUBLISHED", "FAILED",
+                    "AWAITING_HANDOFF")
 
 
 class CampaignPlan(Base, PKMixin, TimestampMixin):

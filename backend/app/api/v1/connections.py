@@ -287,20 +287,35 @@ class TTSTestBody(BaseModel):
 
 @connections_router.post("/tts/test")
 def tts_test(body: TTSTestBody, ws=Depends(require_workspace_role("admin"))):
-    """Synthesize a short narration sample; returns raw audio bytes."""
+    """Synthesize a short narration sample; returns raw audio bytes.
+
+    Work 15.7 §9: this is a DIAGNOSTIC button, and a diagnostic that spends real
+    ElevenLabs characters on every click is still real spending -- it had no
+    budget gate, no rate limit and no cache. The gate is the same atomic
+    reservation the preview router uses (429 for the rate, 402 for the money), so
+    an operator hammering "test" cannot drain the workspace's daily cap, and the
+    reservation is settled afterwards with the adapter's own published price
+    instead of being left as a guess.
+    """
     from fastapi.responses import Response
 
+    from app.api.v1.content import _reserve_speak, _settle_speak
     from app.providers.tts import TTSError, get_tts_provider
 
     text = body.text.strip() or (
         "YMONEY narration test. This is how your videos will sound."
     )
+    reservation = _reserve_speak(ws.id, text, "")
     try:
         with ps.workspace_scope(ws.id):
             provider = get_tts_provider()
             result = provider.synthesize(text, voice=body.voice, rate=body.rate)
     except TTSError as exc:
+        # The reservation is HELD, not voided: a provider fault may still have
+        # been billed, and releasing the budget on a fault is how a real charge
+        # becomes invisible.
         raise HTTPException(status_code=503, detail=str(exc))
+    _settle_speak(ws.id, provider, result, text, reservation)
     media = "audio/wav" if result.format == "wav" else "audio/mpeg"
     return Response(
         content=result.audio_bytes,
@@ -308,6 +323,7 @@ def tts_test(body: TTSTestBody, ws=Depends(require_workspace_role("admin"))):
         headers={
             "X-TTS-Provider": result.provider,
             "X-TTS-Mock": "1" if result.is_mock else "0",
+            "X-Budget-Reservation": reservation.entry_id,
         },
     )
 

@@ -1,5 +1,7 @@
 """Upgrade 0018: decision audit log (Work 05 Lane A)."""
 
+from app.migrations.ddl import add_columns_if_missing
+
 
 def upgrade(session) -> None:
     from sqlalchemy import text
@@ -34,9 +36,21 @@ def upgrade(session) -> None:
         CREATE INDEX IF NOT EXISTS ix_decision_ws_mode
         ON decision_records (workspace_id, mode)
     """))
-    for _col in ("extra_json JSON NOT NULL DEFAULT '{}'", "notes TEXT NOT NULL DEFAULT ''"):
-        try:
-            session.execute(text(f"ALTER TABLE decision_records ADD COLUMN {_col}"))
-        except Exception as exc:  # noqa: BLE001 — duplicate-column means applied
-            if "duplicate" not in str(exc).lower() and "exists" not in str(exc).lower():
-                raise
+    # The old guard was ``try: ALTER ... ADD COLUMN ... except: ignore
+    # 'duplicate'``. Harmless on SQLite, which leaves the transaction usable
+    # after a failed statement; on PostgreSQL the duplicate-column error ABORTS
+    # the transaction and every later statement dies with 25P02. ``create_all``
+    # runs before migrations and already builds the current shape, so these two
+    # columns are always present on a fresh install -- the ALTER could only
+    # ever fail. A catalog check cannot fail, so nothing is caught.
+    # ``when_absent_table="raise"`` keeps the old loud behaviour: the previous
+    # handler re-raised anything that was not a duplicate/exists error.
+    add_columns_if_missing(
+        session,
+        "decision_records",
+        [
+            ("extra_json", "JSON NOT NULL DEFAULT '{}'"),
+            ("notes", "TEXT NOT NULL DEFAULT ''"),
+        ],
+        when_absent_table="raise",
+    )

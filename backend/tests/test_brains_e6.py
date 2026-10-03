@@ -1,17 +1,30 @@
 """E6 brains tests: new trend sources, competitor scan, retention, scheduler."""
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
-RSS_FIXTURE = """<?xml version="1.0" encoding="UTF-8"?>
+
+def _rss_fixture() -> str:
+    """Build the channel feed with dates RELATIVE to now.
+
+    W11.5: these were hardcoded calendar dates and the source filters on a
+    ``days`` window (``age_hours > days * 24`` is dropped). Entry 2 was
+    2026-08-01, which crossed the 60-day boundary at 2026-09-30T10:00:00Z and
+    the test began failing on its own with no code change at all. Ages are now
+    expressed as offsets so the fixture can never age out.
+    """
+    now = datetime.now(UTC)
+    fresh = (now - timedelta(days=12)).isoformat()
+    older = (now - timedelta(days=59)).isoformat()
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns="http://www.w3.org/2005/Atom">
 <author><name>Money Channel</name></author>
 <entry><title>Save $500 fast with this trick?</title><yt:videoId>aaa111</yt:videoId>
-<published>2026-09-18T10:00:00+00:00</published></entry>
+<published>{fresh}</published></entry>
 <entry><title>Weekly market recap number 42</title><yt:videoId>bbb222</yt:videoId>
-<published>2026-08-01T10:00:00+00:00</published></entry>
+<published>{older}</published></entry>
 </feed>"""
 
 
@@ -57,7 +70,7 @@ def test_youtube_trending_needs_key():
 def test_youtube_channel_rss_parse(monkeypatch):
     from app.providers.trends import YouTubeChannelSource
 
-    monkeypatch.setattr("httpx.get", lambda *a, **k: _Resp(text=RSS_FIXTURE))
+    monkeypatch.setattr("httpx.get", lambda *a, **k: _Resp(text=_rss_fixture()))
     out = YouTubeChannelSource(channel_id="UC123", days=60).fetch(niche="money", limit=5)
     assert len(out) == 2
     assert out[0].topic.startswith("Save $500")

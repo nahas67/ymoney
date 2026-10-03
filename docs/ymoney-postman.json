@@ -1127,7 +1127,7 @@
           }
         },
         {
-          "name": "Preview any voice-stack provider with extras",
+          "name": "Preview a voice (delegates to the preview router)",
           "request": {
             "method": "POST",
             "header": [],
@@ -1147,7 +1147,7 @@
               ],
               "query": []
             },
-            "description": "Preview any voice-stack provider with extras\n\nNarrate a sample through a chosen provider (clone/emotion aware).\n\nUses the workspace default provider when blank. Returns raw audio bytes\nwith provider headers \u2014 the manual surface of the Voice Designer.",
+            "description": "Preview a voice (delegates to the preview router)\n\nADAPTER. The preview logic lives in ``api/v1/preview.py`` and only there.\n\nWork 15.7 \u00a79. This used to be a second, independent implementation: its own\nbody model, its own provider resolution, its own call to ``synthesize`` --\nand NO cost guard at all. Two preview implementations mean two places where\nthe budget can be enforced and, in practice, one place where it was. A\nclient hitting this path spent ElevenLabs characters with nothing counting\nthem.\n\nIt stays because ``frontend/src/pages/SystemHealth.tsx`` posts to it, and\ndeleting a route a shipped UI calls is a worse outage than a thin adapter.\nWhat it no longer does is decide anything: it maps its body onto the one\nimplementation's model and calls it, so the cache, the DB-atomic\nreservation, the settlement and the provider offerability rules are all the\nsame objects the ``/voice-preview`` router uses.\n\nThe one thing this path does not get is a MediaAsset row: it has no request\nsession of its own, and the preview route writes one from its own\ndependency. Both responses are byte-identical audio for identical input, and\nthe rate/dollar refusals are the same 429/402 with the same reason words.",
             "body": {
               "mode": "raw",
               "raw": "{}",
@@ -1243,7 +1243,7 @@
               ],
               "query": []
             },
-            "description": "Render a talking-head presenter clip\n\nPhoto + (audio | voiced text) \u2192 lip-synced MP4 via the avatar stack.\n\nRequires image + exactly one of audio/text; fails closed with remediation\nwhen no backend is ready.",
+            "description": "Render a talking-head presenter clip\n\nPhoto + (audio | voiced text) \u2192 lip-synced MP4 via the avatar stack.\n\nRequires image + exactly one of audio/text; fails closed with remediation\nwhen no backend is ready.\n\nWork 15.7 \u00a79: when ``text`` is supplied this route synthesizes narration\nitself, and that synthesis bills ElevenLabs characters exactly as a preview\ndoes. It had no gate of its own, so the workspace's daily cap was not\nconsulted before the call -- only afterwards, if anything called\n``track_cost`` at all. The voice step now takes the SAME atomic reservation\nthe preview router takes, and the route itself refuses with the same 402/429\nvocabulary when the workspace is out of room.",
             "body": {
               "mode": "raw",
               "raw": "{}",
@@ -2470,6 +2470,188 @@
       ]
     },
     {
+      "name": "captions-motion",
+      "item": [
+        {
+          "name": "Bounded effect registry",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/captions/effects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "captions",
+                "effects"
+              ],
+              "query": []
+            },
+            "description": "Bounded effect registry"
+          }
+        },
+        {
+          "name": "Caption presets (brand-resolved)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/captions/presets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "captions",
+                "presets"
+              ],
+              "query": []
+            },
+            "description": "Caption presets (brand-resolved)\n\nEvery caption preset, with this workspace's BrandDNA overrides applied."
+          }
+        },
+        {
+          "name": "Emphasis kinds + detectors",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/captions/emphasis",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "captions",
+                "emphasis"
+              ],
+              "query": []
+            },
+            "description": "Emphasis kinds + detectors"
+          }
+        },
+        {
+          "name": "Motion templates (schema only)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/captions/templates",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "captions",
+                "templates"
+              ],
+              "query": []
+            },
+            "description": "Motion templates (schema only)"
+          }
+        },
+        {
+          "name": "Run CaptionMotionQC on a document",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/captions/qc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "captions",
+                "qc"
+              ],
+              "query": []
+            },
+            "description": "Run CaptionMotionQC on a document\n\nRead-only QC. Never mutates the timeline.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Transition registry",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/captions/transitions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "captions",
+                "transitions"
+              ],
+              "query": []
+            },
+            "description": "Transition registry"
+          }
+        },
+        {
+          "name": "Work 12 evidence available for motion",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/captions/evidence",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "captions",
+                "evidence"
+              ],
+              "query": [
+                {
+                  "key": "asset_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Work 12 evidence available for motion\n\nWhat automated motion MAY do with this asset, and why.\n\nA caller that sees ``allows.tracked_callouts = False`` knows not to offer\nthe tracked-callout control, instead of silently attaching nothing later."
+          }
+        }
+      ]
+    },
+    {
       "name": "comments",
       "item": [
         {
@@ -2803,7 +2985,7 @@
               ],
               "query": []
             },
-            "description": "Tts Test\n\nSynthesize a short narration sample; returns raw audio bytes.",
+            "description": "Tts Test\n\nSynthesize a short narration sample; returns raw audio bytes.\n\nWork 15.7 \u00a79: this is a DIAGNOSTIC button, and a diagnostic that spends real\nElevenLabs characters on every click is still real spending -- it had no\nbudget gate, no rate limit and no cache. The gate is the same atomic\nreservation the preview router uses (429 for the rate, 402 for the money), so\nan operator hammering \"test\" cannot drain the workspace's daily cap, and the\nreservation is settled afterwards with the adapter's own published price\ninstead of being left as a guess.",
             "body": {
               "mode": "raw",
               "raw": "{}",
@@ -3533,6 +3715,113 @@
               "query": []
             },
             "description": "Next Best Action Preview\n\nLive NEXT BEST ACTION with the complete WHY breakdown."
+          }
+        }
+      ]
+    },
+    {
+      "name": "distribution-work14",
+      "item": [
+        {
+          "name": "Capability badges + publish mode",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/distribution/capabilities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "distribution",
+                "capabilities"
+              ],
+              "query": []
+            },
+            "description": "Capability badges + publish mode\n\nCapability badges and readiness for every account platform.\n\nIncludes the pre-Work-14 platforms so the UI has a single list to render,\nand reports the four publication modes so a card can never be labelled\n\"published\" when it was a handoff."
+          }
+        },
+        {
+          "name": "One verified profile with provenance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/distribution/platforms/:platform",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "distribution",
+                "platforms",
+                ":platform"
+              ],
+              "query": []
+            },
+            "description": "One verified profile with provenance"
+          }
+        },
+        {
+          "name": "Platform-specific variant diff",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/distribution/optimize",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "distribution",
+                "optimize"
+              ],
+              "query": []
+            },
+            "description": "Platform-specific variant diff\n\nRun the optimizer and return the spec plus its full provenance.\n\nThe BrandDNA is built from the request fragment through the real schema, so\nan invalid fragment is a 422 rather than a silently-ignored one.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Verified platform profiles",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/distribution/platforms",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "distribution",
+                "platforms"
+              ],
+              "query": []
+            },
+            "description": "Verified platform profiles\n\nEvery verified profile, with what is verified AND what is not.\n\n``unverified`` is the load-bearing field: those are the constraints the\nplatform does not document, and the UI must show them as unknown rather\nthan as a limit."
           }
         }
       ]
@@ -5823,6 +6112,30 @@
           }
         },
         {
+          "name": "Routing Chains",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/intelligence/routing/chains",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "intelligence",
+                "routing",
+                "chains"
+              ],
+              "query": []
+            },
+            "description": "Routing Chains\n\nRecent routed executions, leg by leg (Work 15.8 \u00a712).\n\nAn operator needs to see what a routed request ACTUALLY did: which tier and\nprovider each leg chose, whether it ran locally or against a paid gateway,\nhow many attempts it cost, and why it stopped. The chain record is\nin-process and bounded, which is the right scope for a diagnostic view --\ndurable money facts live in the incident list and the cost ledger."
+          }
+        },
+        {
           "name": "Routing Health",
           "request": {
             "method": "GET",
@@ -7788,6 +8101,1217 @@
       ]
     },
     {
+      "name": "media-intel",
+      "item": [
+        {
+          "name": "Cancel a PENDING/RUNNING run",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/runs/:run_id/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "runs",
+                ":run_id",
+                "cancel"
+              ],
+              "query": []
+            },
+            "description": "Cancel a PENDING/RUNNING run"
+          }
+        },
+        {
+          "name": "List intelligence runs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "runs"
+              ],
+              "query": [
+                {
+                  "key": "kind",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "asset_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "100",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List intelligence runs"
+          }
+        },
+        {
+          "name": "One provider detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/providers/:key",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "providers",
+                ":key"
+              ],
+              "query": []
+            },
+            "description": "One provider detail"
+          }
+        },
+        {
+          "name": "Provider health, capabilities, license",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/providers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "providers"
+              ],
+              "query": []
+            },
+            "description": "Provider health, capabilities, license"
+          }
+        },
+        {
+          "name": "Retry FAILED/CANCELLED/UNAVAILABLE",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/runs/:run_id/retry",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "runs",
+                ":run_id",
+                "retry"
+              ],
+              "query": []
+            },
+            "description": "Retry FAILED/CANCELLED/UNAVAILABLE"
+          }
+        },
+        {
+          "name": "Run detail + manifest",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/runs/:run_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "runs",
+                ":run_id"
+              ],
+              "query": []
+            },
+            "description": "Run detail + manifest"
+          }
+        }
+      ]
+    },
+    {
+      "name": "media-intel-audio",
+      "item": [
+        {
+          "name": "Enhancement run + stage matrix + manifest",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/audio/enhance/:run_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "audio",
+                "enhance",
+                ":run_id"
+              ],
+              "query": []
+            },
+            "description": "Enhancement run + stage matrix + manifest"
+          }
+        },
+        {
+          "name": "Run the audio enhancement pipeline",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/audio/enhance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "audio",
+                "enhance"
+              ],
+              "query": []
+            },
+            "description": "Run the audio enhancement pipeline\n\nApply the requested stages and return the stage matrix + manifest.\n\nSynchronous by design: the enhancement engine is pure orchestration plus\nmeasurement (contracts \u00a71.2), so it needs no worker. ``enqueue=true``\ncreates the run, hands it to the ``MEDIA_INTEL_ENHANCE`` queue and returns\nthe pending run id instead.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "media-intel-edits",
+      "item": [
+        {
+          "name": "Apply decided proposals as timeline operations",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/proposals/apply",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "proposals",
+                "apply"
+              ],
+              "query": []
+            },
+            "description": "Apply decided proposals as timeline operations",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Keep / remove / shorten one proposal",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/proposals/:proposal_id/decide",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "proposals",
+                ":proposal_id",
+                "decide"
+              ],
+              "query": []
+            },
+            "description": "Keep / remove / shorten one proposal",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List edit proposals",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/proposals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "proposals"
+              ],
+              "query": [
+                {
+                  "key": "asset_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "run_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "kind",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "200",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List edit proposals"
+          }
+        },
+        {
+          "name": "Propose dead-air cuts",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/audio/silence",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "audio",
+                "silence"
+              ],
+              "query": []
+            },
+            "description": "Propose dead-air cuts",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Propose filler/stutter cuts",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/audio/fillers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "audio",
+                "fillers"
+              ],
+              "query": []
+            },
+            "description": "Propose filler/stutter cuts",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Source <-> edited audio mapping",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/time-map",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "time-map"
+              ],
+              "query": [
+                {
+                  "key": "asset_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": false
+                },
+                {
+                  "key": "policy_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "source_time",
+                  "value": "<value>",
+                  "description": "map a source instant",
+                  "disabled": true
+                },
+                {
+                  "key": "range_start",
+                  "value": "<value>",
+                  "description": "map a source span",
+                  "disabled": true
+                },
+                {
+                  "key": "range_end",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Source <-> edited audio mapping"
+          }
+        }
+      ]
+    },
+    {
+      "name": "media-intel-faces",
+      "item": [
+        {
+          "name": "Face tracks of one run",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/face-tracks/:run_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "face-tracks",
+                ":run_id"
+              ],
+              "query": []
+            },
+            "description": "Face tracks of one run"
+          }
+        },
+        {
+          "name": "List face-track runs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/face-tracks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "face-tracks"
+              ],
+              "query": [
+                {
+                  "key": "asset_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List face-track runs"
+          }
+        },
+        {
+          "name": "Track anonymous faces in a video",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/face-tracks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "face-tracks"
+              ],
+              "query": []
+            },
+            "description": "Track anonymous faces in a video\n\nDetect + track faces for one asset; the source media is never modified.\n\nReturns the run DTO plus the tracks. With no detector installed the run ends\nterminal ``UNAVAILABLE`` and carries the provider's reason.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "media-intel-qc",
+      "item": [
+        {
+          "name": "QC verdicts for a run",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/qc/:run_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "qc",
+                ":run_id"
+              ],
+              "query": []
+            },
+            "description": "QC verdicts for a run"
+          }
+        },
+        {
+          "name": "Record an attributable QC override",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/qc/:run_id/override",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "qc",
+                ":run_id",
+                "override"
+              ],
+              "query": []
+            },
+            "description": "Record an attributable QC override",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Run audio/visual QC",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/qc/:run_id/run",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "qc",
+                ":run_id",
+                "run"
+              ],
+              "query": []
+            },
+            "description": "Run audio/visual QC",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "media-intel-reframe",
+      "item": [
+        {
+          "name": "Background blur / replace / mask",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/background",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "background"
+              ],
+              "query": []
+            },
+            "description": "Background blur / replace / mask\n\nApply a background op when a segmentation provider produced a mask.\n\nWith no usable mask the answer is ``status='UNAVAILABLE'`` with the reason\nand the required chain -- a 200, because the request was understood and the\nhonest answer is \"not installed\", not a 500 and never a fake success.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Edit one keyframe (this is 'editable')",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/reframe/keyframes/:keyframe_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "reframe",
+                "keyframes",
+                ":keyframe_id"
+              ],
+              "query": []
+            },
+            "description": "Edit one keyframe (this is 'editable')\n\nMove/scale/re-time one keyframe; the previous values are kept in history.\n\nThis is the APPLY path for an operator: it changes the geometry a render\nwould use, so a plan QC failed is gated here too (contracts 13). The\n``x``/``y``/``scale`` units are the plan's own -- normalised centre and zoom\n-- so an edit cannot switch a plan into a unit QC misreads.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "One reframe plan + keyframes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/reframe/:plan_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "reframe",
+                ":plan_id"
+              ],
+              "query": []
+            },
+            "description": "One reframe plan + keyframes"
+          }
+        },
+        {
+          "name": "Plan a smart reframe / layout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/reframe",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "reframe"
+              ],
+              "query": []
+            },
+            "description": "Plan a smart reframe / layout\n\nCompute and persist EDITABLE keyframes. The crop is never baked.\n\nSynchronous by design: the plan is stdlib geometry over rows that already\nexist, so there is nothing to queue and no model to wait for. A worker\nhandler (job kind ``MEDIA_INTEL_REFRAME``) wraps the same engine for the\nbatch/large-file path at integration.\n\n``apply=true`` is the APPLY path: it is gated by\n:func:`app.engine.intel.qc.assert_qc_allows_apply` through\n:func:`reframe.assert_plan_applies`, so a plan nobody checked (or one QC\nfailed) cannot be baked into a rendered asset. The plan is still created\neither way -- refusing to PLAN because QC has not run yet would be a worse\nproduct than refusing to APPLY.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "media-intel-speech",
+      "item": [
+        {
+          "name": "Align words for an asset",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/alignments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "alignments"
+              ],
+              "query": []
+            },
+            "description": "Align words for an asset",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Aligned words",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/words",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "words"
+              ],
+              "query": [
+                {
+                  "key": "run_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "asset_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "2000",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Aligned words"
+          }
+        },
+        {
+          "name": "Alignment run + words",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/alignments/:run_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "alignments",
+                ":run_id"
+              ],
+              "query": []
+            },
+            "description": "Alignment run + words"
+          }
+        },
+        {
+          "name": "Anonymous speakers for an asset",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/speakers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "speakers"
+              ],
+              "query": [
+                {
+                  "key": "asset_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "run_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Anonymous speakers for an asset"
+          }
+        },
+        {
+          "name": "Diarization run + segments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/diarization/:run_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "diarization",
+                ":run_id"
+              ],
+              "query": []
+            },
+            "description": "Diarization run + segments"
+          }
+        },
+        {
+          "name": "Diarize an asset's speakers",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/diarization",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "diarization"
+              ],
+              "query": []
+            },
+            "description": "Diarize an asset's speakers",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Name an anonymous speaker",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/speakers/aliases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "speakers",
+                "aliases"
+              ],
+              "query": []
+            },
+            "description": "Name an anonymous speaker",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Operator speaker labels",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/speakers/aliases",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "speakers",
+                "aliases"
+              ],
+              "query": [
+                {
+                  "key": "asset_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "run_id",
+                  "value": "<value>",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Operator speaker labels"
+          }
+        },
+        {
+          "name": "Remove an operator speaker label",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/speakers/aliases/:alias_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "speakers",
+                "aliases",
+                ":alias_id"
+              ],
+              "query": []
+            },
+            "description": "Remove an operator speaker label"
+          }
+        }
+      ]
+    },
+    {
+      "name": "media-intel-visual",
+      "item": [
+        {
+          "name": "Active-speaker rows for one run",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/active-speaker/:run_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "active-speaker",
+                ":run_id"
+              ],
+              "query": []
+            },
+            "description": "Active-speaker rows for one run"
+          }
+        },
+        {
+          "name": "Map speakers to faces (or refuse)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/active-speaker",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "active-speaker"
+              ],
+              "query": []
+            },
+            "description": "Map speakers to faces (or refuse)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Mask references for one run",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/masks/:run_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "masks",
+                ":run_id"
+              ],
+              "query": []
+            },
+            "description": "Mask references for one run"
+          }
+        },
+        {
+          "name": "Segment an asset into mask FILES",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/media-intel/masks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "media-intel",
+                "masks"
+              ],
+              "query": []
+            },
+            "description": "Segment an asset into mask FILES",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "memory",
       "item": [
         {
@@ -7928,6 +9452,112 @@
                 }
               }
             }
+          }
+        }
+      ]
+    },
+    {
+      "name": "music-work15",
+      "item": [
+        {
+          "name": "Is generated music allowed, and why",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/music/policy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "music",
+                "policy"
+              ],
+              "query": []
+            },
+            "description": "Is generated music allowed, and why\n\nThe resolved decision, including the preferences it was resolved from.\n\nExposes the forbidden-genre list so an operator sees what the brand refuses\nbefore a run does."
+          }
+        },
+        {
+          "name": "Music provider availability",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/music/providers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "music",
+                "providers"
+              ],
+              "query": []
+            },
+            "description": "Music provider availability\n\nProvider keys with their honest health.\n\nAvailability is probed from the registry, never asserted: an unconfigured\nbackend reports ``available: false`` with its reason instead of appearing\nready and failing at generation time."
+          }
+        },
+        {
+          "name": "Set the workspace music opt-in",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/music/policy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "music",
+                "policy"
+              ],
+              "query": []
+            },
+            "description": "Set the workspace music opt-in\n\nWrite the opt-in. A brand refusal cannot be overridden here.\n\nAn unknown ``provider_key`` is a 422 rather than a silent fallback: naming a\nbackend that does not exist and then generating with a different one is how a\nworkspace ends up paying a provider nobody selected.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "The BrandDNA music_prefs this policy reads",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/music/prefs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "music",
+                "prefs"
+              ],
+              "query": []
+            },
+            "description": "The BrandDNA music_prefs this policy reads\n\nThe recognised ``BrandDNA.music_prefs`` keys and their values.\n\nUnrecognised keys are dropped rather than echoed, so an operator typo shows\nup as a missing value instead of a preference that silently does nothing."
           }
         }
       ]
@@ -8258,6 +9888,532 @@
       ]
     },
     {
+      "name": "planner-work15",
+      "item": [
+        {
+          "name": "Approve a plan item",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/planner/items/:item_id/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "planner",
+                "items",
+                ":item_id",
+                "approve"
+              ],
+              "query": []
+            },
+            "description": "Approve a plan item",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Create the campaign DRAFT for an item",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/planner/items/:item_id/campaign",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "planner",
+                "items",
+                ":item_id",
+                "campaign"
+              ],
+              "query": []
+            },
+            "description": "Create the campaign DRAFT for an item\n\nAdvance the trend -> campaign flow for one item.\n\nIdempotent and resumable: re-running it reuses the existing campaign draft.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Declare production capacity",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/planner/capacity",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "planner",
+                "capacity"
+              ],
+              "query": []
+            },
+            "description": "Declare production capacity",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Ingest one observation",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/planner/signals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "planner",
+                "signals"
+              ],
+              "query": []
+            },
+            "description": "Ingest one observation\n\nRecord a signal. Idempotent on ``(source, topic, external_ref)``.\n\nA re-delivered item refreshes the existing signal instead of creating a\nsecond one, so a source that re-syncs cannot manufacture recurrence.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Measured outcome for a plan item",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/planner/feedback/:item_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "planner",
+                "feedback",
+                ":item_id"
+              ],
+              "query": []
+            },
+            "description": "Measured outcome for a plan item"
+          }
+        },
+        {
+          "name": "Observed signals with their evidence",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/planner/signals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "planner",
+                "signals"
+              ],
+              "query": []
+            },
+            "description": "Observed signals with their evidence\n\nEvery signal, refreshed for freshness, with its evidence attached.\n\n``velocity`` is ``null`` for a topic seen once, because a single\nobservation has no measurable rate. Read-only: a viewer listing signals\nmust not rewrite their freshness or status."
+          }
+        },
+        {
+          "name": "Place an item",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/planner/items/:item_id/schedule",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "planner",
+                "items",
+                ":item_id",
+                "schedule"
+              ],
+              "query": []
+            },
+            "description": "Place an item\n\nPlace an item on the calendar and write a canonical ScheduleEntry.\n\nThis stops at SCHEDULED. It does not publish and does not enqueue a job;\nthe existing Scheduler agent and publication approval path own both.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Placed schedule + remaining capacity",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/planner/calendar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "planner",
+                "calendar"
+              ],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "30",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Placed schedule + remaining capacity\n\nThe placed entries and how much capacity is left.\n\nEvery entry here is a canonical ``ScheduleEntry`` -- the planner did not\ncreate a second schedule.\n\nThe window starts at the BEGINNING OF TODAY, not at \"now\": an entry placed\nfor a slot that has already passed today is still on the calendar (it is\ndue, or overdue), and hiding it would make a scheduled item look unscheduled\nfor the rest of the day."
+          }
+        },
+        {
+          "name": "Plans and their items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/planner/plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "planner",
+                "plans"
+              ],
+              "query": []
+            },
+            "description": "Plans and their items"
+          }
+        },
+        {
+          "name": "Record an outcome; derive a lesson if warranted",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/planner/feedback/:item_id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "planner",
+                "feedback",
+                ":item_id"
+              ],
+              "query": []
+            },
+            "description": "Record an outcome; derive a lesson if warranted\n\nWrite the factual outcome, and a generalised lesson only when warranted.\n\nA lesson needs at least ``MIN_SAMPLE`` measured items and an effect size\nabove ``MIN_EFFECT``; below that the endpoint returns ``lesson: null`` rather\nthan training a global rule on one post.\n\nThe item is workspace-checked first. Without that, a caller could name\nanother workspace's plan-item id and write a fabricated outcome into their\nOWN memory -- which the planner then consults as trusted \u00a74 knowledge.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Reject a plan item",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/planner/items/:item_id/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "planner",
+                "items",
+                ":item_id",
+                "reject"
+              ],
+              "query": []
+            },
+            "description": "Reject a plan item",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Run a planning cycle",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/planner/plan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "planner",
+                "plan"
+              ],
+              "query": []
+            },
+            "description": "Run a planning cycle\n\nPlan a horizon. The autonomy mode decides what actually gets written.\n\n``RECOMMEND`` (and ``DISABLED``) return suggestions with no persistence;\n``APPROVAL`` and ``AUTONOMOUS`` may write plan items. Nothing here can\npublish.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Scored opportunities, with the WHY",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/planner/opportunities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "planner",
+                "opportunities"
+              ],
+              "query": [
+                {
+                  "key": "basis",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "verdict",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Scored opportunities, with the WHY\n\nOpportunities with their evidence, factor scores and provenance.\n\n``scoring.factors[*].measured`` is the field the UI must use: a factor with\n``measured: false`` contributed 0 because the data does not exist, not\nbecause the demand is zero."
+          }
+        },
+        {
+          "name": "Send an item back for more evidence",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/planner/items/:item_id/research_more",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "planner",
+                "items",
+                ":item_id",
+                "research_more"
+              ],
+              "query": []
+            },
+            "description": "Send an item back for more evidence",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "The autonomy table, as data",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/planner/policy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "planner",
+                "policy"
+              ],
+              "query": []
+            },
+            "description": "The autonomy table, as data"
+          }
+        },
+        {
+          "name": "What the planner already knows",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/planner/memory",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "planner",
+                "memory"
+              ],
+              "query": [
+                {
+                  "key": "topic",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "What the planner already knows"
+          }
+        },
+        {
+          "name": "Would this batch fit?",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/planner/capacity/check",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "planner",
+                "capacity",
+                "check"
+              ],
+              "query": []
+            },
+            "description": "Would this batch fit?\n\nDry-run the capacity gate against a hypothetical batch.\n\nTakes a HYPOTHETICAL capacity in the request body and answers \"would this\nfit\" WITHOUT touching the stored row. It builds the candidate in memory\nrather than calling ``upset_capacity``: that helper persists, and using it\nhere would create/overwrite the real row with all-zero defaults -- a\nviewer writing to the workspace, and any interleaved commit wiping the\noperator's declared limits.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "projects",
       "item": [
         {
@@ -8313,6 +10469,39 @@
               "query": []
             },
             "description": "Create a project (creator becomes OWNER)",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Duplicate a project's settings into a new project",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/projects/:project_id/duplicate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "projects",
+                ":project_id",
+                "duplicate"
+              ],
+              "query": []
+            },
+            "description": "Duplicate a project's settings into a new project",
             "body": {
               "mode": "raw",
               "raw": "{}",
@@ -8540,6 +10729,205 @@
                 }
               }
             }
+          }
+        }
+      ]
+    },
+    {
+      "name": "provider-maturity-work15",
+      "item": [
+        {
+          "name": "Counts per state for this workspace's credentials",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/provider-maturity/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "provider-maturity",
+                "summary"
+              ],
+              "query": []
+            },
+            "description": "Counts per state for this workspace's credentials"
+          }
+        },
+        {
+          "name": "Counts per state, and what is actually production-ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/provider-maturity/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "provider-maturity",
+                "summary"
+              ],
+              "query": [
+                {
+                  "key": "capability",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Counts per state, and what is actually production-ready\n\nAggregate view.\n\n``production_ready`` is expected to be **empty** for this repository. A\nsummary listing a long set of ready providers is itself the bug this\nregistry exists to catch, which is why the field is named for what it\nclaims rather than hidden inside ``items``."
+          }
+        },
+        {
+          "name": "Every provider's honest maturity (no credential resolution)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/provider-maturity",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "provider-maturity"
+              ],
+              "query": [
+                {
+                  "key": "capability",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "probe",
+                  "value": "False",
+                  "description": "Opt in to health probes. Off by default: a probe is a network call.",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Every provider's honest maturity (no credential resolution)\n\nThe full table.\n\nWorkspace-scoped credential resolution is deliberately *not* done here:\nthis route takes no workspace, so any credential state it printed would be\nambiguous between \"global\" and \"not looked at\". Use the workspace route for\nthat."
+          }
+        },
+        {
+          "name": "Maturity with this workspace's credential resolution",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/provider-maturity",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "provider-maturity"
+              ],
+              "query": [
+                {
+                  "key": "capability",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                },
+                {
+                  "key": "probe",
+                  "value": "False",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Maturity with this workspace's credential resolution\n\nThe table, plus whether *this* workspace holds each credential.\n\nOnly a state word is returned. The resolver's value never leaves the\nprocess, and neither does its length or a digest of it."
+          }
+        },
+        {
+          "name": "One provider's full record",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/provider-maturity/:provider",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "provider-maturity",
+                ":provider"
+              ],
+              "query": []
+            },
+            "description": "One provider's full record\n\nA single provider, or 404.\n\n``UNIMPLEMENTED`` TTS candidates 404 rather than being invented on the fly:\nthey *are* in the table, but under a lookup that states plainly that no\nadapter exists, which is what ``/tts/qualification`` reports."
+          }
+        },
+        {
+          "name": "Paid-job incidents: what may have been billed and what to do",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/provider-maturity/incidents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "provider-maturity",
+                "incidents"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Paid-job incidents: what may have been billed and what to do\n\nEvery paid submission this workspace still has to deal with.\n\nWork 15.7 \u00a713. The maturity table says whether a provider *can* be trusted.\nIt says nothing about whether this workspace has already been charged for\nsomething that went wrong, so an operator reading it had no way to answer\n\"did I pay for that failure?\".\n\nTwo sources, both already persisted, so no new table:\n\n* ``videos.submission_state`` (Work 15.5 \u00a77) for a render submit that may\n  have been billed -- the durable record of an ambiguous submit;\n* ``cost_entries`` rows marked ``UNKNOWN_EXPOSURE`` for a call that was\n  accepted and whose amount nobody can price.\n\nTwo rules the payload enforces rather than leaves to the reader:\n\n* **``SUBMISSION_UNKNOWN`` is never reported as ``FAILED``.** The two mean\n  opposite things to the wallet -- one is a confirmed rejection, the other\n  may already be an invoice -- so the state travels verbatim and\n  ``display_state`` is a separate field. A UI that maps an incident to\n  \"Failed\" is then visibly wrong rather than quietly wrong.\n* **Retry is offered only when it is proven safe.** ``retry_safe`` comes from\n  :class:`~app.services.paid_executor.RetrySafety`, which is SAFE only for a\n  provably-undelivered submit. There is no \"retry\" affordance for an\n  ambiguous one, because sending it again is how one incident becomes two\n  charges.\n\nThe recommended action is derived by :func:`paid_executor.verdict_for` and\nthe record's own ``reconciliation`` field rather than re-derived here, so the\nAPI, a CLI and the UI cannot answer differently."
+          }
+        },
+        {
+          "name": "TTS adapters: what exists, and what the matrix only proposed",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/provider-maturity/tts/qualification",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "provider-maturity",
+                "tts",
+                "qualification"
+              ],
+              "query": []
+            },
+            "description": "TTS adapters: what exists, and what the matrix only proposed\n\nThe TTS verdicts, including the six donor candidates that were never built.\n\nExposed because ``MERGE`` in the technology matrix reads as \"done\" once\nenough time passes. ``merged: false`` on every donor candidate makes the\ndistinction unmissable."
           }
         }
       ]
@@ -10998,6 +13386,97 @@
               ]
             },
             "description": "Stream the rendered file (mock artifacts served as JSON)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "voice-work15",
+      "item": [
+        {
+          "name": "Offerable TTS providers, with reasons",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/voice-preview/providers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "voice-preview",
+                "providers"
+              ],
+              "query": []
+            },
+            "description": "Offerable TTS providers, with reasons"
+          }
+        },
+        {
+          "name": "Preview a voice (cached, cost-guarded)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/voice-preview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "voice-preview"
+              ],
+              "query": []
+            },
+            "description": "Preview a voice (cached, cost-guarded)\n\nSynthesise a short sample. Returns audio bytes, or a cache hit.\n\nOrder of operations matters, and Work 15.7 \u00a711 changed the first step:\n\n1. resolve the provider and refuse what cannot be previewed -- no spend;\n2. consult the cache -- a hit is free, so it costs no reservation;\n3. take the budget reservation ATOMICALLY, which both checks the cap and\n   records the permission in one database transaction;\n4. call the provider once, and settle the reservation with the real\n   character count.\n\nStep 3 used to be a check at the top plus an in-memory increment after the\ncache miss. That pair was two operations with a gap between them and the\ncount lived in this process, so it was not a limit at all behind a second\nworker. A 429 therefore means \"this workspace asked for something new too\noften\", not \"you clicked once too many times on a voice you have already\nheard\".",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Voices for one provider (production identity)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workspaces/{{workspaceId}}/voice-preview/providers/:provider_id/voices",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "workspaces",
+                "{{workspaceId}}",
+                "voice-preview",
+                "providers",
+                ":provider_id",
+                "voices"
+              ],
+              "query": [
+                {
+                  "key": "language",
+                  "value": "",
+                  "description": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Voices for one provider (production identity)"
           }
         }
       ]

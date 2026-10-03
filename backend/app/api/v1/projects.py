@@ -168,6 +168,13 @@ class TransferBody(BaseModel):
     to_user_id: str = Field(min_length=1, max_length=36)
 
 
+class DuplicateProjectBody(BaseModel):
+    """Optional overrides for a duplication. Omitted keys come from the source."""
+
+    name: str = Field(default="", max_length=160)
+    description: str = Field(default="", max_length=4000)
+
+
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
@@ -520,3 +527,73 @@ def transfer_ownership(
               f"Ownership of '{project.name[:60]}' transferred to {body.to_user_id[:8]}",
               user_id=user.id, project_id=project.id, to_user_id=body.to_user_id)
     return _project_dto(project)
+
+
+# ---------------------------------------------------------------------------
+# endpoints -- duplication (Work 15.6 §9)
+# ---------------------------------------------------------------------------
+#
+# Duplicate copies CONFIGURATION, not rows. It creates one Project row, copies an
+# allowlist of settings through ``services.settings_reuse.duplicate_settings``,
+# and links no targets -- a duplicated project pointing at the old project's
+# content, campaign or timeline is the failure this route exists to prevent.
+# It deliberately does not copy members either: membership is granted, not
+# inherited, and a silent member copy would hand access to somebody who never
+# accepted it.
+
+
+@projects_router.post("/{project_id}/duplicate", status_code=201,
+                      summary="Duplicate a project's settings into a new project")
+@_guard()
+def duplicate_project(
+    project_id: str,
+    body: DuplicateProjectBody | None = None,
+    ws: Workspace = Depends(require_workspace_role("viewer")),
+    project: Project = Depends(require_project_capability("project_id", "view_project")),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from app.services.settings_reuse import (
+        PROJECT_SETTINGS_KEY,
+        duplicate_settings,
+        load_project_settings,
+        provenance_note,
+        settings_fingerprint,
+        store_project_settings,
+    )
+
+    body = body or DuplicateProjectBody()
+    source_settings = load_project_settings(ws.settings_json or {}, project.id)
+    copied, report = duplicate_settings(source_settings)
+
+    name = (body.name or "").strip() or f"{str(project.name or 'Project')[:140]} (copy)"
+    row = Project(
+        workspace_id=ws.id,
+        name=name[:160],
+        description=(body.description if body.description.strip()
+                     else str(project.description or ""))[:4000],
+        created_by=user.id,
+    )
+    db.add(row)
+    db.flush()
+    db.add(ProjectMember(project_id=row.id, user_id=user.id, role="OWNER"))
+
+    # The copy carries a provenance note whose ids are explicitly non-shared, so
+    # "where did this configuration come from" is answerable without any id in
+    # the block being followable, editable, or writable through.
+    copied = {**copied, "provenance": provenance_note(project.id)}
+    ws.settings_json = store_project_settings(ws.settings_json or {}, row.id, copied)
+    db.commit()
+    _emit(ws.id, "PROJECT_DUPLICATED",
+          f"Settings of '{project.name[:40]}' duplicated into '{row.name[:40]}'",
+          user_id=user.id, project_id=row.id, source_project_id=project.id,
+          copied_sections=report["copied_sections"],
+          settings_fingerprint=settings_fingerprint(copied))
+    return {
+        "project": _project_dto(row),
+        "settings": copied,
+        "settings_report": report,
+        "copied_targets": 0,
+        "copied_members": 1,
+        "settings_namespace": PROJECT_SETTINGS_KEY,
+    }

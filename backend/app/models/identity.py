@@ -82,7 +82,11 @@ class SocialAccount(Base, PKMixin, TimestampMixin):
 
     __tablename__ = "social_accounts"
 
-    PLATFORMS = ("youtube", "tiktok", "facebook", "instagram", "linkedin", "x")
+#: Work 14 adds the expanded-distribution platforms. This tuple is the
+    #: allowlist of account namespaces: a platform absent from it cannot be
+    #: connected, so a platform can never end up half-supported.
+    PLATFORMS = ("youtube", "tiktok", "facebook", "instagram", "linkedin", "x",
+                 "threads", "pinterest", "bluesky", "snapchat")
 
     workspace_id: Mapped[str] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), index=True

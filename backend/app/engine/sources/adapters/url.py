@@ -29,6 +29,7 @@ from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
 
 import httpx
 
+from app.core.netguard import NetGuardError, assert_public_ip
 from app.engine.sources.base import (
     ALLOWED_TEXT_MIME,
     MAX_SOURCE_BYTES,
@@ -76,19 +77,34 @@ def _as_ipv4_mapped(ip):
 
 
 def _reject_ip(ip) -> None:
-    ip = _as_ipv4_mapped(ip)
-    if (
-        ip.is_private
-        or ip.is_loopback
-        or ip.is_link_local
-        or ip.is_reserved
-        or ip.is_multicast
-        or ip.is_unspecified
-    ):
+    # Work 15 §0: delegated to the shared guard. The old local check was an
+    # ALLOW-list of bad classes (is_private/is_loopback/...), which silently
+    # missed ranges ipaddress does not label -- CGNAT/Alibaba metadata
+    # 100.100.100.200, TEST-NET 192.0.2.0/24 and benchmarking 198.18.0.0/15
+    # were all "not private" and therefore got through. The shared guard gates
+    # on is_global instead, which is deny-by-default.
+    try:
+        assert_public_ip(ip)
+    except NetGuardError as exc:
         raise SourceError(
-            f"host {ip} is not a public address (private/loopback/link-local/"
-            "reserved); set allow_private to permit this for development"
-        )
+            f"{exc}; set allow_private to permit this for development"
+        ) from exc
+
+
+def _operator_allows_private() -> bool:
+    """Operator kill-switch for private-target connectors (W11.5 C-F1).
+
+    ``allow_private`` in a connector config is necessary but NOT sufficient:
+    the operator must also enable ``allow_private_connectors`` (default False).
+    Without this, any workspace admin could self-serve a pivot to loopback or
+    cloud-metadata endpoints. Read defensively so a missing setting fails closed.
+    """
+    try:
+        from app.core.config import settings
+
+        return bool(getattr(settings, "allow_private_connectors", False))
+    except Exception:
+        return False
 
 
 def _assert_public_host(host: str, *, allow_private: bool = False) -> None:
@@ -99,6 +115,11 @@ def _assert_public_host(host: str, *, allow_private: bool = False) -> None:
     resolution failure fails closed. Config validation that must never
     touch the resolver uses :func:`_reject_unsafe_literal_host` instead.
     """
+    if allow_private and not _operator_allows_private():
+        raise SourceError(
+            "allow_private is disabled by the operator "
+            "(allow_private_connectors=False); private targets are refused"
+        )
     if allow_private:
         return
     if not str(host or "").strip():
@@ -124,6 +145,11 @@ def _assert_public_host(host: str, *, allow_private: bool = False) -> None:
 
 def _reject_unsafe_literal_host(host: str, *, allow_private: bool = False) -> None:
     """Config-time check: literal IPs only, never touches the resolver."""
+    if allow_private and not _operator_allows_private():
+        raise SourceConfigError(
+            "allow_private is disabled by the operator "
+            "(allow_private_connectors=False); private targets are refused"
+        )
     if allow_private:
         return
     ip = _try_ip(host)

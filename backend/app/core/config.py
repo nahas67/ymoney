@@ -33,6 +33,20 @@ class Settings(BaseSettings):
 
     # ---- Database ----
     database_url: str = f"sqlite:///{(PROJECT_ROOT / 'data' / 'ymoney.db').as_posix()}"
+    # Pool bounds (Work 16 §7). SQLite serialises on its own file lock and
+    # ignores max_overflow; Postgres gets a real pool. `db_pool_size +
+    # db_max_overflow` is the hard ceiling on concurrent connections, so these
+    # two must stay below the server's max_connections with headroom for the
+    # migration runner and any operator session.
+    db_pool_size: int = 10
+    db_max_overflow: int = 10
+    # How long a caller waits for a pooled connection before being told the
+    # database is saturated. Long enough to ride out a render's transaction,
+    # short enough to fail before a request times out upstream.
+    db_pool_timeout: int = 30
+    # Retire connections proactively; below typical cloud LB / pgbouncer idle
+    # timeouts, which kill a socket without telling either end.
+    db_pool_recycle: int = 1800
 
     # ---- Auth ----
     access_token_expire_minutes: int = 120
@@ -111,6 +125,16 @@ class Settings(BaseSettings):
     # ---- Cost control ----
     daily_budget_usd: float = 5.0
     per_video_budget_usd: float = 0.5
+    # ---- Work 16 §11: budget ROLLUPS (optional, cross-category) ----
+    # The per-category and per-call caps above answer "may this CATEGORY afford
+    # this?"; these answer "may this DEPLOYMENT afford this?" over every
+    # category at once. 0.0 means NOT CONFIGURED -- never "free" -- which is why
+    # an unset rollup leaves a deployment behaving exactly as it did before
+    # Work 16 §11. A per-workspace ceiling lives in the database
+    # (`budget_rollup_limits`, migration 0037); these two are the
+    # deployment-wide pair, read only when no system row exists.
+    budget_rollup_system_daily_total_cap_usd: float = 0.0
+    budget_rollup_system_monthly_total_cap_usd: float = 0.0
 
     # ---- Autopilot defaults ----
     autopilot_max_cycles: int = 0
@@ -129,25 +153,150 @@ class Settings(BaseSettings):
     job_poll_interval_seconds: float = 1.0
     job_default_max_retries: int = 3
     job_worker_count: int = 4
+    # Work 12 media intelligence. `max_concurrent_gpu_jobs` gates the
+    # DB-backed GPU slot ledger (CPU-only providers bypass it);
+    # `commercial_mode` makes the provider registry refuse any adapter
+    # whose license audit did not clear it (see docs/oss/MEDIA_INTEL_LICENSES.md).
+    max_concurrent_gpu_jobs: int = 1
+    commercial_mode: bool = False
+    # Work 11.5 (C-F1): operator kill-switch for private-target source
+    # connectors. Connector configs may request allow_private, but the fetch
+    # is refused unless the operator enables this. Default False.
+    allow_private_connectors: bool = False
+    # Work 11.5 (E-MED): a deliberate escape hatch for a staging deployment
+    # that intentionally renders with the labeled mock engine. The factory
+    # refuses video_engine='mock' in production unless this is set.
+    allow_mock_in_production: bool = False
     job_queue: str = "local"             # local | redis (redis dispatch, DB fallback)
     redis_url: str = "redis://localhost:6379/0"
     gpu_worker: bool = False             # this process claims GPU-gated jobs
     gpu_engines: str = "wan,ltx"         # engine names treated as GPU-native
 
+    # ---- Work 16 §2: leases. A live worker renews; only an EXPIRED lease may
+    # be reclaimed, so the TTL only has to outlast a missed heartbeat, not a
+    # job. `job_lease_seconds_by_workload` raises it for the long classes (a
+    # 30-minute render is heartbeat-renewed every third of its TTL, so its own
+    # duration does not enter into it). Format: "RENDER=900,GPU=1800".
+    job_lease_seconds: float = 120.0
+    job_lease_seconds_by_workload: str = ""
+    job_reclaim_interval_seconds: float = 15.0
+    # ---- Work 16 §3: worker pools. Empty means "every worker takes SMALL
+    # jobs", which is the pre-16 behaviour: one pool, no starvation to fix.
+    # Format: "SMALL=4,RENDER=2,GPU=1".
+    job_worker_pools: str = ""
+    # ---- Graceful shutdown. In-flight work is allowed to finish; past this
+    # deadline the remaining leases are simply left to expire and be reclaimed,
+    # which is safer than cancelling a paid render mid-flight.
+    job_drain_timeout_seconds: float = 30.0
+    # ---- Worker identity in `jobs.claimed_by`. Empty means "derive one":
+    # host + pid + a per-process suffix, so two processes on one host are still
+    # distinguishable and a restart is visible as a new identity.
+    job_worker_identity: str = ""
+
     # ---- Storage (local default; S3-compatible optional) ----
     storage_backend: str = "local"  # local | s3
+    # Where LOCAL storage keeps canonical media. Must be an absolute path on a
+    # durable mount. It used to be a module constant, `Path("data/videos")`,
+    # resolved against the process working directory -- which in the container
+    # is `/app`, inside the image's writable layer. Nothing mounted `/data` to
+    # the backend service at all, so every render was destroyed by the next
+    # `docker compose up --build`. Set this to a mounted volume (or use the
+    # s3 backend) and the media survives a container recreate.
+    storage_root: str = ""
     s3_endpoint_url: str = ""
     s3_bucket: str = ""
     s3_access_key: str = ""
     s3_secret_key: str = ""
     s3_region: str = "us-east-1"
     s3_public_base_url: str = ""
+    # Work 16 §5. Bytes > this size are refused by the streaming writer rather
+    # than buffered: an upload is a stream, and a 4 GB "buffer" is an OOM.
+    storage_stream_chunk_bytes: int = 4 * 1024 * 1024
+    # Staging root for in-flight writes. Deliberately OUTSIDE the managed media
+    # tree so a temp file can never be resolved by `storage.managed_path`.
+    storage_staging_dir: str = "data/storage_staging"
+    # How long an unfinished PENDING object may sit before cleanup removes it.
+    storage_pending_ttl_seconds: float = 3600.0
+
+    # ---- Work 16 §4: GPU admission. A device is a ROW with finite VRAM, and
+    # admission is a conditional UPDATE against it -- see gpu_scheduler.py for
+    # why a count is not enough. `gpu_worker` still gates whether this process
+    # claims GPU work at all; these govern how much it may hold.
+    gpu_scheduler_enabled: bool = True
+    # Seconds a GPU slot may be held before it is presumed abandoned. Tied to
+    # the job lease so one crash-recovery rule covers both.
+    gpu_slot_lease_seconds: float = 120.0
+    # Bounded admission wait. Never unbounded: a queue that waits forever is a
+    # queue that never says no.
+    gpu_admission_timeout_seconds: float = 900.0
+    # Fallback is opt-in twice: the CALLER must declare the work CPU-capable
+    # and the operator must allow it here. Default off.
+    gpu_cpu_fallback_enabled: bool = False
+    # Devices this process will admit onto, comma-separated. Empty means "every
+    # registered device".
+    gpu_device_keys: str = ""
 
     # ---- Observability ----
     sentry_dsn: str = ""
+    # Work 16 §8. The metric registry, the structured JSON log sink and the
+    # trace recorder are dependency-free and always available; these switches
+    # only control whether their sinks are attached at startup.
+    observability_enabled: bool = True
+    # True renders each log record as one JSON object (redacted); False keeps
+    # loguru's default text format. Redaction is applied either way once a
+    # structured sink is installed.
+    observability_json_logs: bool = True
+    observability_service_name: str = "ymoney"
+    # Completed spans retained in memory for GET /internal/traces. Bounded on
+    # purpose: an unbounded trace buffer only leaks under load.
+    observability_max_spans: int = 2000
+    # Per-metric label-set cap. Bounds memory against a hostile or buggy caller
+    # that would otherwise mint unbounded series; drops are counted in
+    # ymoney_metrics_series_overflow_total.
+    observability_max_series_per_metric: int = 512
+
+    # ---- Work 16 §10 SLO / alert thresholds ----
+    # Targets, NOT measurements. Each is the number the corresponding rule in
+    # services/observability/slo.py evaluates against; changing one here is the
+    # supported way to retune an alert, because a rule that hard-coded its own
+    # number could not be retuned without a code change.
+    slo_api_availability_target: float = 0.995
+    slo_job_start_latency_seconds: float = 60.0
+    slo_queue_backlog_max: int = 25
+    slo_publish_failure_rate_max: float = 0.02
+    slo_render_failure_rate_max: float = 0.05
+    slo_unknown_exposure_max_usd: float = 5.0
+    # §10 alert thresholds.
+    alert_queue_stall_seconds: float = 900.0
+    alert_unknown_exposure_usd: float = 1.0
+    alert_publish_failure_streak: int = 3
 
     # ---- Logging ----
     log_level: str = "INFO"
+
+    # ---- Work 16 §12: backup / restore ----
+    # Where `python -m app.scripts.backup_restore` writes backups and drills by
+    # default. A path, not a remote: the object-storage BYTES are deliberately
+    # NOT in a backup (only the `storage_objects` inventory + checksums), so the
+    # backup's size is dominated by the logical dump and a local directory is
+    # the honest default. Off-host copy is a deployment decision, recorded in
+    # docs/BACKUP_RESTORE_RUNBOOK.md.
+    backup_dir: str = str(PROJECT_ROOT / "data" / "backups")
+    # Docker container that holds pg_dump/pg_restore when the tools are not
+    # installed on the host. Empty means "use the host's client tools", which is
+    # correct for a managed PostgreSQL reached over the network.
+    backup_pg_container: str = ""
+    # Age of the OLDEST backup after which a backup is considered overdue. The
+    # backup interval is cron/systemd, not here -- a library that also scheduled
+    # itself would double-take on every cron tick. What this is for is the one
+    # question an operator asks after an incident: "how stale is the thing I am
+    # about to restore?", which is exactly the RPO the schedule implies.
+    backup_max_age_hours: float = 26.0
+    # A restored database whose canonical digests do not match the manifest is a
+    # FAILED restore even though pg_restore exited 0. Kept as a setting so a
+    # deployment can record its own tolerance without editing code; the value is
+    # the number of FAILED checks tolerated, and it is 0 by design.
+    backup_tolerate_failed_checks: int = 0
 
     @property
     def cors_origins(self) -> list[str]:

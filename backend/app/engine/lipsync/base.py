@@ -21,6 +21,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 # Job statuses shared by the DB rows and adapter-level jobs.
+#
+# This vocabulary is the BUSINESS status: what the render is doing. It is
+# deliberately NOT widened to carry a money fact. `FAILED` means "no video was
+# produced"; it does not mean "nothing was billed", and an operator who needs to
+# tell those apart must not have to parse JSON to do it (Work 15.8 §7). The two
+# facts that were being crammed into it live in their own columns, named below.
 JOB_QUEUED = "QUEUED"
 JOB_RUNNING = "RUNNING"
 JOB_SUCCEEDED = "SUCCEEDED"
@@ -38,6 +44,52 @@ JOB_STATUSES = (
 )
 TERMINAL_STATUSES = frozenset({JOB_SUCCEEDED, JOB_FAILED, JOB_CANCELLED, JOB_TIMEOUT})
 ACTIVE_STATUSES = frozenset({JOB_QUEUED, JOB_RUNNING})
+
+# ---------------------------------------------------------------------------
+# Work 15.8 §7: the two facts `status` must never be made to carry
+# ---------------------------------------------------------------------------
+# The values below are the CANONICAL vocabularies that already exist --
+# `app.services.paid_jobs.SubmissionState` and
+# `app.services.paid_executor.CostOutcome` -- re-exported under lip-sync names
+# rather than re-invented. A job whose submit may already have been billed is
+# `EXECUTION_SUBMISSION_UNKNOWN` here and `SUBMISSION_UNKNOWN` in the render
+# lane and the cost ledger; one spelling is what makes an incident query work.
+
+#: What HAPPENED to the paid submit, apart from whether it produced a video.
+#: ``PREPARED`` is the canonical "we intend to submit; nothing sent" state, and
+#: it is also the honest default for a row whose submit has not been reached.
+EXECUTION_PREPARED = "PREPARED"
+EXECUTION_SUBMISSION_UNKNOWN = "SUBMISSION_UNKNOWN"
+EXECUTION_REJECTED = "FAILED"
+EXECUTION_CANCELLED = "CANCELLED"
+EXECUTION_CONFIRMED = "REMOTE_ID_CONFIRMED"
+EXECUTION_SUCCEEDED = "SUCCEEDED"
+EXECUTION_OUTCOMES = (
+    EXECUTION_PREPARED,
+    EXECUTION_SUBMISSION_UNKNOWN,
+    EXECUTION_REJECTED,
+    EXECUTION_CANCELLED,
+    EXECUTION_CONFIRMED,
+    EXECUTION_SUCCEEDED,
+)
+
+#: What the LEDGER may say. ``COST_UNKNOWN_EXPOSURE`` is the one that used to
+#: be reachable only by parsing `cost_json`.
+COST_NOT_APPLICABLE = "NOT_APPLICABLE"
+COST_ACTUAL = "ACTUAL"
+COST_ESTIMATED = "ESTIMATED"
+COST_UNKNOWN_EXPOSURE = "UNKNOWN_EXPOSURE"
+COST_OUTCOMES = (
+    COST_NOT_APPLICABLE,
+    COST_ACTUAL,
+    COST_ESTIMATED,
+    COST_UNKNOWN_EXPOSURE,
+)
+
+#: The business status an ambiguous submission must NOT be reported as. Used by
+#: the incident query as a regression guard: "FAILED with an unknown exposure" is
+#: the honest rendering, and "SUCCEEDED" with one is not.
+AMBIGUOUS_BUSINESS_STATUS = JOB_FAILED
 
 HEALTH_AVAILABLE = "available"
 HEALTH_DEGRADED = "degraded"
@@ -203,6 +255,19 @@ class LipSyncProvider(abc.ABC):
 
 __all__ = [
     "ACTIVE_STATUSES",
+    "AMBIGUOUS_BUSINESS_STATUS",
+    "COST_ACTUAL",
+    "COST_ESTIMATED",
+    "COST_NOT_APPLICABLE",
+    "COST_OUTCOMES",
+    "COST_UNKNOWN_EXPOSURE",
+    "EXECUTION_CANCELLED",
+    "EXECUTION_CONFIRMED",
+    "EXECUTION_OUTCOMES",
+    "EXECUTION_PREPARED",
+    "EXECUTION_REJECTED",
+    "EXECUTION_SUBMISSION_UNKNOWN",
+    "EXECUTION_SUCCEEDED",
     "HEALTH_AVAILABLE",
     "HEALTH_DEGRADED",
     "HEALTH_UNAVAILABLE",

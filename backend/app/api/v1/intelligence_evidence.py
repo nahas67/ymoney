@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -18,6 +20,8 @@ from app.engine.intelligence import ledger as ledger_engine
 from app.engine.intelligence import verifier as verifier_engine
 from app.models import BrowserRun, Workspace
 from app.services.auth_service import require_workspace_role
+
+logger = logging.getLogger("ymoney.intelligence")
 
 intelligence_evidence_router = APIRouter(
     prefix="/workspaces/{workspace_id}/intelligence", tags=["intelligence"],
@@ -111,6 +115,18 @@ def create_browser_run(
     row.evidence_json = result["evidence"]
     row.cost_usd = result["cost_usd"]
     db.commit()
+    # W11.5 E-F2 (HIGH): the run's cost lived only in a local counter and in
+    # BrowserRun.cost_usd, so it never reached the CostEntry ledger that the
+    # budget gates read. Ledger it after the commit (track_cost opens its own
+    # session) so daily caps account for browser research.
+    if float(row.cost_usd or 0.0) > 0:
+        try:
+            from app.services.cost import track_cost
+
+            track_cost(ws.id, "browser", float(row.cost_usd),
+                       provider="browser", detail={"browser_run_id": row.id})
+        except Exception as exc:  # noqa: BLE001 — never fail a completed run
+            logger.warning("browser cost ledger failed for run %s: %s", row.id, exc)
     return {**_run_dto(row), "stop_reason": result.get("stop_reason", "")}
 
 

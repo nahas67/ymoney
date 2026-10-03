@@ -10,6 +10,7 @@ const NAV: { group: string; items: { to: string; label: string; icon: string; ke
     { to: "/", label: "Command Center", icon: "◉", keys: "c", desc: "START/STOP, pipeline state, decisions" },
     { to: "/live", label: "Live Monitor", icon: "⌁", keys: "l", desc: "Real-time agent activity + work graph" },
     { to: "/autopilot", label: "Autopilot", icon: "⏻", keys: "a", desc: "Jobs, cycles, dead letters" },
+    { to: "/planner", label: "Planner", icon: "◷", keys: "j", desc: "Signals, opportunities, plan, autonomy" },
     { to: "/calendar", label: "Calendar", icon: "▤", keys: "k", desc: "Schedule + auto-fill" },
     { to: "/approvals", label: "Approvals", icon: "☑", keys: "r", desc: "Human gate: QC queue" },
     { to: "/reviews", label: "Reviews", icon: "◎", keys: "v", desc: "Version-bound approvals + revisions" },

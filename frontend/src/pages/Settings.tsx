@@ -2,6 +2,7 @@ import { useState } from "react";
 import { wsApi } from "../lib/api";
 import { useFetch } from "../hooks/hooks";
 import { Badge, Card, ConfirmButton, Field, PageHeader, Tabs, toast } from "../components/ui";
+import ProviderStatus from "../components/ProviderStatus";
 
 const CONN_GROUPS: { title: string; keys: string[] }[] = [
   { title: "LLM (scripts, research, QC)", keys: ["llm.api_key", "llm.base_url", "llm.model", "llm.model_cheap", "llm.model_reasoning", "llm.model_verification"] },
@@ -31,19 +32,21 @@ const SAFETY_FIELDS: { key: string; label: string; type: "num" | "bool"; hint?: 
 ];
 
 export default function Settings() {
-  const [tab, setTab] = useState<"workspace" | "connections" | "safety" | "engine" | "trends">("workspace");
+  const [tab, setTab] = useState<"workspace" | "connections" | "safety" | "engine" | "trends" | "providers">("workspace");
   return (
     <div className="space-y-4">
       <PageHeader title="Settings" subtitle="Workspace, provider keys, Safety Center budgets, engine and trend sources." />
       <Tabs tabs={[
         { key: "workspace", label: "Workspace" }, { key: "connections", label: "Connections & keys" },
         { key: "safety", label: "Safety Center" }, { key: "engine", label: "Video engine" }, { key: "trends", label: "Trend sources" },
+        { key: "providers", label: "Providers, voice & music" },
       ]} active={tab} onChange={setTab} />
       {tab === "workspace" && <WorkspaceTab />}
       {tab === "connections" && <ConnectionsTab />}
       {tab === "safety" && <SafetyTab />}
       {tab === "engine" && <EngineTab />}
       {tab === "trends" && <TrendsTab />}
+      {tab === "providers" && <ProviderStatus />}
     </div>
   );
 }

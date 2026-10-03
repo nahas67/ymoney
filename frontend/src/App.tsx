@@ -11,6 +11,7 @@ import ContentDetail from "./pages/ContentDetail";
 import Editor from "./pages/Editor";
 import LongForm from "./pages/LongForm";
 import CalendarPage from "./pages/CalendarPage";
+import Planner from "./pages/Planner";
 import Composer from "./pages/Composer";
 import Publishing from "./pages/Publishing";
 import Inbox from "./pages/Inbox";
@@ -84,6 +85,7 @@ export default function App() {
         <Route path="editor/:timelineId" element={<Editor />} />
         <Route path="longform" element={<LongForm />} />
         <Route path="calendar" element={<CalendarPage />} />
+        <Route path="planner" element={<Planner />} />
         <Route path="approvals" element={<Approvals />} />
         <Route path="reviews" element={<Reviews />} />
         <Route path="activity" element={<Activity />} />

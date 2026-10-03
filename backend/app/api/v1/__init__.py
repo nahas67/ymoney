@@ -8,6 +8,7 @@ from app.api.v1.api_keys import router as api_keys_router
 from app.api.v1.archives import archives_router
 from app.api.v1.brands import brand_router
 from app.api.v1.campaigns import campaign_flows_router, campaign_shorts_router
+from app.api.v1.captions import captions_router
 from app.api.v1.comments import comments_router
 from app.api.v1.connections import connections_router
 from app.api.v1.content import (
@@ -19,6 +20,7 @@ from app.api.v1.content import (
     videos_router,
 )
 from app.api.v1.creative import creative_router
+from app.api.v1.distribution import distribution_router
 from app.api.v1.experiments import experiments_router
 from app.api.v1.exports import exports_router
 from app.api.v1.inbox import inbox_router
@@ -33,6 +35,14 @@ from app.api.v1.lipsync import dubbing_plans_router, lipsync_router
 from app.api.v1.live import router as live_router
 from app.api.v1.localization import localization_router
 from app.api.v1.longform import longform_router
+from app.api.v1.media_intel import media_intel_router
+from app.api.v1.media_intel_audio import media_intel_audio_router
+from app.api.v1.media_intel_edits import media_intel_edits_router
+from app.api.v1.media_intel_faces import media_intel_faces_router
+from app.api.v1.media_intel_qc import media_intel_qc_router
+from app.api.v1.media_intel_reframe import media_intel_reframe_router
+from app.api.v1.media_intel_speech import media_intel_speech_router
+from app.api.v1.media_intel_visual import visual_router
 from app.api.v1.misc import (
     activity_router,
     agents_router,
@@ -45,10 +55,17 @@ from app.api.v1.misc import (
     publishing_router,
     system_router,
 )
+from app.api.v1.music import music_router
 from app.api.v1.notifications import notifications_router
 from app.api.v1.ops import ops_router, retention_router
 from app.api.v1.performance import performance_router
+from app.api.v1.planner import planner_router
+from app.api.v1.preview import voice_preview_router
 from app.api.v1.projects import projects_router
+from app.api.v1.providers import (
+    provider_maturity_router,
+    workspace_maturity_router,
+)
 from app.api.v1.reviews import reviews_router, revisions_router
 from app.api.v1.safety import (
     cost_intel_router,
@@ -150,3 +167,48 @@ api_router.include_router(retention_router)
 # Export center (Work 11 Lane X): canonical only —
 #   /workspaces/{workspace_id}/exports/{formats,profiles,...}
 api_router.include_router(exports_router)
+# Media intelligence (Work 12 Lane A): providers + runs. The other Work 12
+# domains (speech, audio, edits, visual, reframe, qc) register their own
+# routers as they land.
+api_router.include_router(media_intel_router)
+# Media intelligence - audio enhancement (Work 12 Lane C).
+api_router.include_router(media_intel_audio_router)
+# Media intelligence - quality control (Work 12 Lane H).
+api_router.include_router(media_intel_qc_router)
+# Media intelligence - face + multi-face tracking (Work 12 Lane E).
+api_router.include_router(media_intel_faces_router)
+# Media intelligence - silence/filler proposals + apply (Work 12 Lane D).
+api_router.include_router(media_intel_edits_router)
+# Media intelligence - alignment, diarization, speakers (Work 12 Lane B).
+api_router.include_router(media_intel_speech_router)
+# Media intelligence - segmentation masks + active-speaker mapping
+# (Work 12 Lane F) and smart reframing / layouts / background tools
+# (Work 12 Lane G).
+api_router.include_router(visual_router)
+api_router.include_router(media_intel_reframe_router)
+# Work 13: caption presets, motion templates, effect/transition registries,
+# CaptionMotionQC and the Work 12 evidence summary. Writes stay on the
+# canonical timeline operations + CreativeDirector paths.
+api_router.include_router(captions_router)
+# Work 14: read-only distribution surface (verified platform profiles,
+# capability badges, the variant optimization diff). No publish route here.
+api_router.include_router(distribution_router)
+# Work 15: the planner control surface (signals, opportunities, plans, calendar,
+# capacity, autonomy policy, feedback). No publish route here: planning
+# autonomy never implies publishing autonomy.
+api_router.include_router(planner_router)
+# Work 15.6: generated-music POLICY only (opt-in + BrandDNA taste). The
+# generation itself is a pipeline stage, not an endpoint, so nothing here spends
+# money.
+api_router.include_router(music_router)
+# Work 15.6: provider MATURITY — a read-only view of how far each LLM/TTS/
+# music/video/image/avatar adapter has actually been taken. Global table plus a
+# workspace-scoped view that resolves credential *presence* only (a state word,
+# never a value). No route here configures, enables, or probes by default.
+api_router.include_router(provider_maturity_router)
+api_router.include_router(workspace_maturity_router)
+# Work 15.6: voice PREVIEW flow -- choose a provider (with the reason it is or
+# is not offerable), list the voices production would actually use, hear a short
+# cost-guarded sample, pick one. The raw synthesis route on assets_router stays;
+# this adds the provider-awareness and the spend guard around it.
+api_router.include_router(voice_preview_router)

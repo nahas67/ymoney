@@ -132,9 +132,13 @@ def test_video_cross_workspace_blocked(db_session, workspace_with_user, tmp_path
 def _post(db_session, ws_id, video_id, is_mock=False):
     from app.models import PublishedPost
 
+    # Work 14: publication_mode is declared explicitly. The column default is
+    # UNAVAILABLE (fail closed) because a row that states no mode has stated
+    # nothing -- so a test that means "live" or "mock" must say which.
     post = PublishedPost(workspace_id=ws_id, video_id=video_id, platform="youtube",
                          remote_post_id=f"remote-{os.urandom(3).hex()}",
-                         remote_url="https://youtube.test/v/1", is_mock=is_mock)
+                         remote_url="https://youtube.test/v/1", is_mock=is_mock,
+                         publication_mode="MOCK" if is_mock else "LIVE")
     db_session.add(post)
     db_session.commit()
     return post

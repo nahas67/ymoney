@@ -1,13 +1,10 @@
 """0003: video thumbnails + job progress columns."""
 
+from app.migrations.ddl import add_column_if_missing
+
 
 def upgrade(session) -> None:
-    from sqlalchemy import inspect, text
-
-    inspector = inspect(session.bind)
-    tables = set(inspector.get_table_names())
-
-    if "videos" in tables:
-        cols = {c["name"] for c in inspector.get_columns("videos")}
-        if "thumbnail_path" not in cols:
-            session.execute(text("ALTER TABLE videos ADD COLUMN thumbnail_path TEXT DEFAULT ''"))
+    # See 0003_video_progress: the guard reads the catalog instead of
+    # swallowing a duplicate-column error, which on PostgreSQL would abort
+    # the migration's transaction for good.
+    add_column_if_missing(session, "videos", "thumbnail_path", "TEXT DEFAULT ''")

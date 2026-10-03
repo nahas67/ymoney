@@ -32,6 +32,7 @@ Design rules:
 
 from __future__ import annotations
 
+import inspect
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -93,11 +94,21 @@ def choose_voice(target_lang: str, explicit: str = "") -> str:
     return dubbing.pick_voice(target_lang, explicit)
 
 
-def synthesize_texts(texts: list[str], voice: str, work_dir: Path) -> list[Path]:
+def synthesize_texts(texts: list[str], voice: str, work_dir: Path,
+                     workspace_id: str = "") -> list[Path]:
+    """Speak the localized cues. The workspace travels with the call (15.9 §2).
+
+    TTS is billable, and the provider lane resolves its tenant from an explicit
+    argument before falling back to an ambient context variable. The pipeline
+    holds a canonical workspace and must not leave the speech leg to guess one:
+    a wrong guess charges the wrong tenant, and no guess at all leaves the
+    spend unowned.
+    """
     from app.providers import dubbing
 
     return [Path(p) if p else Path("") for p
-            in dubbing.synthesize_segments(texts, voice, work_dir)]
+            in dubbing.synthesize_segments(
+                texts, voice, work_dir, workspace_id=workspace_id or "")]
 
 
 # ---------------------------------------------------------------------------
@@ -314,12 +325,48 @@ def localize_hashtag(tag: str, translated: str) -> str:
     return "#" + compact.lower()
 
 
+def _accepts_kwarg(fn, name: str) -> bool:
+    """Whether a module-level hook takes ``name``. Signature, not guesswork.
+
+    A test double written against the pre-15.9 hook signatures must keep
+    working, and a ``TypeError`` fallback would be wrong: it would also swallow
+    a ``TypeError`` raised *inside* a hook that does accept the argument. So the
+    decision is made from the signature. Anything uninspectable (a C callable)
+    is given the argument, because the modern signature is the default.
+    """
+    try:
+        params = inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return True
+    if name in params:
+        return True
+    return any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
+
+
+def _call_with_workspace(fn, args: list, workspace_id: str = ""):
+    """Call a pipeline hook with the canonical workspace when it takes one."""
+    if _accepts_kwarg(fn, "workspace_id"):
+        return fn(*args, workspace_id=workspace_id or "")
+    logger.warning(
+        "[localization] hook %s takes no workspace_id; its billable legs are "
+        "unowned", getattr(fn, "__name__", repr(fn)))
+    return fn(*args)
+
+
 def localize_metadata(meta: dict, language: str,
-                      translate_fn) -> tuple[dict, int]:
+                      translate_fn, workspace_id: str = "") -> tuple[dict, int]:
     """Translate prose fields of a metadata dict; copy everything else verbatim.
 
     Returns ``(localized_metadata, changed_string_count)``. Numbers, booleans
     and unknown keys pass through untouched — metrics are never invented.
+
+    ``workspace_id`` is required for a billable ``translate_fn`` (Work 15.9 §2).
+    This used to hardcode ``workspace_id=""`` here while every other stage in
+    this same file passed ``self.row.workspace_id``, which made the metadata
+    leg the one ownerless spend in the run: the request went out, the tenant's
+    cap never saw it, and nothing on the ledger said who paid. The caller owns a
+    canonical ``localized_contents`` row that already carries the workspace, so
+    the id travels with the call rather than being re-derived here.
     """
     text_values: list[str] = []
     list_values: list[str] = []
@@ -348,14 +395,15 @@ def localize_metadata(meta: dict, language: str,
     translated = list(ordered)
     if ordered:
         try:
-            result = translate_fn(list(ordered), language, workspace_id="",
+            result = translate_fn(list(ordered), language,
+                                  workspace_id=workspace_id or "",
                                   glossary=None)
             if isinstance(result, list) and len(result) == len(ordered):
-                translated = [str(r or o) for r, o in zip(result, ordered)]
+                translated = [str(r or o) for r, o in zip(result, ordered, strict=False)]
         except Exception as exc:  # metadata must never fail the run
             logger.warning(f"[localization] metadata translation degraded: {exc}")
-    mapping = dict(zip(ordered, translated))
-    changed = sum(1 for o, t in zip(ordered, translated) if t != o)
+    mapping = dict(zip(ordered, translated, strict=False))
+    changed = sum(1 for o, t in zip(ordered, translated, strict=False) if t != o)
 
     def _apply(obj, active_list: bool):
         if isinstance(obj, dict):
@@ -636,7 +684,7 @@ class LocalizationPipeline:
             raw = raw + [""] * (len(cues) - len(raw))
         raw = raw[:len(cues)]
         literal: list[str] = []
-        for cue, text in zip(cues, raw):
+        for cue, text in zip(cues, raw, strict=False):
             fixed, events = enforce_glossary(cue.text, text, entries, lang)
             literal.append(fixed)
             self.repairs.extend({**e, "cue": cue.index} for e in events)
@@ -648,7 +696,7 @@ class LocalizationPipeline:
         # 5. cultural adaptation ------------------------------------------
         localized = [adapt_culture(t, lang) for t in literal]
         self._stage("cultural_adaptation",
-                    f"{sum(1 for a, b in zip(literal, localized) if a != b)} "
+                    f"{sum(1 for a, b in zip(literal, localized, strict=False) if a != b)} "
                     f"line(s) adapted")
 
         # 6. TTS ----------------------------------------------------------
@@ -760,7 +808,9 @@ class LocalizationPipeline:
         work_dir = (STORAGE_ROOT / self.row.workspace_id / "localization"
                     / f"{self.row.id}_{lang}")
         try:
-            paths = self.tts_fn(list(texts), primary, work_dir)
+            paths = _call_with_workspace(
+                self.tts_fn, [list(texts), primary, work_dir],
+                workspace_id=self.row.workspace_id)
         except Exception as exc:
             out["issues"].append(f"TTS degraded: {type(exc).__name__}: {exc}"[:300])
             return out
@@ -780,7 +830,7 @@ class LocalizationPipeline:
         worst = 0.0
         flagged: list[int] = []
         total_est, total_window = 0.0, 0.0
-        for cue, text in zip(cues, localized):
+        for cue, text in zip(cues, localized, strict=False):
             window = max(0.0, cue.end - cue.start)
             est = quality.estimate_seconds(text)
             drift = round(est - window, 3)
@@ -809,7 +859,7 @@ class LocalizationPipeline:
         """Caption clips preserve the SOURCE cue windows (tile-repaired)."""
         clips: list[dict] = []
         for i, (cue, text, (start, duration)) in enumerate(
-                zip(cues, localized, windows), 1):
+                zip(cues, localized, windows, strict=False), 1):
             if duration <= 0:
                 self.warnings.append(f"cue {cue.index} dropped (empty window)")
                 continue
@@ -864,7 +914,8 @@ class LocalizationPipeline:
             "strategy": strategy,
             "variants": [dict(v.metadata_json or {}) for v in bundle.variants],
         }
-        return localize_metadata(meta, lang, self.translate_fn)
+        return localize_metadata(meta, lang, self.translate_fn,
+                                 workspace_id=self.row.workspace_id)
 
     # -- persistence ------------------------------------------------------
 
@@ -923,7 +974,7 @@ class LocalizationPipeline:
 
         # localized voice track (source windows, per-speaker voices)
         for i, (cue, text, (start, duration)) in enumerate(
-                zip(cues, localized, windows), 1):
+                zip(cues, localized, windows, strict=False), 1):
             if duration <= 0:
                 continue
             voice = voice_plan.get(cue.speaker) or audio["voice"]
@@ -973,7 +1024,7 @@ class LocalizationPipeline:
 
         # scenes: one row per cue, localized narration for the editor
         for i, (cue, text, (start, duration)) in enumerate(
-                zip(cues, localized, windows)):
+                zip(cues, localized, windows, strict=False)):
             if duration <= 0:
                 continue
             db.add(Scene(
@@ -1061,7 +1112,7 @@ class LocalizationPipeline:
 
         target_cues = [{"index": cue.index, "start": cue.start, "end": cue.end,
                         "text": text, "speaker": cue.speaker}
-                       for cue, text in zip(cues, localized)]
+                       for cue, text in zip(cues, localized, strict=False)]
         target_speakers = sorted({c["speaker"] for c in target_cues if c["speaker"]})
         result = quality.evaluate(
             workspace_id=self.row.workspace_id,

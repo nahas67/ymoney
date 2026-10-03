@@ -88,6 +88,39 @@ REGISTRY: dict[str, dict] = {
     "newsdata.api_key": {"label": "NewsData.io API key (news trend source)", "secret": True, "env": "NEWSDATA_API_KEY"},
     "coingecko.api_key": {"label": "CoinGecko demo key (optional, higher rate limits)", "secret": True, "env": "COINGECKO_API_KEY"},
     "telegram.bot_token": {"label": "Telegram bot token (from @BotFather)", "secret": True, "env": "telegram_bot_token"},
+    # Work 15.7 §10. TwelveLabs Embed v2 is billed per input token, so its key
+    # is a paid-capability credential and belongs in the resolver rather than in
+    # a raw `os.environ` read inside the provider.
+    #
+    # Before this entry, `get_credential("intel.twelvelabs_api_key")` raised
+    # KeyError, the provider swallowed that and fell through to
+    # `os.environ["TWELVELABS_API_KEY"]`. A process-wide fallback is not
+    # workspace-scoped: workspace B got workspace A's (or the operator's) key,
+    # and there was no encrypted row an operator could revoke. That is exactly
+    # what `google.client_secret`, `tts.kokoro_api_key` and `tts.qwen_api_key`
+    # already exist to prevent.
+    #
+    # `env: None` is the ESTABLISHED policy for a key with no matching attribute
+    # on `app.core.config.settings` -- the resolver then reads DB -> global DB
+    # row -> None. Naming an env attribute that settings does not define would
+    # advertise a fallback that can never resolve, which is worse than having
+    # none: an operator would set the variable, see "not configured", and file
+    # a bug. The provider's own process-level `TWELVELABS_API_KEY` read remains
+    # in place as the last resort, and it is the ONLY env path this key has.
+    #
+    # `secret: True` is what keeps the value, its length and its digest out of
+    # Settings -> Connections: that endpoint masks on `secret` and
+    # `app.providers.maturity.resolve_credential_status` only ever returns the
+    # word CONFIGURED / NOT_CONFIGURED / UNRESOLVED.
+    #
+    # NOTE: the key is resolvable and workspace-scoped but is not yet in
+    # `api/v1/connections.py::_MANAGEABLE`, so it cannot be set from the UI. See
+    # the Work 15.7 report: adding it there is outside this change's file scope.
+    "intel.twelvelabs_api_key": {
+        "label": "TwelveLabs API key (semantic re-ranking, billed per token)",
+        "secret": True,
+        "env": None,
+    },
     # Model-tier routing
     "llm.model_cheap": {"label": "Cheap-tier model (discovery/metadata)", "secret": False, "env": "research_model_cheap"},
     "llm.model_reasoning": {"label": "Reasoning-tier model (strategy/scripts)", "secret": False, "env": "research_model_reasoning"},

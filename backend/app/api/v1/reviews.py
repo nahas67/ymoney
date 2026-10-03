@@ -18,9 +18,21 @@ canonical prefix, so the review/revision lifecycle stays in one file:
     GET    /workspaces/{ws}/revisions/{id}                       detail
     POST   /workspaces/{ws}/revisions/{id}/state                 explicit state move
 
-Floors are the existing ``require_workspace_role`` dependencies (viewer for
-reads and collaboration writes). Project capabilities come from
-``services/project_auth`` (contracts §3) and only NARROW the floor.
+Floors are the existing ``require_workspace_role`` dependencies:
+
+  * reads -> ``viewer``;
+  * collaboration writes (comments) -> ``viewer``. This is a deliberate
+    Work 11 decision, documented in ``services/project_auth``: collaboration
+    capabilities (comment / request_revision / approve) fall through to the
+    route floor. Kept as-is by Work 11.5 (see the production gap matrix,
+    B-F4) because raising it would contradict the locked Work 11 matrix.
+  * governance writes (review create/submit/decision/cancel, assignments,
+    revision create/state) -> ``member``. Work 11.5 B-F2 raised these from
+    ``viewer``: opening, deciding and moving a review is a governance action,
+    not observation, and a workspace viewer must not be able to drive it.
+
+Project capabilities come from ``services/project_auth`` (contracts §3) and
+only NARROW the floor.
 
 RBAC matrix locked by tests (contracts §5): workspace floor ``member`` for
 create, project scope = the ``comment`` capability:
@@ -298,11 +310,18 @@ def get_review(
 @_guard()
 def submit_review(
     review_id: str,
-    ws: Workspace = Depends(require_workspace_role("viewer")),
+    ws: Workspace = Depends(require_workspace_role("member")),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _review_or_404(db, ws, review_id)
+    review = _review_or_404(db, ws, review_id)
+    # W11.5 B-F2: submitting rebinds versions and moves the lifecycle --
+    # a viewer must not drive it. Same comment capability as creating.
+    if review.project_id:
+        _check(db, ws, user, capability="comment", project_id=review.project_id)
+    else:
+        _check(db, ws, user, capability="comment",
+               target_type=review.target_type, target_id=review.target_id)
     return engine.submit_for_review(db, ws, review_id, actor=user.id)
 
 
@@ -311,7 +330,7 @@ def submit_review(
 def post_decision(
     review_id: str,
     body: DecisionBody,
-    ws: Workspace = Depends(require_workspace_role("viewer")),
+    ws: Workspace = Depends(require_workspace_role("member")),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -335,7 +354,7 @@ def post_decision(
 @_guard()
 def cancel_review(
     review_id: str,
-    ws: Workspace = Depends(require_workspace_role("viewer")),
+    ws: Workspace = Depends(require_workspace_role("member")),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -358,7 +377,7 @@ def cancel_review(
 def add_assignment(
     review_id: str,
     body: AssignmentBody,
-    ws: Workspace = Depends(require_workspace_role("viewer")),
+    ws: Workspace = Depends(require_workspace_role("member")),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -416,7 +435,7 @@ class RevisionStateBody(BaseModel):
 @_guard()
 def create_revisions(
     body: RevisionCreateBody,
-    ws: Workspace = Depends(require_workspace_role("viewer")),
+    ws: Workspace = Depends(require_workspace_role("member")),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -485,7 +504,7 @@ def get_revision(
 def set_revision_state(
     revision_id: str,
     body: RevisionStateBody,
-    ws: Workspace = Depends(require_workspace_role("viewer")),
+    ws: Workspace = Depends(require_workspace_role("member")),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):

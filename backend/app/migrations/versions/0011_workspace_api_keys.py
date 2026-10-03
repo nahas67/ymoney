@@ -14,7 +14,7 @@ def upgrade(session) -> None:
             prefix VARCHAR(16) NOT NULL,
             key_hash VARCHAR(128) NOT NULL,
             role VARCHAR(20) NOT NULL DEFAULT 'member',
-            revoked BOOLEAN NOT NULL DEFAULT 0,
+            revoked BOOLEAN NOT NULL DEFAULT FALSE,
             last_used_at TIMESTAMP
         )
     """))

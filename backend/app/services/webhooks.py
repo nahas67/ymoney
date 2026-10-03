@@ -81,6 +81,39 @@ WEBHOOK_EVENTS: tuple[str, ...] = (
     "COMMENT_RESOLVED",
     "COMMENT_REOPENED",
     "REVISION_UPDATED",
+    # Work 12 (Lane A, media-intelligence run lifecycle). A cache hit is
+    # intentionally NOT listed: a cached run records neither cost nor
+    # event, so there is nothing to fan out.
+    "MEDIA_INTEL_RUN_CREATED",
+    "MEDIA_INTEL_RUN_STARTED",
+    "MEDIA_INTEL_RUN_COMPLETED",
+    "MEDIA_INTEL_RUN_FAILED",
+    "MEDIA_INTEL_RUN_CANCELLED",
+    "MEDIA_INTEL_RUN_UNAVAILABLE",
+    "MEDIA_INTEL_RUN_RETRIED",
+    # Work 12 (Lane C, audio enhancement). PARTIAL is emitted only when a
+    # stage actually failed; merely-unavailable stages ride in data.
+    "MEDIA_INTEL_AUDIO_ENHANCE_COMPLETED",
+    "MEDIA_INTEL_AUDIO_ENHANCE_PARTIAL",
+    # Work 12 (Lane H, QC). An override is a new attributable row, never a
+    # rewrite of the original verdict.
+    "MEDIA_INTEL_QC_COMPLETED",
+    "MEDIA_INTEL_QC_OVERRIDDEN",
+    # Work 12 (Lane E, face tracking). Carries tracks/samples/truncated/
+    # reentry/unresolved-crossing counts in data.
+    "MEDIA_INTEL_FACE_TRACKS",
+    # Work 12 (Lane D, silence/filler proposals + apply). EDITS_APPLIED
+    # carries the QC verdicts and whether an override was used.
+    "MEDIA_INTEL_SILENCE_PROPOSED",
+    "MEDIA_INTEL_FILLERS_PROPOSED",
+    "MEDIA_INTEL_PROPOSAL_DECIDED",
+    "MEDIA_INTEL_EDITS_APPLIED",
+    # Work 12 (Lane B, speech). 1+2 are reserved constants (alignment /
+    # diarization engines); 3+4 are emitted today by the alias routes.
+    "MEDIA_INTEL_WORDS_ALIGNED",
+    "MEDIA_INTEL_SPEAKERS_RESOLVED",
+    "MEDIA_INTEL_SPEAKER_ALIAS_SET",
+    "MEDIA_INTEL_SPEAKER_ALIAS_REMOVED",
 )
 
 _SIGNATURE_HEADER = "X-YM-Signature"

@@ -57,6 +57,44 @@ def _migrate_once():
         run_migrations(s)
 
 
+#: A billable call with no budget owner is refused (Work 15.9 §1). Provider test
+#: modules that drive a billable lane opt into the ``billable_workspace``
+#: fixture above. It is deliberately NOT autouse: a blanket ambient scope would
+#: silently break every test that asserts the ABSENCE of a workspace -- global
+#: credential resolution, ownerless refusal, credential precedence.
+
+
+@pytest.fixture()
+def billable_workspace(db_session):
+    """Opt-in workspace scope for a test that drives a billable provider.
+
+    Backed by a REAL ``Workspace`` row. A synthetic id would satisfy the scope
+    but violate a foreign key partway through a paid call -- and an FK failure
+    halfway through a reservation is a far worse failure than an explicit
+    refusal, because the reservation may already be half-written.
+
+    The row is committed like any other fixture workspace; no budget limits are
+    set, so the default (generous) cap applies. An explicit ``workspace_id=``
+    argument still wins, which is how a test exercises tenant isolation.
+    """
+    import os as _os
+
+    from app.models import Workspace
+    from app.services.provider_settings import workspace_scope
+
+    ws = Workspace(name="Billable Test WS",
+                   slug=f"billable-{_os.urandom(4).hex()}", niche="AI money")
+    db_session.add(ws)
+    db_session.commit()
+
+    scope = workspace_scope(ws.id)
+    scope.__enter__()
+    try:
+        yield ws.id
+    finally:
+        scope.__exit__(None, None, None)
+
+
 @pytest.fixture(autouse=True)
 def _fake_llm(monkeypatch):
     """Deterministic in-test LLM. The PRODUCT has no mock paths; this is a

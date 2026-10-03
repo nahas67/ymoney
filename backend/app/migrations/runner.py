@@ -76,11 +76,16 @@ def run_migrations(session: Session, *, create_missing_tables: bool = True) -> l
     applied = applied_versions(session)
     done: list[str] = []
 
-    inspector = inspect(session.bind)
-
     if create_missing_tables:
-        # Base tables first; migrations handle incremental changes after v1.
+        # Importing the models registers every table on ``Base.metadata``;
+        # without it ``create_all`` would build an EMPTY schema and the first
+        # migration that touches a real table would fail with "relation does
+        # not exist". That made correctness depend on whether some unrelated
+        # import had already pulled the models in, so it is done here instead.
+        import app.models  # noqa: F401 - registration side effect
         Base.metadata.create_all(session.bind)
+
+    inspector = inspect(session.bind)
 
     for name, mod in load_migrations():
         if name in applied:

@@ -310,6 +310,22 @@ def test_campaign_e2e_master_to_attributed_metrics(tmp_path, monkeypatch):
         for p in posts:
             assert p.platform_variant_id and p.remote_post_id.startswith("mock-")
 
+    # W11.5 D-F1: the SUCCESS path must also move the variant to PUBLISHED.
+    # It never asserted this, which is how a real defect hid: `_mark_variant`
+    # opened its OWN session while the publish transaction already held
+    # SQLite's write lock, so the nested write timed out on busy_timeout and
+    # was swallowed by a bare `except` -- leaving status at READY while the
+    # publish reported success (and burning 5s per publish). The FAILED path
+    # was asserted below and passed, because nothing is flushed there yet.
+    with session_scope() as s:
+        published_ids = {p.platform_variant_id for p in posts}
+        now_published = s.scalars(select(PlatformVariant).where(
+            PlatformVariant.id.in_(published_ids))).all()
+        assert len(now_published) == 4, [v.id for v in now_published]
+        for v in now_published:
+            assert v.status == "PUBLISHED", f"{v.id} left at {v.status}"
+            assert v.published_post_id, f"{v.id} has no published_post_id"
+
     # --- failed publication isolates siblings ---
     def _boom(platform, **kw):
         raise RuntimeError("provider down")
@@ -317,7 +333,18 @@ def test_campaign_e2e_master_to_attributed_metrics(tmp_path, monkeypatch):
     monkeypatch.setattr(publisher_factory, "get_publisher", _boom)
     with session_scope() as s:
         victim = [v for v in variants if v.platform == "instagram_reels"][0]
-        before = [(v.id, v.status) for v in variants if v.id != victim.id]
+        # W11.5 D-F1: read the sibling snapshot from the DB, not from the
+        # `variants` list loaded before the successful publishes. Now that the
+        # success path really writes PUBLISHED (it used to silently fail), the
+        # stale in-memory rows said READY while the table said PUBLISHED, and
+        # this sibling-isolation assertion failed for the wrong reason.
+        before = sorted(
+            (v.id, v.status)
+            for v in s.scalars(select(PlatformVariant).where(
+                PlatformVariant.workspace_id == ws_id,
+                PlatformVariant.campaign_id == camp_id)).all()
+            if v.id != victim.id
+        )
     ctx = jobs_service.JobContext(
         job_id="e2e-pub-fail", type="campaign.publish", workspace_id=ws_id,
         cycle_id=None, payload={"campaign_id": camp_id, "variant_id": victim.id,
@@ -329,9 +356,9 @@ def test_campaign_e2e_master_to_attributed_metrics(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError):
         pub_handler(ctx)
     with session_scope() as s:
-        after = [(v.id, v.status) for v in s.scalars(select(PlatformVariant).where(
+        after = sorted((v.id, v.status) for v in s.scalars(select(PlatformVariant).where(
             PlatformVariant.workspace_id == ws_id,
-            PlatformVariant.campaign_id == camp_id)).all() if v.id != victim.id]
+            PlatformVariant.campaign_id == camp_id)).all() if v.id != victim.id)
         assert before == after
         failed = s.get(PlatformVariant, victim.id)
         assert failed.status == "FAILED"

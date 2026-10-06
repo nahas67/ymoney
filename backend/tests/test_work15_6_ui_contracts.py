@@ -161,12 +161,32 @@ def test_the_panel_uses_existing_primitives_not_a_new_design_system():
 
 
 def test_settings_grew_a_providers_tab_rather_than_a_new_page():
-    """The work order asked to extend existing areas, not add pages."""
+    """The work order asked to extend existing areas, not add pages.
+
+    Work 16.5.1 changed the second half of this assertion on purpose, so the
+    change is recorded rather than smuggled:
+
+    * Originally this asserted ``ProviderStatus`` was absent from the router,
+      because Work 15.6 added a Providers TAB and nothing else.
+    * Work 16.5.1 §1 lists ``Providers`` in the target information architecture
+      as its own navigation destination. The old router (``frontend/src/App.tsx``)
+      no longer exists; routing authority moved to the single registry in
+      ``frontend/src/routes/registry.ts`` plus ``frontend/src/app/App.tsx``.
+
+    What still must hold, and is asserted below: Settings keeps its Providers
+    tab, and ``ProviderStatus`` is reachable through the ONE registry rather than
+    being wired up as an ad-hoc extra route.
+    """
     settings = SETTINGS.read_text(encoding="utf-8")
     assert "ProviderStatus" in settings
     assert re.search(r'key:\s*"providers"', settings), (
         "Settings has no Providers tab; a separate page was added instead")
-    # And no new route/page was registered for it.
-    app = (REPO / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
-    assert "ProviderStatus" not in app, (
-        "a provider page was routed separately; it belongs inside Settings")
+
+    registry = (REPO / "frontend" / "src" / "routes" / "registry.ts").read_text(
+        encoding="utf-8")
+    assert re.search(r'path:\s*"/providers"', registry), (
+        "providers is not declared in the route registry")
+    # Declared exactly once -- a second, hand-written route is how a nav entry
+    # ends up pointing at a 404.
+    assert len(re.findall(r'path:\s*"/providers"', registry)) == 1, (
+        "providers is declared more than once in the registry")

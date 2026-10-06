@@ -63,7 +63,18 @@ def list_opportunities(
                 "recommendation": o.recommendation,
                 "lifecycle": o.lifecycle or "UNKNOWN",
                 "confidence": o.confidence,
-                "virality": getattr(o, "virality", 0.0) or 0.0,
+                # HONESTY (Work 16.5.7 §8): `getattr(o, "virality", 0.0) or
+                # 0.0` had two jobs it could not do. It substituted 0.0 for a
+                # row that has no virality value at all, and `or 0.0` also
+                # rewrote a REAL measured 0.0 into itself -- which is harmless
+                # but hides the actual bug, that a missing value and a measured
+                # zero were the same number. An opportunity the planner created
+                # (basis=RECOMMENDED) has no measured breakout potential, so it
+                # must read UNAVAILABLE. A scored opportunity keeps its number,
+                # including a genuine 0.0.
+                "virality": (
+                    round(float(o.virality), 3) if getattr(o, "virality", None) is not None else None
+                ),
                 "selected": o.selected,
                 "skipped_reason": o.skipped_reason or "",
                 # discovery metadata for the Trend Center (None when absent)

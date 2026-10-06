@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 
 from app.models import EventLog
 from app.services.events import record_event
+from app.services.json_portability import json_value_equals
 
 logger = logging.getLogger("ymoney.collab")
 
@@ -177,20 +178,41 @@ def query(
     id can never widen the result, it can only narrow it to nothing.
     Structured filters read ``data_json`` through the JSON path index
     (portable on SQLite + PostgreSQL), never through string matching.
+
+    Why ``json_value_equals`` and not ``.as_string()``
+    --------------------------------------------------
+    ``EventLog.data_json["project_id"].as_string() == str(project_id)`` reads
+    like a JSON-string comparison and is not one on both backends. PostgreSQL
+    compiles it to ``CAST((col ->> 'project_id') AS VARCHAR)``, which stringifies
+    a JSON number, so it matches a row written ``{"project_id": 42}``. SQLite
+    compiles it to ``JSON_EXTRACT(col, '$."project_id"')`` with NO cast, and
+    ``42 = '42'`` is FALSE in SQLite, so the same stored row is invisible.
+    Measured on both over identical rows:
+
+    ====================  ==========  ============
+    construct             SQLite      PostgreSQL
+    ====================  ==========  ============
+    ``.as_string()``      ``[1]``     ``[1, 2]``
+    ``json_value_equals`` ``[1, 2]`` ``[1, 2]``
+    ====================  ==========  ============
+
+    Idempotency-key style filters in other modules are correct today only
+    because every current writer happens to store a STRING; the helper removes
+    that dependency on a coincidence of writers. See
+    ``services/json_portability.py`` for the full backend audit.
     """
     stmt = select(EventLog).where(EventLog.workspace_id == workspace_id)
     if kind:
         stmt = stmt.where(EventLog.kind == kind)
     if project_id:
-        stmt = stmt.where(
-            EventLog.data_json["project_id"].as_string() == str(project_id)
-        )
+        stmt = stmt.where(json_value_equals(EventLog.data_json, "project_id",
+                                            project_id))
     if target_type:
-        stmt = stmt.where(
-            EventLog.data_json["target"]["type"].as_string() == str(target_type)
-        )
+        stmt = stmt.where(json_value_equals(EventLog.data_json,
+                                            ("target", "type"), target_type))
     if target_id:
-        stmt = stmt.where(EventLog.data_json["target"]["id"].as_string() == str(target_id))
+        stmt = stmt.where(json_value_equals(EventLog.data_json,
+                                            ("target", "id"), target_id))
     if since is not None:
         stmt = stmt.where(EventLog.created_at >= since)
     capped = max(1, min(int(limit or DEFAULT_LIMIT), MAX_LIMIT))

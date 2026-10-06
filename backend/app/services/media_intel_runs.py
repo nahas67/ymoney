@@ -18,6 +18,14 @@ those three rules exist exactly once:
   ``settings.max_concurrent_gpu_jobs`` (default 1), PER WORKSPACE, with a
   timeout. CPU-only providers simply never enter the semaphore.
 
+  Those two are only HALF of GPU admission. :func:`gpu_admitted` /
+  :func:`gpu_admitted_sync` are the production entry points and they compose
+  this per-workspace guard with the per-DEVICE VRAM guard in
+  ``services/gpu_scheduler.py`` -- workspace first, then device, then execute.
+  The two systems are deliberately not merged; see the composition block below
+  for the invariant, the ordering rationale, and what a caller gets by using
+  only one layer.
+
 Run state machine (never inferred, always written)::
 
     PENDING -> RUNNING -> COMPLETED
@@ -50,6 +58,7 @@ import os
 import time
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -66,6 +75,7 @@ from app.models.media_intel import (
     RETRYABLE_RUN_STATUSES,
     TERMINAL_RUN_STATUSES,
 )
+from app.services import gpu_scheduler
 
 logger = logging.getLogger("ymoney.intel")
 
@@ -852,8 +862,163 @@ def gpu_semaphore_sync(
         _release_slot(slot_id)
 
 
+# ---------------------------------------------------------------------------
+# Composition: workspace admission AND device admission, then execute
+# ---------------------------------------------------------------------------
+#
+# Two admission systems exist and they are NOT merged. They answer different
+# questions and they fail differently:
+#
+#   workspace guard  (this module)  "may THIS TENANT run GPU work right now?"
+#                                  -> `jobs` rows of type MEDIA_INTEL_GPU_SLOT,
+#                                     capped by max_concurrent_gpu_jobs, unique
+#                                     idempotency_key. Cross-process. Cheap.
+#   device guard     (gpu_scheduler) "is there REAL VRAM for this job on ONE
+#                                     device?"
+#                                  -> a conditional UPDATE on
+#                                     gpu_devices.reserved_mb, sized by the
+#                                     job's declared footprint. Cross-process.
+#
+# Merging them would destroy the thing each is good for: the device guard would
+# have to know about per-workspace fairness, and the workspace guard would have
+# to know VRAM sizes. Instead they are COMPOSED, and the composition is the
+# invariant:
+#
+#     workspace admission AND device admission  ->  execute
+#
+# Order is workspace FIRST, then device, and the reason is not cosmetic:
+#
+#   * the workspace guard is the cheap one (one indexed SELECT + one INSERT on
+#     a UNIQUE key). The device guard is the expensive one (it polls real
+#     capacity against a deadline). Taking VRAM first and then queueing on a
+#     tenant quota would hold megabytes while not running anything, which is
+#     the exact lie the device scheduler was written to stop.
+#   * a workspace that is over quota should be refused before it competes for
+#     a device at all, so the refusal is cheap and attributable to the tenant
+#     rather than surfacing later as a mysterious VRAM timeout.
+#
+# Nested ``with`` makes the invariant structural: the body cannot run until both
+# have granted, and either one failing unwinds the other. That is what
+# ``tests/test_work16_1_gpu_admission.py`` pins structurally, because the
+# failure this guards against is not a bug someone writes deliberately -- it is
+# a future edit that reaches for the one guard that looks convenient.
+#
+# What a caller gets by using only one layer, honestly:
+#
+#   device only     no per-tenant fairness: one workspace can take every device.
+#                   And `collect_gpu_slots()` counts MEDIA_INTEL_GPU_SLOT rows,
+#                   not gpu_reservations, so `ymoney_gpu_slots_reserved` stays
+#                   0 while work is running -- which can make
+#                   `gpu_queue_starvation` fire against a busy GPU.
+#   workspace only  no VRAM accounting whatsoever: the oversubscription and
+#                   CUDA OOM the device guard exists to prevent, plus nothing
+#                   for `gpu_scheduler.snapshot()` to report.
+#   neither         a semaphore. That is the pre-Work-16 behaviour.
+
+
+@dataclass(frozen=True)
+class AdmittedGpu:
+    """Proof that BOTH guards granted, and nothing else.
+
+    ``workspace_slot_id`` is the ledger row id (deleted on release);
+    ``device_slot`` is a :class:`~app.services.gpu_scheduler.GpuSlot`. The pair
+    is what the caller needs for an audit line: which tenant, which device, how
+    much VRAM, and whether it really ran on CPU.
+    """
+
+    workspace_slot_id: str
+    device_slot: Any
+
+    @property
+    def device_key(self) -> str:
+        return str(getattr(self.device_slot, "device_key", ""))
+
+    @property
+    def vram_mb(self) -> int:
+        return int(getattr(self.device_slot, "vram_mb", 0) or 0)
+
+    @property
+    def cpu_fallback(self) -> bool:
+        return bool(getattr(self.device_slot, "cpu_fallback", False))
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "workspace_slot_id": self.workspace_slot_id,
+            "device_key": self.device_key,
+            "vram_mb": self.vram_mb,
+            "cpu_fallback": self.cpu_fallback,
+            "reservation_id": str(getattr(self.device_slot, "reservation_id", "")),
+        }
+
+
+def _gpu_request(workspace_id: str, kind: str, job_id: str | None,
+                 job_type: str) -> gpu_scheduler.GpuRequest:
+    """The device-layer request. VRAM and CPU-capability are left to the
+    scheduler's declared table, so the two layers cannot disagree about how big
+    a ``segmentation`` job is."""
+    return gpu_scheduler.GpuRequest(kind=kind, workspace_id=workspace_id,
+                                    job_id=job_id, job_type=job_type)
+
+
+@contextlib.contextmanager
+def gpu_admitted_sync(
+    workspace_id: str = "", *, kind: str = "default", job_id: str | None = None,
+    job_type: str = "", limit: int | None = None,
+    timeout: float = DEFAULT_SLOT_TIMEOUT, poll_seconds: float = 0.05,
+    stale_seconds: float = DEFAULT_SLOT_STALE_SECONDS,
+) -> Iterator[AdmittedGpu]:
+    """Blocking composition of BOTH guards. The body runs only with both.
+
+    Sync twin of :func:`gpu_admitted`. The context order on the ``with`` below
+    IS the composition order and is load-bearing: workspace first, device
+    second. Exits unwind in reverse, so a device-admission failure gives the
+    workspace slot back without a second code path.
+
+    ``timeout`` and ``poll_seconds`` are the budget and poll interval for EACH
+    guard, not a sum. A caller that wants the two to differ passes the device
+    budget to :func:`~app.services.gpu_scheduler.gpu_slot` itself; silently
+    discarding the arguments would be the same dead-parameter defect §6 is
+    about.
+    """
+    request = _gpu_request(str(workspace_id or ""), kind, job_id, job_type)
+    with (gpu_semaphore_sync(limit, workspace_id=workspace_id, timeout=timeout,
+                             poll_seconds=poll_seconds, kind=kind,
+                             stale_seconds=stale_seconds) as slot_id,
+          gpu_scheduler.gpu_slot(request, timeout=timeout,
+                                 poll_seconds=poll_seconds) as device_slot):
+        yield AdmittedGpu(workspace_slot_id=slot_id,
+                           device_slot=device_slot)
+
+
+@asynccontextmanager
+async def gpu_admitted(
+    workspace_id: str = "", *, kind: str = "default", job_id: str | None = None,
+    job_type: str = "", limit: int | None = None,
+    timeout: float = DEFAULT_SLOT_TIMEOUT, poll_seconds: float = 0.05,
+    stale_seconds: float = DEFAULT_SLOT_STALE_SECONDS,
+):
+    """Async composition of BOTH guards: workspace first, then device.
+
+    This is the production GPU entry point. Nothing under ``app/`` may call
+    either guard directly -- ``tests/test_work16_1_gpu_admission.py`` walks the
+    AST of every module in ``app/`` and fails if one does, because "a caller
+    quietly ends up with one guard" is a defect that compiles, passes review and
+    only shows up as an OOM in production.
+    """
+    request = _gpu_request(str(workspace_id or ""), kind, job_id, job_type)
+    async with (gpu_semaphore(limit, workspace_id=workspace_id, timeout=timeout,
+                              poll_seconds=poll_seconds, kind=kind,
+                              stale_seconds=stale_seconds) as slot_id,
+                gpu_scheduler.gpu_slot_async(
+                    request, timeout=timeout,
+                    poll_seconds=poll_seconds) as device_slot):
+        yield AdmittedGpu(workspace_slot_id=slot_id,
+                           device_slot=device_slot)
+
+
 __all__ = [
     "CHUNK_STATUSES",
+    "AdmittedGpu",
     "DEFAULT_CHUNK_SECONDS",
     "DEFAULT_GPU_LIMIT",
     "DEFAULT_SLOT_TIMEOUT",
@@ -874,6 +1039,8 @@ __all__ = [
     "create_run",
     "fail_run",
     "get_run",
+    "gpu_admitted",
+    "gpu_admitted_sync",
     "gpu_limit",
     "gpu_semaphore",
     "gpu_semaphore_sync",

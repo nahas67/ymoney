@@ -243,6 +243,65 @@ backlog, publish failure rate, render failure rate, unknown paid submissions
 `test_every_slo_source_metric_actually_exists` fails if an objective points at a
 metric nobody declares.
 
+### Where the numbers come from — §6, and it is one source of truth
+
+```text
+environment -> validated Settings -> SLO/alert evaluator -> published verdict
+```
+
+`Settings` is constructed at import of `app/core/config.py`, so a threshold that
+fails its bound raises `ValidationError` **at startup**, before a request can be
+served. It is never coerced into a number nobody chose. The bounds are not
+decoration: `ALERT_PUBLISH_FAILURE_STREAK=0` would make `worst >= 0` true for a
+healthy system and page on zero failures; `ALERT_QUEUE_STALL_SECONDS=0` would
+make any queued job a "stall"; the ceilings exist so a typo (`1e9`) cannot
+silently switch paging off.
+
+**Three thresholds are compared against a live metric, and all three come from
+`Settings`:**
+
+| Env var | Default | Rule |
+|---|---|---|
+| `ALERT_UNKNOWN_EXPOSURE_USD` | `1.0` | `unknown_exposure_high` |
+| `ALERT_QUEUE_STALL_SECONDS` | `900.0` | `queue_stalled` |
+| `ALERT_PUBLISH_FAILURE_STREAK` | `3` | `repeated_publish_failure` |
+
+They are resolved on **every** evaluation (`AlertThresholds.read()`), never
+captured at import, so retuning an alert needs no restart and a test can prove a
+changed value changes a verdict. `/internal/alerts` reports each rule's live
+`threshold` plus a `threshold_source` of `settings:<NAME>` or `constant`, so
+"is this configured or is it hard-coded?" is answerable from the endpoint rather
+than from a code read.
+
+**The other five thresholds are deliberate CONSTANTS** and will not grow a knob:
+
+| Rule | Threshold | Why it is not configuration |
+|---|---|---|
+| `paid_submission_unknown` | `> 0` | the objective is exactly zero; a configurable tolerance would be a setting deciding how much money may be spent with an unknown outcome |
+| `worker_fleet_unavailable` | `<= 0` | zero durable workers is never an agreed policy |
+| `db_unavailable` | `< 1.0` | a collector heartbeat is a boolean; a probe that is 0.5 healthy does not exist |
+| `storage_unavailable` | `< 1.0` | a health probe is a boolean |
+| `gpu_queue_starvation` | ledger identity | "waiting > 0 and slots <= 0" is an identity, not a magnitude |
+
+**The `SLO_*` settings are a weaker third thing, and the difference is
+deliberate.** Nothing is measured, so a target cannot be evaluated. What a target
+setting changes is the number the **published objective states** —
+`SLO_QUEUE_BACKLOG_MAX=10` republishes `/internal/slo`'s objective as
+"<= 10 queued jobs sustained". That is the honest ceiling on what an unmeasured
+objective can do, and it is why there is no `slo_api_latency_p95_seconds`: the
+"p95 <= 1.0s" objective is wording, and a knob for wording is configurability
+with no behaviour behind it.
+
+`SLOTarget` states its number exactly once — a literal `target` **or** a
+`setting` + `target_template` — and both or neither raises `ValueError` at
+import, so a half-configured objective cannot ship. `GET /internal/alerts` and
+`GET /internal/slo` both carry the resolved `thresholds` map, so the ops surface
+and the evaluator cannot disagree.
+
+Tests: `tests/test_work16_1_slo_config.py` — every threshold class, the
+startup-rejection cases, and AST assertions that a compared threshold is a *name*
+resolved from config rather than a literal written back into the rule.
+
 ### Alert rules — real evaluators
 
 `GET /internal/alerts` returns definitions **and** current verdicts. Each rule
@@ -272,7 +331,24 @@ Design points worth defending:
 
 Thresholds live in `Settings` (`alert_queue_stall_seconds`,
 `alert_unknown_exposure_usd`, `alert_publish_failure_streak`) so retuning an
-alert does not require a code change.
+alert does not require a code change — see §10 above for which five thresholds
+are deliberately constants and why, and for the startup validation.
+
+> ### ⚠ `gpu_queue_starvation` reads the WORKSPACE ledger, not the device ledger
+>
+> `ymoney_gpu_slots_reserved` is fed by `collect_gpu_slots()`, which counts
+> `jobs` rows of type `MEDIA_INTEL_GPU_SLOT` in status `QUEUED`/`RUNNING`. A held
+> workspace slot is parked in **`WAITING`** (`media_intel_runs._try_acquire`
+> inserts `status=JobStatus.WAITING.value`, which is also what keeps a live slot
+> out of the worker claim query). The filter therefore never matches a held slot
+> and the gauge reads 0 — so this rule can fire while VRAM is reserved.
+>
+> `gpu_scheduler.snapshot()` reads `gpu_reservations` directly and is correct.
+> Asserted, not described: `test_neither_guard_moves_the_gpu_slot_gauge_because_the_collector_misses_waiting`
+> holds a real composed slot, asserts the gauge is 0.0, and asserts the alert
+> fires anyway. The fix is one line in `collect_gpu_slots()`
+> (`services/observability/metrics.py`); that file belongs to another lane, so it
+> is reported rather than patched here.
 
 ### Endpoints
 
@@ -302,15 +378,22 @@ observability_json_logs: bool = True
 observability_service_name: str = "ymoney"
 observability_max_spans: int = 2000
 observability_max_series_per_metric: int = 512
-slo_api_availability_target: float = 0.995
-slo_job_start_latency_seconds: float = 60.0
-slo_queue_backlog_max: int = 25
-slo_publish_failure_rate_max: float = 0.02
-slo_render_failure_rate_max: float = 0.05
-slo_unknown_exposure_max_usd: float = 5.0
-alert_queue_stall_seconds: float = 900.0
-alert_unknown_exposure_usd: float = 1.0
-alert_publish_failure_streak: int = 3
+```
+
+```python
+# §10. `ALERT_*` are COMPARED against a live metric; `SLO_*` are DECLARED and
+# change the number the published objective states. Both are validated at
+# startup -- the bounds below are pydantic constraints, not documentation.
+alert_queue_stall_seconds: float = Field(default=900.0, gt=0.0, le=86_400.0)
+alert_unknown_exposure_usd: float = Field(default=1.0, ge=0.0, le=10_000.0)
+alert_publish_failure_streak: int = Field(default=3, ge=1, le=100)
+
+slo_api_availability_target: float = Field(default=0.995, gt=0.0, le=1.0)
+slo_job_start_latency_seconds: float = Field(default=60.0, gt=0.0, le=86_400.0)
+slo_queue_backlog_max: int = Field(default=25, ge=1, le=1_000_000)
+slo_publish_failure_rate_max: float = Field(default=0.02, ge=0.0, le=1.0)
+slo_render_failure_rate_max: float = Field(default=0.05, ge=0.0, le=1.0)
+slo_unknown_exposure_max_usd: float = Field(default=5.0, gt=0.0, le=10_000.0)
 ```
 
 ## Wiring the recording seams
@@ -333,6 +416,12 @@ registry, and it takes the `SubmissionState` values Work 15 already defines.
 
 ## Tests
 
-`backend/tests/test_work16_observability.py` — 70 tests.
+| File | Covers |
+|---|---|
+| `backend/tests/test_work16_observability.py` | the registry, sinks, redaction, tracing, probes, and the eight rules driven both ways |
+| `backend/tests/test_work16_1_slo_config.py` | §6: settings → validated → evaluator → verdict; startup rejection of nonsense thresholds; and the five thresholds that stay constants |
+
 No autouse workspace scope, no imperative `pytest.skip`, no new fixtures in
-`conftest.py`.
+`conftest.py`. The PostgreSQL tests in the GPU-admission companion file are
+`pytest.mark.skipif`-gated on a reachability probe and skip cleanly with no
+server.

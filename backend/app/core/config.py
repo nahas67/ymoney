@@ -9,6 +9,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent      # .../backend/app
@@ -255,21 +256,56 @@ class Settings(BaseSettings):
     # ymoney_metrics_series_overflow_total.
     observability_max_series_per_metric: int = 512
 
-    # ---- Work 16 §10 SLO / alert thresholds ----
-    # Targets, NOT measurements. Each is the number the corresponding rule in
-    # services/observability/slo.py evaluates against; changing one here is the
-    # supported way to retune an alert, because a rule that hard-coded its own
-    # number could not be retuned without a code change.
-    slo_api_availability_target: float = 0.995
-    slo_job_start_latency_seconds: float = 60.0
-    slo_queue_backlog_max: int = 25
-    slo_publish_failure_rate_max: float = 0.02
-    slo_render_failure_rate_max: float = 0.05
-    slo_unknown_exposure_max_usd: float = 5.0
-    # §10 alert thresholds.
-    alert_queue_stall_seconds: float = 900.0
-    alert_unknown_exposure_usd: float = 1.0
-    alert_publish_failure_streak: int = 3
+    # ---- Work 16 §10: SLO / alert thresholds. ONE source of truth ----
+    # There are exactly TWO kinds of number here, and conflating them is the
+    # mistake this block exists to prevent:
+    #
+    #   `alert_*` are COMPARED. A rule in `services/observability/slo.py`
+    #     evaluates a live metric against them on every `GET /internal/alerts`,
+    #     so changing one changes a verdict. They are resolved at call time,
+    #     never captured at import, so a retune takes effect without a
+    #     restart-free lie and a test can drive them.
+    #
+    #   `slo_*` are DECLARED. `slo_catalog()` reports `measured: false` because
+    #     the registry is in-process and has no history, so there is nothing to
+    #     compare these against. They are the number the PUBLISHED objective
+    #     states. Changing one changes the objective text on
+    #     `GET /internal/slo` -- and nothing else, because an unmeasured
+    #     objective has no evaluator to retune. That is the honest ceiling, and
+    #     it is why there is no `slo_api_latency_p95_seconds` field: the
+    #     "p95 <= 1.0s" objective is wording, and inventing a knob for wording
+    #     would be configurability with no behaviour behind it.
+    #
+    # The bounds below are the point, not decoration. Each one rejects a value
+    # that would turn the rule into something other than what it documents, and
+    # each is rejected AT STARTUP: `Settings()` is constructed at import of this
+    # module, so a bad value raises `ValidationError` before a request can be
+    # served, rather than silently coercing into a threshold nobody chose.
+    #
+    #   ALERT_PUBLISH_FAILURE_STREAK=0  -> `worst >= 0` is true for a perfectly
+    #       healthy system: the rule would page on ZERO failures.
+    #   ALERT_QUEUE_STALL_SECONDS=0    -> any queued job whose last start was in
+    #       the same instant reads as a stall.
+    #   SLO_API_AVAILABILITY_TARGET=0  -> declares an objective no system can
+    #       meet, i.e. a permanently red dashboard.
+    # The ceilings exist so a typo (`1e9`, a stray zero) cannot silently switch
+    # paging off: "no alert" and "a badly configured alert" must look different.
+    alert_queue_stall_seconds: float = Field(default=900.0, gt=0.0, le=86_400.0)
+    # 0 is legal and means the strict policy "any unknown exposure is an
+    # incident"; negative is nonsense because exposure cannot be negative.
+    alert_unknown_exposure_usd: float = Field(default=1.0, ge=0.0, le=10_000.0)
+    alert_publish_failure_streak: int = Field(default=3, ge=1, le=100)
+
+    # Bounds: a rate is a fraction of 1, so `0.0 <= rate <= 1.0`; an
+    # availability target is a fraction of 1 and must be above zero; a latency
+    # and a queue depth are positive quantities bounded by a day / a very large
+    # backlog so neither can be set to "never".
+    slo_api_availability_target: float = Field(default=0.995, gt=0.0, le=1.0)
+    slo_job_start_latency_seconds: float = Field(default=60.0, gt=0.0, le=86_400.0)
+    slo_queue_backlog_max: int = Field(default=25, ge=1, le=1_000_000)
+    slo_publish_failure_rate_max: float = Field(default=0.02, ge=0.0, le=1.0)
+    slo_render_failure_rate_max: float = Field(default=0.05, ge=0.0, le=1.0)
+    slo_unknown_exposure_max_usd: float = Field(default=5.0, gt=0.0, le=10_000.0)
 
     # ---- Logging ----
     log_level: str = "INFO"

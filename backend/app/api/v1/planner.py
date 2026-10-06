@@ -39,6 +39,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.schemas.responses import OpportunityListOut
 from app.db import get_db
 from app.engine.planning.autonomy import (
     AutonomyMode,
@@ -266,7 +267,8 @@ def add_signal(body: _IngestRequest,
 
 
 @planner_router.get("/opportunities",
-                    summary="Scored opportunities, with the WHY")
+                    summary="Scored opportunities, with the WHY",
+                    responses={200: {"model": OpportunityListOut}})
 def list_opportunities(
     ws: Workspace = Depends(require_workspace_role("viewer")),
     db: Session = Depends(get_db),

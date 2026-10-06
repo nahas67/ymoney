@@ -1141,10 +1141,16 @@ def collect_gpu_slots() -> bool:
 
     try:
         with session_scope() as session:
+            # A held slot is parked in ``WAITING`` -- deliberately, so it stays
+            # out of the worker claim query and out of ``recover_orphans``.
+            # Counting only QUEUED/RUNNING therefore matched nothing ever, and
+            # this gauge read 0 on a fully occupied GPU, which made
+            # ``gpu_queue_starvation`` decorative: it could fire against an idle
+            # queue and stay silent against a saturated one.
             held = session.scalar(
                 select(func.count()).select_from(Job).where(
                     Job.type == "MEDIA_INTEL_GPU_SLOT",
-                    Job.status.in_(("QUEUED", "RUNNING")),
+                    Job.status.in_(("QUEUED", "RUNNING", "WAITING")),
                 )
             )
             waiting_rows = session.scalars(

@@ -18,6 +18,7 @@ from app.core.security import (
     verify_password,
 )
 from app.db import get_db
+from app.services.capabilities import ROLE_ORDER
 from app.models import RefreshToken, User, Workspace, WorkspaceMember
 from app.models.base import utcnow
 
@@ -145,7 +146,8 @@ def get_current_user(
 
 
 def require_workspace_role(minimum_role: str):
-    order = {WorkspaceMember.ROLE_VIEWER: 0, WorkspaceMember.ROLE_MEMBER: 1, WorkspaceMember.ROLE_ADMIN: 2, WorkspaceMember.ROLE_OWNER: 3}
+    # Single ranking truth: imported, not repeated, so the order that raises a403 and the order that grants a capability cannot drift (Work 16.5.2).
+    order = ROLE_ORDER
 
     def dependency(
         workspace_id: str,
@@ -178,7 +180,8 @@ def resolve_workspace(request, db: Session, workspace_id: str,
     """
     from app.core.security import decode_access_token
 
-    order = {WorkspaceMember.ROLE_VIEWER: 0, WorkspaceMember.ROLE_MEMBER: 1, WorkspaceMember.ROLE_ADMIN: 2, WorkspaceMember.ROLE_OWNER: 3}
+    # Single ranking truth: imported, not repeated, so the order that raises a403 and the order that grants a capability cannot drift (Work 16.5.2).
+    order = ROLE_ORDER
     bearer_token: str | None = token
     try:
         auth_header = request.headers.get("authorization", "")

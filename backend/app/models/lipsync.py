@@ -9,7 +9,16 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -30,6 +39,14 @@ class LipSyncJob(Base, PKMixin, TimestampMixin):
     """A single lip-sync render request driven by the local worker queue."""
 
     __tablename__ = "lipsync_jobs"
+    __table_args__ = (
+        # 0034 creates exactly these two composites, and they are the question an
+        # operator actually asks ("this workspace's renders with unknown
+        # exposure"). The single-column ``index=True`` below answers the other
+        # one. Work 16 §1: both were on ``Base.metadata`` for neither.
+        Index("ix_lipsync_cost_outcome", "workspace_id", "cost_outcome"),
+        Index("ix_lipsync_execution_outcome", "workspace_id", "execution_outcome"),
+    )
 
     workspace_id: Mapped[str] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
@@ -65,8 +82,10 @@ class LipSyncJob(Base, PKMixin, TimestampMixin):
     # is the honest rendering of one event: the job failed to produce a video,
     # the submit may already have been billed, and nobody knows how much.
     execution_outcome: Mapped[str] = mapped_column(String(24), default="",
-                                                   index=True)
-    cost_outcome: Mapped[str] = mapped_column(String(24), default="", index=True)
+                                                   index=True,
+                                                   server_default=text("''"))
+    cost_outcome: Mapped[str] = mapped_column(String(24), default="", index=True,
+                                              server_default=text("''"))
 
 
 __all__ = ["LIPSYNC_STATUSES", "LipSyncJob"]

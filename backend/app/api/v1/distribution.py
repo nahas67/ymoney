@@ -32,6 +32,7 @@ from app.engine.distribution.profiles import (
 from app.engine.platform_registry import get_registry
 from app.models import Workspace
 from app.providers.publishers.factory import HANDOFF_PLATFORMS
+from app.schemas.responses import DistributionCapabilityListOut
 from app.services.auth_service import require_workspace_role
 
 distribution_router = APIRouter(
@@ -118,7 +119,9 @@ def platform_detail(platform: str,
 
 
 @distribution_router.get("/capabilities",
-                          summary="Capability badges + publish mode")
+                          summary="Capability badges + publish mode",
+                          responses={200: {"model": DistributionCapabilityListOut}},
+                        )
 def capabilities(ws: Workspace = Depends(require_workspace_role("viewer"))) -> dict:
     """Capability badges and readiness for every account platform.
 

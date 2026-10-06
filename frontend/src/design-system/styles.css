@@ -1,0 +1,581 @@
+/* Component styles for the design system and shell.
+ *
+ * Every value here resolves to a token in `tokens.css`. Nothing hardcodes a
+ * colour, a radius or a shadow -- that rule is the whole reason the palette
+ * stays one decision instead of forty.
+ */
+
+/* ==========================================================================
+   Reset / base
+   ========================================================================== */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--surface-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 { margin: 0; font-weight: var(--weight-semibold); line-height: var(--leading-tight); }
+
+a { color: var(--brand-accent-text); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+
+.ym-sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* Visible only to a keyboard user, until focused. */
+.ym-skip-link {
+  position: absolute; left: -9999px; top: 0; z-index: 100;
+  background: var(--surface-overlay); color: var(--text-primary);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-default);
+}
+.ym-skip-link:focus { left: var(--space-3); top: var(--space-3); }
+
+/* ==========================================================================
+   Tone system
+   ========================================================================== */
+
+.ym-tone-neutral { --tone: var(--status-neutral); --tone-muted: var(--status-neutral-muted); --tone-border: var(--status-neutral-border); }
+.ym-tone-success { --tone: var(--status-success); --tone-muted: var(--status-success-muted); --tone-border: var(--status-success-border); }
+.ym-tone-warning { --tone: var(--status-warning); --tone-muted: var(--status-warning-muted); --tone-border: var(--status-warning-border); }
+.ym-tone-danger  { --tone: var(--status-danger);  --tone-muted: var(--status-danger-muted);  --tone-border: var(--status-danger-border); }
+.ym-tone-info    { --tone: var(--status-info);    --tone-muted: var(--status-info-muted);    --tone-border: var(--status-info-border); }
+.ym-tone-unknown { --tone: var(--status-unknown); --tone-muted: var(--status-unknown-muted); --tone-border: var(--status-unknown-border); }
+.ym-tone-live    { --tone: var(--mode-live);    --tone-muted: var(--status-success-muted); --tone-border: var(--status-success-border); }
+.ym-tone-mock    { --tone: var(--mode-mock);    --tone-muted: var(--status-warning-muted); --tone-border: var(--status-warning-border); }
+.ym-tone-handoff { --tone: var(--mode-handoff); --tone-muted: var(--status-info-muted);    --tone-border: var(--status-info-border); }
+
+.ym-muted { color: var(--text-tertiary); }
+.ym-num { font-variant-numeric: tabular-nums; font-family: var(--font-mono); font-size: var(--text-sm); }
+
+/* ==========================================================================
+   Badge
+   ========================================================================== */
+
+.ym-badge {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--tone-border, var(--border-default));
+  background: var(--tone-muted, var(--surface-inset));
+  color: var(--tone, var(--text-secondary));
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.ym-badge-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+/* ==========================================================================
+   Panel / page
+   ========================================================================== */
+
+.ym-panel {
+  background: var(--surface-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.ym-panel-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+}
+.ym-panel-title { font-size: var(--text-sm); font-weight: var(--weight-semibold); letter-spacing: 0.01em; }
+.ym-panel-subtitle { margin: var(--space-1) 0 0; font-size: var(--text-xs); color: var(--text-tertiary); }
+.ym-panel-actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
+.ym-panel-body { padding: var(--space-4); }
+.ym-panel-body--dense { padding: var(--space-2); }
+
+.ym-page-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--space-4); margin-bottom: var(--space-5);
+}
+.ym-page-title { font-size: var(--text-2xl); letter-spacing: -0.01em; }
+.ym-page-description { margin: var(--space-1) 0 0; color: var(--text-secondary); font-size: var(--text-sm); max-width: 68ch; }
+.ym-page-actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
+.ym-breadcrumb { font-size: var(--text-xs); color: var(--text-tertiary); margin-bottom: var(--space-1); }
+
+.ym-grid { display: grid; gap: var(--space-3); }
+.ym-grid--sm { gap: var(--space-2); }
+.ym-grid--lg { gap: var(--space-5); }
+
+/* ==========================================================================
+   Stat tile
+   ========================================================================== */
+
+.ym-stat {
+  background: var(--surface-panel);
+  border: 1px solid var(--border-subtle);
+  border-left: 2px solid var(--tone, var(--border-default));
+  border-radius: var(--radius-default);
+  padding: var(--space-3);
+}
+.ym-stat-label { font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary); }
+.ym-stat-value { margin-top: var(--space-1); font-size: var(--text-xl); font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums; }
+.ym-stat-value--unavailable { font-size: var(--text-sm); color: var(--text-disabled); font-weight: var(--weight-normal); letter-spacing: 0.04em; }
+.ym-stat-unit { margin-left: var(--space-1); font-size: var(--text-xs); color: var(--text-tertiary); font-weight: var(--weight-normal); }
+.ym-stat-hint { margin-top: var(--space-1); font-size: var(--text-xs); color: var(--text-tertiary); }
+.ym-stat-source { margin-top: 2px; font-size: var(--text-2xs); color: var(--text-disabled); }
+
+/* ==========================================================================
+   Table
+   ========================================================================== */
+
+.ym-table-scroll { overflow-x: auto; }
+.ym-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.ym-table th {
+  position: sticky; top: 0; z-index: 1;
+  text-align: left; font-weight: var(--weight-medium); font-size: var(--text-2xs);
+  text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-raised); white-space: nowrap;
+}
+.ym-table td { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-subtle); vertical-align: top; }
+.ym-table tbody tr:last-child td { border-bottom: none; }
+.ym-row-clickable { cursor: pointer; }
+.ym-row-clickable:hover { background: var(--surface-raised); }
+.ym-table-empty { padding: var(--space-8) var(--space-4); text-align: center; }
+.ym-table-empty-title { font-size: var(--text-sm); color: var(--text-secondary); }
+.ym-table-empty-hint { margin-top: var(--space-1); font-size: var(--text-xs); color: var(--text-tertiary); }
+
+/* ==========================================================================
+   Tabs
+   ========================================================================== */
+
+.ym-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--border-subtle); overflow-x: auto; }
+.ym-tab {
+  padding: var(--space-2) var(--space-3);
+  background: none; border: none; border-bottom: 2px solid transparent;
+  color: var(--text-tertiary); font-size: var(--text-sm); cursor: pointer; white-space: nowrap;
+}
+.ym-tab:hover { color: var(--text-secondary); }
+.ym-tab--active { color: var(--text-primary); border-bottom-color: var(--brand-accent); }
+.ym-tab-count { margin-left: var(--space-1); font-size: var(--text-2xs); color: var(--text-disabled); }
+.ym-tab:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ==========================================================================
+   Controls
+   ========================================================================== */
+
+.ym-btn {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  border-radius: var(--radius-default); border: 1px solid var(--border-default);
+  background: var(--surface-raised); color: var(--text-primary);
+  cursor: pointer; font-weight: var(--weight-medium);
+  transition: background var(--motion-fast) var(--ease-standard),
+              border-color var(--motion-fast) var(--ease-standard);
+  white-space: nowrap;
+}
+.ym-btn--md { padding: var(--space-2) var(--space-3); font-size: var(--text-sm); }
+.ym-btn--sm { padding: var(--space-1) var(--space-2); font-size: var(--text-xs); }
+.ym-btn:hover:not(:disabled) { background: var(--surface-overlay); border-color: var(--border-strong); }
+.ym-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ym-btn--primary { background: var(--brand-accent); border-color: var(--brand-accent); color: #fff; }
+.ym-btn--primary:hover:not(:disabled) { background: var(--brand-accent-hover); border-color: var(--brand-accent-hover); }
+.ym-btn--danger { background: var(--status-danger-muted); border-color: var(--status-danger-border); color: var(--status-danger); }
+.ym-btn--danger:hover:not(:disabled) { background: var(--status-danger); color: var(--text-inverse); }
+.ym-btn--ghost { background: transparent; border-color: transparent; color: var(--text-secondary); }
+.ym-btn--ghost:hover:not(:disabled) { background: var(--surface-raised); color: var(--text-primary); }
+
+.ym-field { display: flex; flex-direction: column; gap: var(--space-1); }
+.ym-label { font-size: var(--text-xs); color: var(--text-secondary); font-weight: var(--weight-medium); }
+.ym-input, .ym-select, .ym-textarea {
+  background: var(--surface-inset); border: 1px solid var(--border-default);
+  border-radius: var(--radius-default); padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm); color: var(--text-primary); width: 100%;
+}
+.ym-input:focus, .ym-select:focus, .ym-textarea:focus {
+  border-color: var(--brand-accent); outline: none;
+  box-shadow: 0 0 0 3px var(--brand-accent-muted);
+}
+.ym-input::placeholder, .ym-textarea::placeholder { color: var(--text-disabled); }
+.ym-textarea { min-height: 80px; resize: vertical; }
+.ym-hint { margin: 0; font-size: var(--text-xs); color: var(--text-tertiary); }
+.ym-error { margin: 0; font-size: var(--text-xs); color: var(--status-danger); }
+.ym-field--error .ym-input { border-color: var(--status-danger); }
+
+.ym-toggle { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; font-size: var(--text-sm); }
+.ym-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.ym-toggle-track {
+  width: 32px; height: 18px; border-radius: var(--radius-full);
+  background: var(--surface-inset); border: 1px solid var(--border-default);
+  position: relative; transition: background var(--motion-fast);
+}
+.ym-toggle-thumb {
+  position: absolute; top: 2px; left: 2px; width: 12px; height: 12px;
+  border-radius: 50%; background: var(--text-tertiary);
+  transition: transform var(--motion-fast) var(--ease-standard), background var(--motion-fast);
+}
+.ym-toggle input:checked + .ym-toggle-track { background: var(--brand-accent-muted); border-color: var(--brand-accent); }
+.ym-toggle input:checked + .ym-toggle-track .ym-toggle-thumb { transform: translateX(14px); background: var(--brand-accent); }
+.ym-toggle input:focus-visible + .ym-toggle-track { box-shadow: var(--focus-ring); }
+.ym-toggle--disabled { opacity: 0.5; cursor: not-allowed; }
+
+.ym-confirm-inline { display: inline-flex; align-items: center; gap: var(--space-2); }
+.ym-confirm-text { font-size: var(--text-xs); color: var(--status-danger); }
+
+.ym-spinner {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid var(--border-strong); border-top-color: var(--brand-accent);
+  animation: ym-spin 0.7s linear infinite; display: inline-block;
+}
+.ym-spinner--sm { width: 10px; height: 10px; border-width: 1.5px; }
+@keyframes ym-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .ym-spinner { animation-duration: 2s; }
+  * { transition-duration: 1ms !important; }
+}
+
+/* ==========================================================================
+   States
+   ========================================================================== */
+
+.ym-skeleton { display: flex; flex-direction: column; gap: var(--space-2); }
+.ym-skeleton-row {
+  background: linear-gradient(90deg, var(--surface-inset) 25%, var(--surface-raised) 50%, var(--surface-inset) 75%);
+  background-size: 200% 100%; border-radius: var(--radius-sm);
+  animation: ym-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes ym-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+.ym-empty { padding: var(--space-10) var(--space-4); text-align: center; }
+.ym-empty-icon { font-size: var(--text-2xl); color: var(--text-disabled); margin-bottom: var(--space-2); }
+.ym-empty-title { font-size: var(--text-sm); color: var(--text-secondary); }
+.ym-empty-desc { margin-top: var(--space-1); font-size: var(--text-xs); color: var(--text-tertiary); max-width: 52ch; margin-inline: auto; }
+.ym-empty-action { margin-top: var(--space-3); }
+
+.ym-error-state {
+  padding: var(--space-4); border: 1px solid var(--status-danger-border);
+  background: var(--status-danger-muted); border-radius: var(--radius-default);
+  display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start;
+}
+.ym-error-title { font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--status-danger); }
+.ym-error-message { font-size: var(--text-sm); color: var(--text-secondary); }
+.ym-stale-note { margin: 0; font-size: var(--text-xs); color: var(--text-tertiary); }
+
+/* A permission refusal is NOT a failure (Work 16.5.3 §16).
+ * Danger styling would tell the operator something is broken when in fact the
+ * server answered correctly and the answer is "not for you". Uses the warning
+ * tokens so it reads as a gate rather than an outage -- and the state also
+ * carries explicit text, so colour is never the only signal. */
+.ym-error-state--denied {
+  border-color: var(--status-warning-border);
+  background: var(--status-warning-muted);
+}
+.ym-error-state--denied .ym-error-title { color: var(--status-warning); }
+.ym-refresh-flag {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-xs); color: var(--text-tertiary); margin-bottom: var(--space-2);
+}
+
+.ym-money { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.ym-money--unknown { color: var(--status-unknown); font-style: italic; }
+
+/* ==========================================================================
+   Modal
+   ========================================================================== */
+
+.ym-modal-backdrop, .ym-palette-backdrop {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgb(0 0 0 / 0.6);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: 10vh;
+}
+.ym-modal {
+  width: 100%; background: var(--surface-overlay);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--elevation-overlay); overflow: hidden;
+}
+.ym-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle);
+}
+.ym-modal-title { font-size: var(--text-md); }
+.ym-modal-close { background: none; border: none; color: var(--text-tertiary); font-size: var(--text-lg); cursor: pointer; line-height: 1; }
+.ym-modal-body { padding: var(--space-4); max-height: 65vh; overflow-y: auto; }
+.ym-modal-foot { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle); display: flex; gap: var(--space-2); justify-content: flex-end; }
+
+/* ==========================================================================
+   Shell
+   ========================================================================== */
+
+.ym-shell { display: grid; grid-template-columns: var(--sidebar-width) 1fr; min-height: 100vh; }
+
+/* Mobile navigation toggle (Work 16.5.4 §9).
+ * Hidden above the 768px breakpoint, where the sidebar is already docked.
+ * Positioned into the topbar row rather than fixed, so it does not overlay the
+ * page header on desktop. */
+.ym-nav-toggle { display: none; }
+@media (max-width: 768px) {
+  .ym-shell { grid-template-columns: 1fr; padding-top: var(--space-6); }
+  .ym-nav-toggle {
+    display: inline-flex;
+    position: fixed;
+    top: var(--space-2);
+    left: var(--space-2);
+    z-index: 50;
+  }
+}
+.ym-shell--collapsed { grid-template-columns: var(--sidebar-collapsed) 1fr; }
+
+.ym-sidebar {
+  background: var(--surface-sunken);
+  border-right: 1px solid var(--border-subtle);
+  display: flex; flex-direction: column;
+  position: sticky; top: 0; height: 100vh; overflow-y: auto;
+}
+.ym-brandmark {
+  display: flex; align-items: center; gap: var(--space-2);
+  height: var(--topbar-height); padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.ym-brandmark-glyph { color: var(--brand-accent); font-size: var(--text-lg); }
+.ym-brandmark-text { font-size: var(--text-sm); font-weight: var(--weight-bold); letter-spacing: 0.1em; }
+
+.ym-nav { flex: 1; padding: var(--space-3) var(--space-2); }
+.ym-nav-group + .ym-nav-group { margin-top: var(--space-4); }
+.ym-nav-group-label {
+  font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-disabled); padding: 0 var(--space-2) var(--space-1);
+}
+.ym-nav-item {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-2); border-radius: var(--radius-default);
+  color: var(--text-secondary); font-size: var(--text-sm); position: relative;
+}
+.ym-nav-item:hover { background: var(--surface-panel); color: var(--text-primary); text-decoration: none; }
+.ym-nav-item--active { background: var(--brand-accent-muted); color: var(--brand-accent-text); }
+.ym-nav-item--active::before {
+  content: ""; position: absolute; left: -8px; top: 50%; transform: translateY(-50%);
+  width: 2px; height: 16px; background: var(--brand-accent); border-radius: var(--radius-full);
+}
+.ym-nav-glyph { width: 16px; text-align: center; flex-shrink: 0; opacity: 0.85; }
+.ym-nav-label { flex: 1; }
+.ym-nav-legacy {
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--status-warning); flex-shrink: 0;
+}
+.ym-sidebar-foot {
+  padding: var(--space-2) var(--space-3); border-top: 1px solid var(--border-subtle);
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+}
+.ym-inventory { font-size: var(--text-2xs); color: var(--text-disabled); }
+
+.ym-shell-main { display: flex; flex-direction: column; min-width: 0; }
+
+.ym-topbar {
+  position: sticky; top: 0; z-index: 20;
+  height: var(--topbar-height); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
+  padding: 0 var(--space-4);
+  background: var(--surface-panel); border-bottom: 1px solid var(--border-subtle);
+}
+.ym-breadcrumbs { display: flex; align-items: center; gap: var(--space-1); font-size: var(--text-sm); min-width: 0; }
+.ym-crumb { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
+.ym-crumb[aria-current] { color: var(--text-primary); }
+.ym-crumb-sep { color: var(--text-disabled); }
+
+.ym-topbar-actions { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex-shrink: 1; }
+
+/* On a narrow phone the action cluster's CONTENT is wider than the viewport
+ * (measured 356px inside a 360px viewport), pushing documentElement.scrollWidth
+ * to 388 so the whole page scrolled sideways. Letting the page scroll for it is
+ * exactly the defect 16.5.4 §9 forbids; hiding the controls would remove
+ * functionality. So the cluster scrolls INSIDE its own box: every control stays
+ * present and reachable, and the page stops overflowing.
+ *
+ * scrollbar-width:none hides the inner scrollbar where one would otherwise add
+ * height; the cluster remains keyboard-scrollable. */
+@media (max-width: 480px) {
+  .ym-topbar-actions { overflow-x: auto; scrollbar-width: none; }
+  .ym-topbar-actions::-webkit-scrollbar { display: none; }
+}
+
+.ym-search-trigger {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  height: 28px; padding: 0 var(--space-2);
+  background: var(--surface-inset); border: 1px solid var(--border-default);
+  border-radius: var(--radius-default); color: var(--text-tertiary);
+  font-size: var(--text-xs); cursor: pointer;
+}
+.ym-search-trigger:hover { border-color: var(--border-strong); color: var(--text-secondary); }
+.ym-search-trigger kbd {
+  font-family: var(--font-mono); font-size: var(--text-2xs);
+  border: 1px solid var(--border-default); border-radius: var(--radius-sm);
+  padding: 0 var(--space-1); color: var(--text-disabled);
+}
+
+.ym-icon-btn {
+  position: relative; width: 28px; height: 28px;
+  display: grid; place-items: center;
+  background: transparent; border: 1px solid transparent; border-radius: var(--radius-default);
+  color: var(--text-secondary); cursor: pointer;
+}
+.ym-icon-btn:hover { background: var(--surface-raised); color: var(--text-primary); }
+.ym-icon-btn--critical { color: var(--status-danger); }
+.ym-notif-count {
+  position: absolute; top: -2px; right: -2px;
+  min-width: 14px; height: 14px; padding: 0 3px;
+  display: grid; place-items: center;
+  background: var(--status-danger); color: var(--text-inverse);
+  border-radius: var(--radius-full); font-size: 9px; font-weight: var(--weight-bold);
+}
+
+.ym-notif-wrap { position: relative; }
+.ym-notif-panel {
+  position: absolute; right: 0; top: calc(100% + var(--space-2));
+  width: 340px; max-height: 60vh; overflow-y: auto; z-index: 40;
+  background: var(--surface-overlay); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md); box-shadow: var(--elevation-overlay);
+}
+.ym-notif-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--text-xs); font-weight: var(--weight-semibold);
+  text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary);
+}
+.ym-notif-empty { padding: var(--space-4) var(--space-3); font-size: var(--text-xs); color: var(--text-tertiary); }
+.ym-notif-item {
+  display: flex; gap: var(--space-2); align-items: flex-start;
+  padding: var(--space-3); border-bottom: 1px solid var(--border-subtle);
+  border-left: 2px solid var(--tone, var(--border-default));
+}
+.ym-notif-unknown { --tone: var(--status-unknown); }
+.ym-notif-danger { --tone: var(--status-danger); }
+.ym-notif-warning { --tone: var(--status-warning); }
+.ym-notif-info { --tone: var(--status-info); }
+.ym-notif-title { font-size: var(--text-sm); }
+.ym-notif-detail { margin-top: 2px; font-size: var(--text-xs); color: var(--text-tertiary); }
+
+.ym-ws-select select {
+  height: 28px; padding: 0 var(--space-2);
+  background: var(--surface-inset); border: 1px solid var(--border-default);
+  border-radius: var(--radius-default); font-size: var(--text-xs); max-width: 180px;
+}
+
+.ym-user { display: flex; align-items: center; gap: var(--space-2); }
+.ym-user-avatar {
+  width: 24px; height: 24px; border-radius: var(--radius-full);
+  display: grid; place-items: center;
+  background: var(--brand-accent-muted); color: var(--brand-accent-text);
+  font-size: var(--text-2xs); font-weight: var(--weight-semibold);
+}
+.ym-user-name { font-size: var(--text-xs); color: var(--text-secondary); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ym-context-bar {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-1) var(--space-4);
+  background: var(--surface-sunken); border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--text-2xs); color: var(--text-tertiary);
+}
+.ym-context-workspace { font-weight: var(--weight-medium); color: var(--text-secondary); }
+.ym-context-niche::before { content: "·"; margin-right: var(--space-2); }
+
+.ym-main { flex: 1; padding: var(--space-5); max-width: var(--content-max); width: 100%; }
+
+/* ==========================================================================
+   Command palette
+   ========================================================================== */
+
+.ym-palette {
+  width: min(560px, 92vw);
+  background: var(--surface-overlay); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg); box-shadow: var(--elevation-overlay); overflow: hidden;
+}
+.ym-palette-input {
+  width: 100%; padding: var(--space-3) var(--space-4);
+  background: transparent; border: none; border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--text-md); color: var(--text-primary);
+}
+.ym-palette-input:focus { outline: none; }
+.ym-palette-input::placeholder { color: var(--text-disabled); }
+.ym-palette-results { max-height: 50vh; overflow-y: auto; padding: var(--space-1); }
+.ym-palette-empty { padding: var(--space-6); text-align: center; font-size: var(--text-sm); color: var(--text-tertiary); }
+.ym-palette-item {
+  display: flex; align-items: center; gap: var(--space-3); width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: none; border: none; border-radius: var(--radius-default);
+  cursor: pointer; text-align: left;
+}
+.ym-palette-item--active { background: var(--surface-raised); }
+.ym-palette-glyph { color: var(--brand-accent); width: 16px; text-align: center; }
+.ym-palette-label { flex: 1; display: flex; flex-direction: column; }
+.ym-palette-label { font-size: var(--text-sm); color: var(--text-primary); }
+.ym-palette-desc { font-size: var(--text-xs); color: var(--text-tertiary); }
+.ym-palette-foot {
+  padding: var(--space-2) var(--space-3); border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-2xs); color: var(--text-disabled);
+}
+.ym-palette-foot kbd {
+  font-family: var(--font-mono); border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm); padding: 0 3px;
+}
+
+/* ==========================================================================
+   Legacy bridge
+   ========================================================================== */
+
+.ym-legacy-banner {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3); margin-bottom: var(--space-4);
+  background: var(--status-warning-muted); border: 1px solid var(--status-warning-border);
+  border-radius: var(--radius-default); font-size: var(--text-xs); color: var(--text-secondary);
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 1024px) {
+  .ym-shell { grid-template-columns: var(--sidebar-collapsed) 1fr; }
+  .ym-nav-label, .ym-nav-group-label, .ym-brandmark-text, .ym-inventory, .ym-user-name { display: none; }
+}
+
+@media (max-width: 768px) {
+  .ym-shell { grid-template-columns: 1fr; }
+  /* The sidebar becomes a slide-over rather than disappearing.
+   *
+   * Work 16.5.4 §9 found the previous rule removed navigation entirely below
+   * 768px with no replacement, leaving the command-palette shortcut as the only
+   * way to move between the twenty-two routes. `display:none` is replaced by an
+   * off-canvas panel so the routes stay reachable on a phone. */
+  .ym-sidebar {
+    display: flex;
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 40;
+    width: min(84vw, var(--sidebar-width));
+    transform: translateX(-100%);
+    transition: transform var(--duration-fast, 160ms) ease;
+    box-shadow: var(--shadow-lg, 0 8px 24px rgb(0 0 0 / 35%));
+  }
+  .ym-sidebar[data-mobile-open="true"] { transform: translateX(0); }
+  .ym-nav-label, .ym-nav-group-label, .ym-brandmark-text { display: inline; }
+  .ym-page-header { flex-direction: column; align-items: stretch; }
+  .ym-hide-below-sm, .ym-hide-below-md, .ym-hide-below-lg { display: none; }
+  .ym-main { padding: var(--space-3); }
+  .ym-user-name, .ym-context-niche { display: none; }
+}

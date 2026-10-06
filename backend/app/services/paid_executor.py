@@ -515,6 +515,26 @@ def reconcile_submission(record: PaidSubmission, action: Reconciliation, *,
 
     Always audited. A manual override that leaves no trace is how a real
     duplicate charge becomes unexplainable three weeks later.
+
+    **Work 16.1 §5: the decision is now DURABLE, and the books are not touched.**
+    Until then this mutated a Python object and logged, so the outcome died with
+    the process and the database kept saying ``SUBMISSION_UNKNOWN`` forever.
+    It now also writes the decision through
+    :mod:`app.services.paid_reconciliation.record_reconciliation`: the canonical
+    lane row and a ``paid.reconciliation`` event, both in committed
+    transactions.
+
+    What it deliberately does NOT do is move money. ``action`` is a *remedy*
+    ("what should the system do next"), not an *observation* ("what the provider
+    did"), and a remedy is not evidence that a charge did or did not happen --
+    ``RECONCILE`` explicitly means "still unconfirmed". Releasing a real
+    reservation on the strength of a label is the bug, not the fix. Money moves
+    only through
+    :func:`app.services.paid_reconciliation.reconcile_paid_submission`, which
+    requires an observed outcome, a named operator and an operation id.
+
+    The in-memory mutation below is unchanged, so every existing caller keeps the
+    contract it had.
     """
     if not operator:
         raise ValueError("a reconciliation decision must name an operator")
@@ -538,6 +558,24 @@ def reconcile_submission(record: PaidSubmission, action: Reconciliation, *,
                   + f" state={record.state} exposure={record.cost.outcome}")
     record.detail = f"{record.detail} | {audit_note}".strip(" |")
     logger.warning("paid submit reconciliation: %s", audit_note)
+
+    # Durable half. Imported here, not at module scope: paid_reconciliation
+    # imports this module for the canonical vocabularies, and a top-level import
+    # would be a cycle. A record with no persisted submission has nothing to
+    # write -- that is a caller holding a record it never persisted, not a
+    # failure, so it is logged and the in-memory result still stands.
+    try:
+        from app.services.paid_reconciliation import (
+            record_reconciliation,
+            subject_for_operation,
+        )
+
+        subject = subject_for_operation(record.submission_id)
+        record_reconciliation(subject, action, operator=operator, note=note)
+    except Exception as exc:  # noqa: BLE001 - never lose the in-memory result
+        logger.warning(
+            "paid submit %s reconciliation could not be persisted: %s",
+            record.submission_id, exc)
     return record
 
 

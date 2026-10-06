@@ -239,6 +239,20 @@ def parse_pools(spec: str | None, *, default_count: int) -> PoolPlan:
 # ---------------------------------------------------------------------------
 
 
+#: How many consecutive ``CONTENDED`` polls a slot will retry before it stops
+#: believing itself and falls back to the poll-interval sleep.
+#:
+#: This is a safety rail, not the mechanism. ``CONTENDED`` is a bounded condition
+#: and not a spin: every retry either wins a job, or observes strictly fewer
+#: free rows than the retry before it (each retry's candidate window excludes
+#: the ids the previous one lost), or is looking at rows a peer holds behind a
+#: row lock that a single non-blocking statement is about to release. So the
+#: rail should essentially never be reached. It exists so that a pathological
+#: backend -- one that blocks instead of skipping, or a class filter that can
+#: never match -- degrades into a bounded backoff instead of a hot loop.
+_MAX_CONTENDED_POLLS = 8
+
+
 class WorkerPool:
     """Owns this process's worker tasks, their leases, and their shutdown.
 
@@ -308,24 +322,40 @@ class WorkerPool:
         slot_id = f"{name}:{workload or 'ANY'}"
         pinned = "" if workload is None else str(workload)
         logger.info("job worker {} started", slot_id)
+        contended_streak = 0
         try:
             while not self._draining.is_set():
-                claimed = await asyncio.to_thread(
-                    job_leases.claim_next, slot_id, workload=pinned)
-                if claimed is None:
+                poll = await asyncio.to_thread(
+                    job_leases.claim_next_poll, slot_id, workload=pinned)
+                claimed = poll.job
+                if claimed is not None:
+                    contended_streak = 0
+                    job_leases.begin_run(claimed.job_id, slot_id)
+                    self.keeper.track(claimed.job_id)
                     try:
-                        await asyncio.wait_for(
-                            self._draining.wait(),
-                            timeout=settings.job_poll_interval_seconds)
-                        break
-                    except TimeoutError:
-                        continue
-                job_leases.begin_run(claimed.job_id, slot_id)
-                self.keeper.track(claimed.job_id)
+                        await execute(claimed)
+                    finally:
+                        self.keeper.untrack(claimed.job_id)
+                    continue
+                # A poll that found claimable work and lost it is NOT the same
+                # as a poll that found an empty queue, and treating them the
+                # same is what let a pool of eight slots drain a depth-eight
+                # queue as if it were one: the losers slept for a full poll
+                # interval while the single slot that kept winning never slept
+                # at all, because a slot that wins loops straight back round.
+                # So a contended poll yields to the event loop and looks again.
+                if poll.contended and contended_streak < _MAX_CONTENDED_POLLS:
+                    contended_streak += 1
+                    await asyncio.sleep(0)
+                    continue
+                contended_streak = 0
                 try:
-                    await execute(claimed)
-                finally:
-                    self.keeper.untrack(claimed.job_id)
+                    await asyncio.wait_for(
+                        self._draining.wait(),
+                        timeout=settings.job_poll_interval_seconds)
+                    break
+                except TimeoutError:
+                    continue
         except asyncio.CancelledError:  # pragma: no cover - shutdown path
             raise
         except Exception:  # noqa: BLE001 - one slot must not kill the pool

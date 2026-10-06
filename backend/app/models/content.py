@@ -5,7 +5,18 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -50,6 +61,8 @@ class Opportunity(Base, PKMixin, TimestampMixin):
         Index("ix_opportunity_ws_score", "workspace_id", "score"),
         # dedupe discovery across concurrent cycles
         Index("uq_opportunity_ws_topic", "workspace_id", "topic", unique=True),
+        # 0032's own index: the planner reads opportunities by basis.
+        Index("ix_opportunity_basis", "workspace_id", "basis"),
     )
 
     workspace_id: Mapped[str] = mapped_column(
@@ -74,22 +87,45 @@ class Opportunity(Base, PKMixin, TimestampMixin):
     # How this opportunity was derived. OBSERVED = seen in real evidence;
     # INFERRED = derived by scoring/clustering; RECOMMENDED = an AI suggestion
     # with no measurement. A RECOMMENDED row may never be scheduled as demand.
-    basis: Mapped[str] = mapped_column(String(20), default="INFERRED")
-    angle: Mapped[str] = mapped_column(String(400), default="")
-    audience: Mapped[str] = mapped_column(String(200), default="")
-    platforms_json: Mapped[list] = mapped_column(JSON, default=list)
-    format: Mapped[str] = mapped_column(String(40), default="")
-    evidence_json: Mapped[list] = mapped_column(JSON, default=list)
-    brand_fit: Mapped[float] = mapped_column(Float, default=0.0)
-    freshness: Mapped[str] = mapped_column(String(12), default="")
-    competition_json: Mapped[dict] = mapped_column(JSON, default=dict)
-    estimated_effort_hours: Mapped[float] = mapped_column(Float, default=0.0)
-    estimated_cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
-    priority_inputs_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    #
+    # Work 16 §1: ``nullable=True`` on every column 0032 bolted on. 0032's
+    # ``add_column_if_missing`` DDL carries no ``NOT NULL``, so a deployment
+    # that took the migration path has these NULLABLE while ``create_all``
+    # made them NOT NULL -- and ``nullable=False`` here is a claim the
+    # deployed schema does not honour. Loosening is the safe direction: it
+    # cannot make a write fail that succeeds today. ``default=`` is
+    # untouched, so ORM writes still supply every value.
+    basis: Mapped[str] = mapped_column(String(20), default="INFERRED",
+                                         nullable=True)
+    angle: Mapped[str] = mapped_column(String(400), default="",
+                                         nullable=True)
+    audience: Mapped[str] = mapped_column(String(200), default="",
+                                           nullable=True)
+    platforms_json: Mapped[list] = mapped_column(JSON, default=list,
+                                                nullable=True)
+    format: Mapped[str] = mapped_column(String(40), default="",
+                                        nullable=True)
+    evidence_json: Mapped[list] = mapped_column(JSON, default=list,
+                                                nullable=True)
+    brand_fit: Mapped[float] = mapped_column(Float, default=0.0,
+                                           nullable=True)
+    freshness: Mapped[str] = mapped_column(String(12), default="",
+                                           nullable=True)
+    competition_json: Mapped[dict] = mapped_column(JSON, default=dict,
+                                                  nullable=True)
+    estimated_effort_hours: Mapped[float] = mapped_column(Float, default=0.0,
+                                                        nullable=True)
+    estimated_cost_usd: Mapped[float] = mapped_column(Float, default=0.0,
+                                                   nullable=True)
+    priority_inputs_json: Mapped[dict] = mapped_column(JSON, default=dict,
+                                                     nullable=True)
     # Work 15 §10: NEW | RELATED | DUPLICATE | SATURATED
-    dedupe_verdict: Mapped[str] = mapped_column(String(20), default="")
-    dedupe_reason: Mapped[str] = mapped_column(String(400), default="")
-    plan_item_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    dedupe_verdict: Mapped[str] = mapped_column(String(20), default="",
+                                                nullable=True)
+    dedupe_reason: Mapped[str] = mapped_column(String(400), default="",
+                                                nullable=True)
+    plan_item_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True, index=True)
 
     @property
     def platforms(self) -> list:
@@ -161,6 +197,12 @@ class VideoVariant(Base, PKMixin, TimestampMixin):
 
 class Video(Base, PKMixin, TimestampMixin):
     __tablename__ = "videos"
+    __table_args__ = (
+        # 0034's own composites: the reconciliation queries an operator
+        # actually runs are per-workspace, not global.
+        Index("ix_video_cost_outcome", "workspace_id", "cost_outcome"),
+        Index("ix_video_submission_state", "workspace_id", "submission_state"),
+    )
 
     variant_id: Mapped[str] = mapped_column(
         ForeignKey("video_variants.id", ondelete="CASCADE"), index=True
@@ -186,15 +228,25 @@ class Video(Base, PKMixin, TimestampMixin):
     # SUBMISSION_UNKNOWN is the load-bearing one: the provider may have created
     # and billed the job and we cannot prove otherwise. It forbids automatic
     # resubmission and requires reconciliation or a human decision.
+    # Work 16 §1: every ``server_default`` below is 0034's own literal. 0034
+    # adds these columns to an EXISTING table with ``NOT NULL DEFAULT``, and
+    # ``add_column_if_missing`` skips a column ``create_all`` already made --
+    # so a ``create_all`` database had none of them, and a raw INSERT naming
+    # only the pre-0034 columns failed 23502 there and succeeded on a
+    # migrated one.
     submission_state: Mapped[str] = mapped_column(
-        String(24), default="PREPARED", index=True)
+        String(24), default="PREPARED", index=True,
+        server_default=text("'PREPARED'"))
     #: the provider's durable id, for reconciling an ambiguous submission.
-    provider_task_id: Mapped[str] = mapped_column(String(160), default="")
+    provider_task_id: Mapped[str] = mapped_column(String(160), default="",
+                                                server_default=text("''"))
     #: why the submission state is what it is, for audit.
-    submission_detail: Mapped[str] = mapped_column(String(600), default="")
+    submission_detail: Mapped[str] = mapped_column(String(600), default="",
+                                                 server_default=text("''"))
     #: sent upstream as the provider's idempotency key, so a lost response can
     #: be retried without buying a second job.
-    idempotency_key: Mapped[str] = mapped_column(String(80), default="")
+    idempotency_key: Mapped[str] = mapped_column(String(80), default="",
+                                               server_default=text("''"))
     # --- Work 15.8 §6: the durable paid-submission record ----------------
     # `submission_state` above already IS the structural execution outcome (it
     # holds the canonical `SubmissionState` vocabulary and is indexed), so this
@@ -206,12 +258,15 @@ class Video(Base, PKMixin, TimestampMixin):
     # (NOT_APPLICABLE|ACTUAL|ESTIMATED|UNKNOWN_EXPOSURE) so an operator can
     # filter "renders whose cost is unknown" with a WHERE clause. Without it the
     # only place that fact existed was a reservation row id held in memory.
-    cost_outcome: Mapped[str] = mapped_column(String(24), default="", index=True)
+    cost_outcome: Mapped[str] = mapped_column(String(24), default="",
+                                              index=True,
+                                              server_default=text("''"))
     #: The canonical operation id of this attempt (PaidSubmission.submission_id).
     #: Nothing before this linked the Video row to the ledger row for the same
     #: submit, so a crash between the two made the pairing unrecoverable.
     submission_operation_id: Mapped[str] = mapped_column(String(64), default="",
-                                                         index=True)
+                                                         index=True,
+                                                         server_default=text("''"))
     #: When the request actually LEFT. `created_at` is when the row was made,
     #: which is not the same fact: a row created and never submitted must not
     #: look like an attempt that may have been billed.
@@ -298,8 +353,15 @@ class PublishedPost(Base, PKMixin, TimestampMixin):
     # has declared nothing, and defaulting to LIVE would let a mock (or a
     # half-written) row claim a live publication. The publish flow always sets
     # the mode explicitly; failing closed is the safe default.
+    # Work 16 §1: ``nullable=True`` because 0031 declares it without
+    # ``NOT NULL``. The server default is NOT copied across on purpose --
+    # 0031's is ``'LIVE'`` and the paragraph above is the whole argument
+    # against defaulting to LIVE. A non-ORM writer that omits this column
+    # already gets ``'LIVE'`` on a migrated database; stamping that same
+    # literal into ``create_all`` would spread it to fresh ones. Recorded
+    # as a documented exception in test_work16_1_schema_parity.py.
     publication_mode: Mapped[str] = mapped_column(
-        String(12), default="UNAVAILABLE", index=True)
+        String(12), default="UNAVAILABLE", index=True, nullable=True)
     # Handoff detail: where the prepared media lives + how the user publishes.
     handoff_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     handoff_completed_at: Mapped[datetime | None] = mapped_column(
@@ -339,6 +401,13 @@ class PostMetric(Base, PKMixin, TimestampMixin):
 
 class ScheduleEntry(Base, PKMixin, TimestampMixin):
     __tablename__ = "schedule_entries"
+    __table_args__ = (
+        # 0032's own composite. ``plan_item_id`` is the planner's idempotency
+        # key and is scoped per workspace, and this was on
+        # ``Base.metadata`` for neither column -- a fresh database had the
+        # single-column index only.
+        Index("ix_schedule_plan_item", "workspace_id", "plan_item_id"),
+    )
 
     workspace_id: Mapped[str] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), index=True

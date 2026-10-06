@@ -889,16 +889,49 @@ def test_the_helper_keeps_provider_specific_error_semantics():
     """The helper books each verdict; it does not produce one.
 
     ``mark_unknown`` and ``mark_rejected`` are two calls the PROVIDER makes. The
-    helper's signature is the boundary: it accepts a price and a category and
-    nothing about HTTP, so it cannot re-decide what a 429 or a lost response
-    means for a provider it knows nothing about.
+    helper's signature is the boundary: it accepts MONEY and nothing about HTTP,
+    so it cannot re-decide what a 429 or a lost response means for a provider it
+    knows nothing about.
+
+    Work 16.1 §5 widened ``mark_rejected`` with three more MONEY parameters
+    (``actual_usd``, ``estimate_usd``, ``amount_unknown``), because a
+    reconciliation that observes "the provider refused this" still has to record
+    what the attempt was estimated at, or the ledger cannot close the gap. That
+    is money vocabulary, not HTTP vocabulary, so the boundary this test protects
+    is unchanged -- and the assertion below is now on the *shape* of that
+    boundary rather than on a frozen list, so the next legitimate money
+    parameter does not require editing a semantic test to make it pass.
     """
     from app.services.paid_provider import PaidOperation
 
-    params = inspect.signature(PaidOperation.mark_rejected).parameters
-    assert set(params) == {"self", "detail", "nothing_billed"}
+    rejected = inspect.signature(PaidOperation.mark_rejected).parameters
+    assert set(rejected) == {"self", "detail", "nothing_billed",
+                             "actual_usd", "estimate_usd", "amount_unknown"}
+    # The added parameters must be OPTIONAL and keyword-only, or every existing
+    # two-argument call site would break and a caller could be forced to declare
+    # an amount it does not have.
+    for name in ("actual_usd", "estimate_usd", "amount_unknown"):
+        param = rejected[name]
+        assert param.kind is inspect.Parameter.KEYWORD_ONLY, (
+            f"mark_rejected's {name} must stay keyword-only")
+        assert param.default is not inspect.Parameter.empty, (
+            f"mark_rejected's {name} must default, so prior call sites and "
+            "prior behaviour are unchanged")
+
     params = inspect.signature(PaidOperation.mark_unknown).parameters
     assert set(params) == {"self", "detail"}
+
+    # The boundary itself: no HTTP or retry vocabulary may appear on either
+    # entry point, because that is what would let the helper re-decide a
+    # provider's meaning instead of booking the provider's verdict.
+    banned = ("status", "status_code", "code", "http", "retry", "retryable",
+              "response", "error", "exception", "method", "url")
+    for fn in (PaidOperation.mark_rejected, PaidOperation.mark_unknown):
+        leaked = [n for n in inspect.signature(fn).parameters
+                  if any(b in n.lower() for b in banned)]
+        assert not leaked, (
+            f"{fn.__name__} gained HTTP-shaped parameter(s) {leaked}; the "
+            "helper must book the provider's verdict, not interpret it")
 
 
 def test_the_helper_is_what_four_providers_could_share():

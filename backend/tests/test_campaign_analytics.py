@@ -159,14 +159,52 @@ def test_rollup_short_adds_up_exactly(db_session, workspace_with_user):
     }
 
 
-def test_rollup_short_without_metrics_is_zero(db_session, workspace_with_user):
+def test_rollup_short_without_metrics_is_unavailable(db_session, workspace_with_user):
+    """A published post with NO snapshot is UNAVAILABLE, not a measured zero.
+
+    RENAMED and INVERTED by Work 16.5.7 §8. This test used to assert
+    ``views == 0`` / ``engagement_rate == 0.0``, i.e. it locked in the
+    fabrication: short2 has one PUBLISHED post and no PostMetric row, so "0
+    views" claimed nobody watched a video nobody reported on. ``None`` is the
+    honest answer; the count of posts stays a real number.
+    """
     ws = workspace_with_user["workspace"]
     ids = _seed(db_session, ws)
     out = ca.rollup_short(db_session, ws, ids["shorts"][2])
-    assert out["views"] == 0
-    assert out["engagement_rate"] == 0.0
-    assert out["completion"] == 0.0
+    assert out["views"] is None
+    assert out["likes"] is None
+    assert out["watch_time"] is None
+    assert out["engagement_rate"] is None
+    assert out["completion"] is None
     assert out["posts"] == 1  # published post exists, just unmeasured
+
+
+def test_rollup_short_reports_a_real_measured_zero(db_session, workspace_with_user):
+    """The other half of the invariant: a snapshot that says 0 IS a measurement.
+
+    Guards the over-correction. If every total became None whenever the sum
+    happened to be zero, "published to a channel where the video was never
+    served" would be indistinguishable from "never measured", which is the same
+    lie with the sign flipped.
+    """
+    ws = workspace_with_user["workspace"]
+    ids = _seed(db_session, ws)
+    row = PublishedPost(
+        workspace_id=ws, content_item_id=ids["shorts"][2],
+        video_id=f"vid-zero-{os.urandom(4).hex()}", platform="youtube",
+        title="zero views", published_at=utcnow(),
+    )
+    db_session.add(row)
+    db_session.flush()
+    db_session.add(PostMetric(post_id=row.id, views=0, likes=0, comments=0,
+                              shares=0, saves=0, completion_rate=0.0))
+    db_session.commit()
+
+    out = ca.rollup_short(db_session, ws, ids["shorts"][2])
+    assert out["views"] == 0
+    assert out["posts"] == 2
+    # A rate over a zero view count is 0/0, which still does not exist.
+    assert out["engagement_rate"] is None
 
 
 def test_rollup_variant_matches_short_slice(db_session, workspace_with_user):
@@ -230,7 +268,9 @@ def test_chapter_performance_groups_shorts(db_session, workspace_with_user):
     fallback = [g for g in out if g["chapter"] is None]
     assert len(fallback) == 1
     assert fallback[0]["short_ids"] == [ids["shorts"][2]]
-    assert fallback[0]["totals"]["views"] == 0
+    # Work 16.5.7 §8: short2 has a published post and no snapshot, so its
+    # chapter total is UNAVAILABLE. Was `== 0`.
+    assert fallback[0]["totals"]["views"] is None
 
 
 def test_attribution_chain_resolves(db_session, workspace_with_user):

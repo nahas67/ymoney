@@ -248,11 +248,70 @@ guessed, so the two recovery models cannot disagree about the same job.
 
 **CPU fallback is opt-in twice** — the caller must declare `cpu_capable=True`
 *and* the operator must set `GPU_CPU_FALLBACK_ENABLED`. Default off. A job that
-needs a GPU and finds none gets `GpuUnavailable`, never a silent downgrade.
+needs a GPU and finds none gets `GpuAdmissionTimeout`, never a silent downgrade.
+When it IS granted, the reservation is written with `cpu_fallback=True` on the
+`cpu` device — a device with a real, finite 2048 MB budget, so the declared
+footprint is still debited against it.
 
 Measured: `RENDER_BENCHMARKS.md` §GPU. The `gpu worker death` drill
 (`freed=1 live_kept=True re_admitted=…`) is the stale-reservation evidence path
 only — **no real GPU workload ran**; see `PRODUCTION_LOAD_REPORT.md` §7.1.
+
+### 4.4.1 GPU admission composition — two systems, one order
+
+There are **two** admission systems and they are **composed, not merged**:
+
+| | workspace guard | device guard |
+|---|---|---|
+| lives in | `services/media_intel_runs.py` | `services/gpu_scheduler.py` |
+| asks | may **this tenant** run GPU work now? | is there real **VRAM** on one device? |
+| mechanism | `jobs` rows of type `MEDIA_INTEL_GPU_SLOT`, UNIQUE `idempotency_key`, capped by `MAX_CONCURRENT_GPU_JOBS` | conditional `UPDATE` on `gpu_devices.reserved_mb`, sized by the request's declared footprint |
+| bought | cross-tenant **fairness** | no **oversubscription** |
+
+Merging them would destroy what each is good for: the device guard would need to
+know about per-workspace fairness, and the workspace guard would need to know
+VRAM sizes. So the invariant is composition:
+
+```text
+workspace admission AND device admission  ->  execute
+```
+
+**Order is workspace first, then device**, and the reason is not cosmetic. The
+workspace guard is cheap (one indexed `SELECT` plus one `INSERT` on a UNIQUE
+key); the device guard is expensive (it polls real capacity against a deadline).
+Taking VRAM first and then queueing on a tenant quota would hold megabytes while
+running nothing — the exact lie the device scheduler was written to stop — and it
+would surface a tenant's over-quota refusal as a mysterious VRAM timeout.
+
+**The seam.** `media_intel_runs.gpu_admitted` (async) and `gpu_admitted_sync`
+are the production GPU entry points. Nested/`with` context order makes
+admission-before-execution structural, and unwinding gives the workspace slot
+back when device admission refuses. `AdmittedGpu` carries both proofs
+(`workspace_slot_id`, and a `gpu_scheduler.GpuSlot` with device key, VRAM and
+`cpu_fallback`) so one audit query says which tenant ran on what.
+
+**A production GPU path must not call only one guard.** This is enforced
+structurally, not by convention:
+`test_no_module_outside_the_two_guards_calls_one_directly` walks the AST of every
+module under `app/` and attributes each call to a guard primitive; anything
+outside the two layer modules — or inside them but outside the two entry points —
+fails. `test_the_composed_entry_points_call_both_guards` fails if either guard is
+dropped from the composition, and `..._yield_only_after_both_grants` fails if the
+body becomes reachable outside the guarded `with`.
+
+**What a caller gets by using only one layer**, honestly:
+
+| Layer used | What breaks |
+|---|---|
+| device only | no per-tenant fairness — one workspace can take every device; and nothing is in the workspace ledger, so `collect_gpu_slots()` (and the `gpu_queue_starvation` rule reading it) cannot see the work at all |
+| workspace only | no VRAM accounting whatsoever: the oversubscription and CUDA OOM the device guard exists to prevent. This is the pre-Work-16 behaviour |
+| neither | a semaphore, bounded by `MAX_CONCURRENT_GPU_JOBS` across all tenants |
+
+**Current state, stated plainly: nothing in `app/` calls either guard.** The
+composed entry points exist and are exercised by tests, but no production handler
+routes GPU work through them yet — the handlers are the remaining work, and the
+structural tests are what stop the first one from routing through only one.
+Tests: `backend/tests/test_work16_1_gpu_admission.py`.
 
 ### 4.5 Observability → `services/observability/`
 
@@ -324,7 +383,7 @@ field name upper-cased). Verified by binding all 48 of the names below against
 | `GPU_SCHEDULER_ENABLED`, `GPU_SLOT_LEASE_*`, `GPU_ADMISSION_TIMEOUT_*`, `GPU_CPU_FALLBACK_ENABLED`, `GPU_DEVICE_KEYS`, `GPU_WORKER` | `gpu_scheduler.py` |
 | `STORAGE_BACKEND`, `S3_*`, `STORAGE_STREAM_CHUNK_BYTES`, `STORAGE_STAGING_DIR`, `STORAGE_PENDING_TTL_SECONDS` | `storage.py`, `storage_objects.py` |
 | `OBSERVABILITY_*` | `observability/*` |
-| `ALERT_*`, `SLO_*` | **declared but not read by any rule** — see §7 |
+| `ALERT_*`, `SLO_*` | `observability/slo.py` — `ALERT_*` are compared against live metrics; `SLO_*` set the numbers the published objectives state. Both validated at startup, see §7.5 |
 | `BACKUP_*` | `scripts/backup_restore.py` |
 | `BUDGET_ROLLUP_SYSTEM_*` | `budget_rollup.py` (only when no `budget_rollup_limits` system row exists) |
 
@@ -353,30 +412,51 @@ field name upper-cased). Verified by binding all 48 of the names below against
    manifest. `docker-compose.prod.yml` is a Compose file, not a validated
    deployment; it has been *config-validated* (`docker compose config
    --services` → `postgres, redis, backend, web`), not *run* in this lane.
-5. **`ALERT_*` and `SLO_*` env vars do not change what fires.** `slo.py`
-   hard-codes every threshold as a literal (`total > 1.0`, `idle > 900.0`,
-   `worst >= 3.0`). Grepping the backend for `settings.alert_` / `settings.slo_`
-   returns **no matches**. The defaults in `config.py` coincidentally equal the
-   literals, which is why this is easy to believe. Retuning an alert today means
-   a code change — see `INCIDENT_RUNBOOK.md` §0.
-6. **The `gpu_queue_starvation` rule's runbook string names a table that does not
-   exist.** It says "check `MEDIA_INTEL_GPU_SLOT` rows". The real tables are
-   `gpu_devices` and `gpu_reservations` (0036); `media_intel_runs` is the
-   media-intelligence run table. Verified absent from the schema.
-7. **`STORAGE_ROOT` is a module constant, not a setting.**
+5. **~~`ALERT_*` and `SLO_*` env vars do not change what fires.~~ FIXED in
+   Work 16.1 §6.** This used to be the headline defect: `slo.py` hard-coded every
+   threshold as a literal (`total > 1.0`, `idle > 900.0`, `worst >= 3.0`) and
+   nothing read the nine `Settings` fields. Now the three **compared** thresholds
+   (`ALERT_UNKNOWN_EXPOSURE_USD`, `ALERT_QUEUE_STALL_SECONDS`,
+   `ALERT_PUBLISH_FAILURE_STREAK`) are resolved from `Settings` on every
+   evaluation, validated at startup, and flip verdicts; `/internal/alerts`
+   publishes each rule's live `threshold` and `threshold_source`. The other five
+   rule thresholds are **deliberate constants** with stated reasons
+   (`PRODUCTION_OBSERVABILITY.md` §10), and the six `SLO_*` fields change the
+   number the **published objective** states — the only honest behaviour an
+   unmeasured target can have. Tests: `tests/test_work16_1_slo_config.py`.
+6. **The `gpu_queue_starvation` rule reads the wrong ledger.** Its runbook
+   string now names the real objects, but the *rule* is still unreliable:
+   `collect_gpu_slots()` counts `MEDIA_INTEL_GPU_SLOT` job rows in status
+   `QUEUED`/`RUNNING`, while a held slot is parked in `WAITING`. The gauge
+   therefore reads 0 and the rule can fire against a busy GPU. Verified by
+   `test_neither_guard_moves_the_gpu_slot_gauge_because_the_collector_misses_waiting`.
+   One-line fix in `services/observability/metrics.py`, which belongs to another
+   lane; `gpu_scheduler.snapshot()` reads `gpu_reservations` and is correct today.
+7. **No production handler calls either GPU admission guard.** The composed
+   entry points (§4.4.1) exist and are tested, but the AST sweep of `app/` finds
+   zero callers, so GPU work is admitted by nothing today. This is stated as a
+   gap, not as a guarantee: the structural tests are what stop the first handler
+   from routing through only one guard.
+8. **`STORAGE_ROOT` is a module constant, not a setting.**
    `services/storage.py:18` is `STORAGE_ROOT = Path("data/videos")` — a
    **relative** path resolved against the process working directory. The image's
    `WORKDIR` is `/app`, so local media lands in `/app/data/videos`, which is
    **not** on the `ymoney-data` volume the compose file mounts at `/data`.
    See `DEPLOYMENT_RUNBOOK.md` §4.
-8. **Rollback of the schema is not supported.** `run_migrations` has no `down`.
+9. **Rollback of the schema is not supported.** `run_migrations` has no `down`.
    See `DEPLOYMENT_RUNBOOK.md` §6 for exactly what "roll back" means.
-9. **`ALLOWED_MOCK`/provider flags are real switches with real blast radius.**
-   `ALLOW_MOCK_IN_PRODUCTION` lets the factory build a labeled mock engine in
-   production; `ALLOW_PRIVATE_CONNECTORS` permits private-target source fetches.
-   Both default **off**. Do not set them to "get unstuck".
-10. **No PITR / WAL archiving.** See `BACKUP_RESTORE_RUNBOOK.md` §6 items 2 and
-    5. RPO is hours.
+10. **`ALLOWED_MOCK`/provider flags are real switches with real blast radius.**
+    `ALLOW_MOCK_IN_PRODUCTION` lets the factory build a labeled mock engine in
+    production; `ALLOW_PRIVATE_CONNECTORS` permits private-target source fetches.
+    Both default **off**. Do not set them to "get unstuck".
+11. **No PITR / WAL archiving, and no object-storage versioning policy.** The
+    durability architecture is `PostgreSQL dump + object-storage policy + media
+    inventory`, and **only the first and third are built** — see
+    `BACKUP_RESTORE_RUNBOOK.md` §9. Database RPO is hours; media RPO is whatever
+    the object provider's own retention is, and nothing here measures or bounds
+    it. A restored `FINALIZED` row whose bytes are gone is a database that lies
+    about what it has; `storage_inventory.md` is the only thing that will tell
+    you.
 
 ---
 
@@ -387,7 +467,7 @@ field name upper-cased). Verified by binding all 48 of the names below against
 | [`WORKER_POOL_RUNBOOK.md`](WORKER_POOL_RUNBOOK.md) | lease lifecycle, workload classes, drain, paid re-entry, operator queries |
 | [`PRODUCTION_OBSERVABILITY.md`](PRODUCTION_OBSERVABILITY.md) | metrics, redaction, tracing, `/livez` `/readyz`, SLO + alert rules |
 | [`PRODUCTION_LOAD_REPORT.md`](PRODUCTION_LOAD_REPORT.md) | measured limits, the bottleneck, 8 chaos drills (each labelled real vs simulated) |
-| [`BACKUP_RESTORE_RUNBOOK.md`](BACKUP_RESTORE_RUNBOOK.md) | real restore drill, measured RPO/RTO, what is **not** covered |
+| [`BACKUP_RESTORE_RUNBOOK.md`](BACKUP_RESTORE_RUNBOOK.md) | real restore drill, measured RPO/RTO, what is **not** covered, and §9 the production durability scope (three legs; only two are built) |
 | [`RENDER_BENCHMARKS.md`](RENDER_BENCHMARKS.md) | real render measurements, streaming, GPU |
 | [`DEPLOYMENT_RUNBOOK.md`](DEPLOYMENT_RUNBOOK.md) | deploy and rollback procedures |
 | [`INCIDENT_RUNBOOK.md`](INCIDENT_RUNBOOK.md) | 3am procedures: drain, stuck job, unknown paid submission, DB, storage, provider, restore |

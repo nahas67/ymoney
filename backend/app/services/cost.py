@@ -77,6 +77,130 @@ UNKNOWN_EXPOSURE_MARKER = "UNKNOWN_EXPOSURE"
 RESERVATION_MARKER = "reservation"
 
 
+# ---------------------------------------------------------------------------
+# Metric provenance (Work 16.5.7 §8)
+#
+# The vocabulary and the arithmetic that must not lie. Every number an API shows
+# belongs to exactly one class:
+#
+#   MEASURED      a real observation, including a real measured 0
+#   DERIVED       computed from measured values by the stated formula
+#   UNAVAILABLE   cannot be known; serialised as null, rendered UNAVAILABLE,
+#                 NEVER rendered as 0
+#
+# WHY THESE LIVE HERE AND NOT IN A DISPLAY MODULE
+# -------------------------------------------------
+# Because they are the BILLING module's own vocabulary: ``UNKNOWN_EXPOSURE_MARKER``
+# is already declared above, and every helper below is about not turning an
+# unpriceable charge into a number. A display-only helper would have to import
+# this module (pulling in a session factory) just to read one string, or
+# re-declare the marker and drift from it. Declared once, used by every
+# serializer, and pinned to the billing constant by
+# ``tests/test_analytics_honesty.py``.
+#
+# The three rules made impossible by the helpers below:
+#   1. missing != 0      -- an absent measurement is None
+#   2. unsupported != 0  -- a metric nobody can report is None
+#   3. unknown != 0      -- an unpriceable exposure makes a MONEY total None
+# ---------------------------------------------------------------------------
+
+MEASURED = "MEASURED"
+DERIVED = "DERIVED"
+UNAVAILABLE = "UNAVAILABLE"
+
+PROVENANCE_CLASSES = (MEASURED, DERIVED, UNAVAILABLE)
+
+
+def is_unknown_exposure(row: object) -> bool:
+    """Whether one ledger row records an UNKNOWN exposure rather than an amount.
+
+    Two independent signals, because two write paths exist:
+    :func:`book_unknown_exposure` sets ``exposure_unknown``, while
+    ``reserve_spend(unknown_exposure=True)`` sets only ``cost_outcome``.
+    Either is enough to make the row unpriceable.
+    """
+    detail = getattr(row, "detail_json", None) or {}
+    if not isinstance(detail, dict):
+        return False
+    return bool(detail.get("exposure_unknown")) or (
+        detail.get("cost_outcome") == UNKNOWN_EXPOSURE_MARKER
+    )
+
+
+def measured_sum(values) -> int | float | None:
+    """Sum observations, or ``None`` when there are none.
+
+    ``sum([0, 0])`` and ``sum([])`` are both ``0`` in Python. For a metric the
+    difference is the whole point: two posts that both genuinely recorded zero is
+    ``0``; no post reported at all is ``None``. This is the only place that
+    distinction is made.
+    """
+    items = list(values)
+    if not items:
+        return None
+    return sum(items)
+
+
+def derived_mean(pairs) -> float | None:
+    """Weighted mean over ``(value, weight)`` pairs; ``None`` with no weight.
+
+    Pairs with a zero weight are dropped rather than counted as a zero
+    observation -- an unweighted ``0`` for something nobody measured is exactly
+    the fabrication these helpers exist to stop.
+    """
+    weighted = [(v, w) for v, w in pairs if w]
+    if not weighted:
+        return None
+    total_weight = sum(w for _, w in weighted)
+    if total_weight <= 0:
+        return None
+    return sum(v * w for v, w in weighted) / total_weight
+
+
+def derived_ratio(numerator: float, denominator: float) -> float | None:
+    """A rate. ``None`` when the denominator is zero -- not ``0``.
+
+    ``0/n`` is a real measurement (nothing happened out of many). ``n/0`` is
+    arithmetic that does not exist, and reporting it as ``0`` is what made a
+    never-run agent look like a 0%-failure one.
+    """
+    if not denominator:
+        return None
+    return numerator / denominator
+
+
+def money_total(rows, *, amount_attr: str = "amount_usd") -> tuple[float | None, int]:
+    """Total a set of ledger rows honestly. Returns ``(total, unknown_rows)``.
+
+    ``total`` is:
+
+    * ``None`` when no row exists -- an empty ledger is UNKNOWN-but-zero-
+      observed, not proof that nothing was ever spent;
+    * ``None`` when ANY row is an UNKNOWN exposure -- summing the priced rows and
+      calling it the total would under-report real money as a smaller confident
+      number, which is worse than reporting nothing;
+    * otherwise the arithmetic sum, which may legitimately be ``0.0`` when rows
+      exist and each really cost nothing.
+
+    The count is returned rather than discarded so a caller can say WHY the total
+    is unknown instead of silently rendering a dash.
+    """
+    priced: list[float] = []
+    unknown = 0
+    for row in rows:
+        if is_unknown_exposure(row):
+            unknown += 1
+            continue
+        amount = getattr(row, amount_attr, None)
+        if amount is None:
+            unknown += 1
+            continue
+        priced.append(float(amount))
+    if unknown or not priced:
+        return None, unknown
+    return round(sum(priced), 4), 0
+
+
 def load_prices() -> dict:
     try:
         return json.loads(_PRICES_PATH.read_text())
@@ -122,6 +246,29 @@ def track_cost(
 
 
 def spent_since(workspace_id: str, hours: float = 24.0) -> float:
+    """Priced spend in the window, as a BUDGET-GATE input -- NOT a display metric.
+
+    HONESTY (Work 16.5.7 §11) -- DELIBERATELY UNCHANGED, and the reason matters:
+
+    ``coalesce(sum(amount_usd), 0.0)`` here is not a fabricated display zero.
+    This function answers "may we spend?", and a cap that resolved UNKNOWN to
+    "spent nothing" would fail OPEN -- every unknown exposure would buy free
+    budget. The honest direction for a gate is the conservative one, so an
+    unpriceable row is refused room rather than granted it.
+
+    Two things make the gate safe without making it lie:
+
+    * a reservation written with ``unknown_exposure=True`` carries its ESTIMATE
+      in ``amount_usd``, so the unknown money is counted against the cap;
+    * an ``UNKNOWN_EXPOSURE`` row is still a ROW, so it counts against the rate
+      limit (:func:`_window_totals` ``events``), which is what stops a retry
+      loop from spinning on an unpriceable call.
+
+    The DISPLAY surface is the opposite and lives in
+    ``app.services.cost.money_total``: there, an unpriceable row makes the total
+    ``None``. Recorded in docs/ANALYTICS_HONESTY_AUDIT.json as
+    ``GATE_INPUT`` / deliberately excluded from the display contract.
+    """
     since = utcnow() - timedelta(hours=hours)
     with session_scope() as s:
         total = s.scalar(
@@ -240,6 +387,11 @@ def _window_totals(session: Session, workspace_id: str, *, hours: float,
         since = utcnow() - timedelta(seconds=float(window_seconds))
     else:
         since = utcnow() - timedelta(hours=float(hours))
+    # HONESTY: unchanged on purpose, same reasoning as ``spent_since`` above.
+    # This is the arithmetic a BUDGET CAP refuses against, and an unresolved
+    # unknown exposure must never read as "no money spent" here. It is
+    # conservative by design; the honest DISPLAY total is
+    # ``app.services.cost.money_total``.
     spent = float(session.scalar(
         select(func.coalesce(func.sum(CostEntry.amount_usd), 0.0)).where(
             CostEntry.workspace_id == workspace_id,
@@ -629,15 +781,24 @@ __all__ = [
     "BudgetHeadroom",
     "BudgetReservation",
     "DAILY_WINDOW_HOURS",
+    "DERIVED",
+    "MEASURED",
+    "PROVENANCE_CLASSES",
     "RESERVATION_MARKER",
     "RateLimitExceeded",
+    "UNAVAILABLE",
     "UNKNOWN_EXPOSURE_MARKER",
     "assert_can_spend",
     "book_unknown_exposure",
     "budget_available",
     "budget_headroom",
+    "derived_mean",
+    "derived_ratio",
     "estimate_llm_cost",
     "exclusive_workspace_lock",
+    "is_unknown_exposure",
+    "measured_sum",
+    "money_total",
     "reserve_spend",
     "settle_reservation",
     "spent_since",

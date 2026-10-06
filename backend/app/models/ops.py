@@ -4,7 +4,18 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -56,7 +67,14 @@ class Job(Base, PKMixin, TimestampMixin):
     # -- Work 16 §2: the lease. ------------------------------------------
     # `claimed_by=''` means "no worker holds this", which is why it is a
     # non-null string rather than NULL: every read is then a plain equality.
-    claimed_by: Mapped[str] = mapped_column(String(80), default="", index=True)
+    #
+    # `server_default` is 0035's own `DEFAULT ''`. Without it a database built by
+    # `create_all` had no server default here even though 0035 declares one --
+    # `add_column_if_missing` sees the column and returns, so the declared
+    # default never landed -- and a raw INSERT, a view or a CTE that omitted the
+    # column failed `23502 not_null_violation`. See migration 0038.
+    claimed_by: Mapped[str] = mapped_column(String(80), default="", index=True,
+                                           server_default=text("''"))
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # NULL means "nobody holds a renewable lease on this row". For a row that
     # predates 0035 that is the honest reading, and it is what makes such a row
@@ -238,16 +256,36 @@ class GpuDevice(Base, PKMixin, TimestampMixin):
         Index("ix_gpu_device_enabled", "enabled"),
     )
 
-    device_key: Mapped[str] = mapped_column(String(40), default="")
-    name: Mapped[str] = mapped_column(String(80), default="")
+    # Work 16 §1: every ``server_default`` below is 0036's own literal,
+    # copied verbatim. 0036 creates these tables, so its DDL is the only
+    # thing that gives a trimmed deployment their defaults; ``default=``
+    # alone is Python-side and emitted nothing. ``created_at``/``updated_at``
+    # are re-declared (rather than inherited from ``TimestampMixin``) for the
+    # same reason -- 0036 gives them ``DEFAULT CURRENT_TIMESTAMP`` -- and
+    # they keep ``index=True`` so the index names are unchanged.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow, nullable=False, index=True,
+        server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow, onupdate=utcnow, nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"))
+    device_key: Mapped[str] = mapped_column(
+        String(40), default="", server_default=text("''"))
+    name: Mapped[str] = mapped_column(
+        String(80), default="", server_default=text("''"))
     #: ``cuda`` | ``rocm`` | ``cpu`` | ``simulated``. ``cpu`` is a REAL device
     #: with REAL (finite) capacity, not "unlimited" -- a CPU lane that admits
     #: everything is the oversubscription bug wearing a different hat.
-    backend: Mapped[str] = mapped_column(String(20), default="cpu")
-    total_mb: Mapped[int] = mapped_column(Integer, default=0)
-    reserved_mb: Mapped[int] = mapped_column(Integer, default=0)
-    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    meta_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    backend: Mapped[str] = mapped_column(
+        String(20), default="cpu", server_default=text("'cpu'"))
+    total_mb: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0"))
+    reserved_mb: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0"))
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true"))
+    meta_json: Mapped[dict] = mapped_column(
+        JSON, default=dict, server_default=text("'{}'"))
 
     @property
     def free_mb(self) -> int:
@@ -289,20 +327,41 @@ class GpuReservation(Base, PKMixin, TimestampMixin):
     #: ``jobs.id`` when this slot backs a queue job. NULL for a direct call.
     job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     #: what the slot is for: ``musetalk`` | ``segmentation`` | ``avatar`` ...
-    kind: Mapped[str] = mapped_column(String(40), default="")
-    job_type: Mapped[str] = mapped_column(String(60), default="")
-    vram_mb: Mapped[int] = mapped_column(Integer, default=0)
+    # Work 16 §1: every ``server_default`` below is 0036's own literal,
+    # copied verbatim. 0036 creates these tables, so its DDL is the only
+    # thing that gives a trimmed deployment their defaults; ``default=``
+    # alone is Python-side and emitted nothing. ``created_at``/``updated_at``
+    # are re-declared (rather than inherited from ``TimestampMixin``) for the
+    # same reason -- 0036 gives them ``DEFAULT CURRENT_TIMESTAMP`` -- and
+    # they keep ``index=True`` so the index names are unchanged.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow, nullable=False, index=True,
+        server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow, onupdate=utcnow, nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"))
+    kind: Mapped[str] = mapped_column(
+        String(40), default="", server_default=text("''"))
+    job_type: Mapped[str] = mapped_column(
+        String(60), default="", server_default=text("''"))
+    vram_mb: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0"))
     #: lower = sooner, matching ``jobs.priority``.
-    priority: Mapped[int] = mapped_column(Integer, default=100)
-    status: Mapped[str] = mapped_column(String(15), default=RESERVED, index=True)
+    priority: Mapped[int] = mapped_column(
+        Integer, default=100, server_default=text("100"))
+    status: Mapped[str] = mapped_column(String(15), default=RESERVED, index=True,
+                                         server_default=text("'RESERVED'"))
     #: True only when the CALLER declared the work CPU-capable AND the operator
     #: enabled fallback. Never inferred.
-    cpu_fallback: Mapped[bool] = mapped_column(Boolean, default=False)
-    acquired_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    cpu_fallback: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"))
+    acquired_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow, server_default=text("CURRENT_TIMESTAMP"))
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     released_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    release_reason: Mapped[str] = mapped_column(String(40), default="")
+    release_reason: Mapped[str] = mapped_column(
+        String(40), default="", server_default=text("''"))
 
 
 class StorageObject(Base, PKMixin, TimestampMixin):
@@ -331,27 +390,53 @@ class StorageObject(Base, PKMixin, TimestampMixin):
     FINALIZED = "FINALIZED"
     DELETED = "DELETED"
 
-    workspace_id: Mapped[str] = mapped_column(String(36), index=True)
+    # Work 16 §1: every ``server_default`` below is 0036's own literal, copied
+    # verbatim. 0036 creates this table, so its DDL is the only thing that gives
+    # a trimmed deployment these defaults; ``default=`` alone is Python-side and
+    # emitted nothing. ``created_at``/``updated_at`` are re-declared (rather than
+    # inherited from ``TimestampMixin``) for the same reason -- 0036 gives them
+    # ``DEFAULT CURRENT_TIMESTAMP`` -- and they keep ``index=True`` so the index
+    # names are unchanged.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow, nullable=False, index=True,
+        server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow, onupdate=utcnow, nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"))
+
+    workspace_id: Mapped[str] = mapped_column(String(36), index=True,
+                                             server_default=text("''"))
     #: stable, content-independent identity: same logical name -> same id, so a
     #: retried upload is idempotent instead of littering duplicates.
-    object_key: Mapped[str] = mapped_column(String(300), default="")
+    object_key: Mapped[str] = mapped_column(String(300), default="",
+                                            server_default=text("''"))
     #: ``sha256`` of the bytes. Empty while PENDING (there are no bytes yet).
-    checksum: Mapped[str] = mapped_column(String(64), default="")
-    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
-    content_type: Mapped[str] = mapped_column(String(120), default="")
+    checksum: Mapped[str] = mapped_column(String(64), default="",
+                                          server_default=text("''"))
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0,
+                                            server_default=text("0"))
+    content_type: Mapped[str] = mapped_column(String(120), default="",
+                                              server_default=text("''"))
     #: source | proxy | render | thumbnail | subtitle | generated | export | archive
-    kind: Mapped[str] = mapped_column(String(20), default="source", index=True)
-    state: Mapped[str] = mapped_column(String(15), default=PENDING, index=True)
-    backend: Mapped[str] = mapped_column(String(20), default="local")
+    kind: Mapped[str] = mapped_column(String(20), default="source", index=True,
+                                      server_default=text("'source'"))
+    state: Mapped[str] = mapped_column(String(15), default=PENDING, index=True,
+                                       server_default=text("'PENDING'"))
+    backend: Mapped[str] = mapped_column(String(20), default="local",
+                                         server_default=text("'local'"))
     #: where the bytes are being written BEFORE finalization. Never servable.
-    temp_path: Mapped[str] = mapped_column(String(400), default="")
+    temp_path: Mapped[str] = mapped_column(String(400), default="",
+                                           server_default=text("''"))
     #: the asset/video row this object backs, when there is one.
-    ref_type: Mapped[str] = mapped_column(String(30), default="")
-    ref_id: Mapped[str] = mapped_column(String(36), default="")
+    ref_type: Mapped[str] = mapped_column(String(30), default="",
+                                          server_default=text("''"))
+    ref_id: Mapped[str] = mapped_column(String(36), default="",
+                                        server_default=text("''"))
     finalized_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    meta_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    meta_json: Mapped[dict] = mapped_column(JSON, default=dict,
+                                            server_default=text("'{}'"))
 
 
 class SystemLog(Base, PKMixin, TimestampMixin):

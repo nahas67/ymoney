@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from sqlalchemy import select, text
 
+from app.services import cost as cost_vocab
 from app.db import Base
 from app.models import (
     Campaign,
@@ -46,38 +47,63 @@ _ROLLUP_KEYS = (
 
 
 def empty_rollup() -> dict:
-    """Zero-valued rollup with the contract keys."""
+    """UNAVAILABLE rollup carrying the contract keys.
+
+    HONESTY (Work 16.5.7 §8). Every key is ``None``, not ``0``. These values
+    used to be the zero initialiser of an accumulator that only ever ADDS a
+    row for a post with a ``PostMetric`` snapshot, so a rollup over posts that
+    were published but never measured reported ``views: 0`` -- "nobody watched"
+    instead of "nobody reported". ``None`` is UNAVAILABLE and renders as such.
+
+    A real measured zero still arrives as ``0``: ``_accumulate`` promotes these
+    to numbers the moment a snapshot exists, and a snapshot that genuinely
+    recorded 0 views sums to 0.
+    """
     return {
-        "views": 0,
-        "watch_time": 0.0,
-        "likes": 0,
-        "comments": 0,
-        "shares": 0,
-        "saves": 0,
-        "engagement_rate": 0.0,
-        "completion": 0.0,
+        "views": None,
+        "watch_time": None,
+        "likes": None,
+        "comments": None,
+        "shares": None,
+        "saves": None,
+        "engagement_rate": None,
+        "completion": None,
     }
 
 
 def _accumulate(metrics: list[PostMetric]) -> dict:
-    """Sum snapshots and derive engagement/completion rates."""
+    """Sum snapshots and derive engagement/completion rates.
+
+    The two rates are DERIVED and are ``None`` -- not ``0.0`` -- when they
+    cannot be computed. ``engagement_rate`` needs a non-zero view count to be a
+    ratio at all. ``completion`` additionally drops rows whose
+    ``completion_rate`` is NULL: a weighted mean that counted a NULL as 0.0
+    silently averaged "the provider never reported completion" into the same
+    bucket as "the provider reported that nobody finished the video".
+    """
     out = empty_rollup()
-    for m in metrics:
-        out["views"] += m.views or 0
-        out["watch_time"] += m.watch_time_seconds or 0.0
-        out["likes"] += m.likes or 0
-        out["comments"] += m.comments or 0
-        out["shares"] += m.shares or 0
-        out["saves"] += m.saves or 0
-    views = out["views"]
+    if not metrics:
+        return out
+    views = sum(int(m.views or 0) for m in metrics)
+    out["views"] = views
+    out["watch_time"] = round(sum(float(m.watch_time_seconds or 0.0) for m in metrics), 2)
+    out["likes"] = sum(int(m.likes or 0) for m in metrics)
+    out["comments"] = sum(int(m.comments or 0) for m in metrics)
+    out["shares"] = sum(int(m.shares or 0) for m in metrics)
+    out["saves"] = sum(int(m.saves or 0) for m in metrics)
     if views > 0:
         out["engagement_rate"] = round(
             (out["likes"] + out["comments"] + out["shares"] + out["saves"]) / views, 4
         )
-        out["completion"] = round(
-            sum((m.completion_rate or 0.0) * (m.views or 0) for m in metrics) / views, 4
-        )
-    out["watch_time"] = round(out["watch_time"], 2)
+        # Only rows that REPORTED a completion rate carry a weight. A NULL
+        # completion_rate is not a zero completion, so it contributes nothing to
+        # either the numerator or the denominator.
+        completion = cost_vocab.derived_mean([
+            (float(m.completion_rate or 0.0), float(m.views or 0))
+            for m in metrics
+            if m.completion_rate is not None
+        ])
+        out["completion"] = round(completion, 4) if completion is not None else None
     return out
 
 
@@ -532,11 +558,22 @@ def record_learning(session, workspace_id: str, campaign_id: str) -> dict:
     master = session.get(ContentItem, rollup["master_content_id"]) if rollup["master_content_id"] else None
     master_topic = master.topic if master else campaign.name
     totals = rollup["totals"]
-    if rollup["post_count"] == 0 or totals["views"] == 0:
+    # HONESTY: `totals["views"] == 0` no longer covers the unmeasured case --
+    # `_accumulate` now returns None when nothing was measured, and
+    # `None == 0` is False, so the guard would have let an UNMEASURED campaign
+    # through and taught the Learning Agent a lesson from no data. `not x`
+    # covers both, and both mean the same thing here: there are no measured
+    # views to learn from.
+    if rollup["post_count"] == 0 or not totals["views"]:
         return {"recorded": 0, "lessons": [], "reason": "no measured posts"}
     lessons: list[dict] = []
+    # A platform rollup with no snapshot has views=None. It cannot be ranked
+    # against a measured platform, so it is excluded from the ranking entirely
+    # rather than sorted as if it scored zero.
     ranked = sorted(
-        platforms.items(), key=lambda kv: kv[1]["views"], reverse=True
+        ((k, v) for k, v in platforms.items() if v["views"] is not None),
+        key=lambda kv: kv[1]["views"],
+        reverse=True,
     )
     if len(ranked) >= 1:
         best_platform, best = ranked[0]
@@ -569,8 +606,11 @@ def record_learning(session, workspace_id: str, campaign_id: str) -> dict:
                 },
             }
         )
+    # HONESTY: `views` is None for a chapter with no measured short, so the
+    # old `> 0` comparison would raise TypeError on the unmeasured case. A
+    # chapter only ranks once it has measured views.
     ranked_chapters = sorted(
-        [c for c in chapters if c["totals"]["views"] > 0],
+        [c for c in chapters if c["totals"]["views"]],
         key=lambda c: c["totals"]["views"],
         reverse=True,
     )

@@ -41,18 +41,27 @@ Then branch on the **firing alert rules** (`/internal/overview` → `alerts`):
 | `db_unavailable` | CRITICAL | §D |
 | `storage_unavailable` | CRITICAL | §E |
 | `repeated_publish_failure` | WARNING | §F |
-| `gpu_queue_starvation` | WARNING | §E.3 (the rule's own runbook string names a table that does not exist — see below) |
+| `gpu_queue_starvation` | WARNING | §E.3 (it reads the WORKSPACE slot ledger, which cannot see a device reservation — see 0.1 item 2) |
 
 ### 0.1 Three things the system will NOT tell you to do
 
-1. **Alert thresholds are not configurable.** Every threshold in `slo.py` is a
-   literal (`total > 1.0`, `idle > 900.0`, `worst >= 3.0`, `up < 1.0`). Grepping
-   the backend for `settings.alert_` / `settings.slo_` returns **no matches**, so
-   setting `ALERT_UNKNOWN_EXPOSURE_USD=10` changes nothing about what fires. Do
-   not waste the incident trying to tune it.
-2. **`gpu_queue_starvation`'s runbook string says "check `MEDIA_INTEL_GPU_SLOT`
-   rows".** That table does not exist. The real ones are `gpu_devices` and
-   `gpu_reservations`. Use §E.3.
+1. **Only three alert thresholds are configurable, and the other five are
+   deliberately constants.** `ALERT_UNKNOWN_EXPOSURE_USD`,
+   `ALERT_QUEUE_STALL_SECONDS` and `ALERT_PUBLISH_FAILURE_STREAK` are read from
+   the environment and change a verdict immediately (Work 16.1 §6;
+   `GET /internal/alerts` reports each rule's live `threshold` and
+   `threshold_source`). The remaining five — `paid_submission_unknown`,
+   `worker_fleet_unavailable`, `db_unavailable`, `storage_unavailable`,
+   `gpu_queue_starvation` — have no knob and will not grow one, because their
+   thresholds are identities, not magnitudes. Do not spend the incident trying to
+   raise them.
+2. **`gpu_queue_starvation` cannot see a GPU that is busy.** Its runbook points
+   at the WORKSPACE slot ledger, and the collector that feeds
+   `ymoney_gpu_slots_reserved` counts `MEDIA_INTEL_GPU_SLOT` job rows in status
+   `QUEUED`/`RUNNING` while a held slot is parked in `WAITING`. So the gauge
+   reads 0 and the rule can fire while VRAM is reserved. Use
+   `gpu_scheduler.snapshot()` — which reads `gpu_reservations` directly — as the
+   source of truth, and §E.3.
 3. **Metrics are in-process and reset on restart.** `slo_catalog()` says
    `"measured": false` on purpose: there is no scrape history, so `/internal/slo`
    reports *targets*, never achievement. If the process restarted, the counters
@@ -392,21 +401,73 @@ contract exists to prevent. Every decision is audited — a `ValueError` is rais
 if `operator` is empty, because a manual override that leaves no trace is how a
 real duplicate charge becomes unexplainable three weeks later.
 
-> ### ⚠ There is no endpoint and no CLI that applies a `Reconciliation`
+> ### ⚠ `reconcile_submission()` is a library function; use the CLI
 >
-> `reconcile_submission()` is a **library function** in
-> `app/services/paid_executor.py:512`. It mutates a `PaidSubmission` **object** and
-> logs; **it does not write to the database.** Nothing persists the result for you.
+> `reconcile_submission()` in `app/services/paid_executor.py` mutates a
+> `PaidSubmission` **object** in memory and logs; it does not write. Do not call
+> it from a shell and go looking for the row afterwards.
+>
+> **What DOES persist the decision** is the
+> `app.services.paid_reconciliation` CLI — verified on this repository, and the
+> authoritative procedure at 3am:
+>
+> ```bash
+> # 1. what might have been billed, in this workspace
+> docker compose -f docker-compose.prod.yml exec backend \
+>   python -m app.services.paid_reconciliation list --workspace-id "$WS_ID"
+>
+> # 2. read one subject back, JSON, read-only
+> docker compose -f docker-compose.prod.yml exec backend \
+>   python -m app.services.paid_reconciliation show --operation-id "$OP_ID"
+>
+> # 3. apply the outcome the provider dashboard showed -- durably and once
+> docker compose -f docker-compose.prod.yml exec backend \
+>   python -m app.services.paid_reconciliation reconcile \
+>     --operation-id "$OP_ID" \
+>     --outcome REMOTE_JOB_CONFIRMED \
+>     --remote-id "$REMOTE_ID" \
+>     --actual-usd 0.42 \
+>     --operator "$YOUR_NAME"
+> ```
+>
+> `--outcome` is one of `REMOTE_JOB_CONFIRMED`, `NOT_ACCEPTED`, `SUCCEEDED`,
+> `FAILED`, `UNKNOWN_REMAINS`. `--remote-id` is **required** for
+> `REMOTE_JOB_CONFIRMED` and **refused** for `NOT_ACCEPTED` — the CLI will not
+> let you record a provider handle for a request the provider never accepted.
+> `--operator` is mandatory: a decision with no author is unexplainable later.
+> `--amount-unknown` books `UNKNOWN_EXPOSURE` rather than $0; absent
+> `--actual-usd` the original estimate stands, it is never silently zeroed.
+>
+> Verified in this repository:
+>
+> ```text
+> $ python -m app.services.paid_reconciliation --help
+> usage: python -m app.services.paid_reconciliation [-h]
+>                                                 {list,show,reconcile} ...
+>
+> $ python -m app.services.paid_reconciliation reconcile --help
+> ... --operation-id OPERATION_ID
+>     --outcome {REMOTE_JOB_CONFIRMED,NOT_ACCEPTED,SUCCEEDED,FAILED,UNKNOWN_REMAINS}
+>     --operator OPERATOR  --note NOTE  --remote-id REMOTE_ID
+>     --actual-usd ACTUAL_USD  --estimate-usd ESTIMATE_USD  --amount-unknown
+>
+> $ python -m app.services.paid_reconciliation list --workspace-id 00000000-0000-0000-0000-000000000000
+> []
+> $ echo $LASTEXITCODE
+> 0
+> ```
 >
 > **So the honest 3am procedure is:**
 >
 > 1. **Do not resubmit.** Ever, until the outcome is known.
-> 2. **Open the provider's dashboard** and look for a charge / a remote task using
->    the `remote_id` from §C.2 (`videos.provider_task_id`, or
+> 2. **List** the workspace's ambiguous submissions (step 1 above) and open the
+>    provider's dashboard. Look for a charge / a remote task using the
+>    `remote_id` from §C.2 (`videos.provider_task_id`, or
 >    `cost_entries.detail_json.remote_id`).
-> 3. **Found it** → the work was bought. Record it in the `cost_entries` row
->    (`detail_json` + `amount_usd`) so the books match the invoice. For the render
->    lane, adopt the running task rather than re-submitting:
+> 3. **Found it** → the work was bought. Record the fact with `reconcile
+>    --outcome REMOTE_JOB_CONFIRMED` (step 3), then pass `--actual-usd` so the
+>    books match the invoice. For the render lane you may instead adopt the
+>    running task rather than re-submitting:
 >    ```bash
 >    docker compose -f docker-compose.prod.yml exec backend python -c "
 >    from app.services.paid_provider import reattach_by_remote_id
@@ -421,8 +482,10 @@ real duplicate charge becomes unexplainable three weeks later.
 >    "nothing to adopt" must never become "reserve a fresh one" — so a `None`
 >    means look again, not retry.
 > 4. **Not found** → the request was not billed. Then, and only then,
->    `RETRY_IF_CONFIRMED_SAFE` is defensible.
-> 5. **Cannot tell** → leave it `SUBMISSION_UNKNOWN` and accept that
+>    `reconcile --outcome NOT_ACCEPTED` is defensible, and only after you have
+>    proved it. Note the CLI refuses `--remote-id` here on purpose.
+> 5. **Cannot tell** → `reconcile --outcome UNKNOWN_REMAINS` to record that you
+>    looked and could not determine it, and accept that
 >    `ymoney_paid_submission_unknown_total` stays > 0. That is the honest state.
 >
 > **Do not delete the ledger row.** It is the evidence that the purchase happened.
@@ -776,7 +839,7 @@ may be hours stale.
 |---|---|---|
 | **Worker drain** | stops claiming, finishes in-flight, bounded | nothing |
 | **Stuck job** | classifies the cause; reclaim is dry-runnable | reclaim / cancel / re-classify. Never hand-edit `status` |
-| **Unknown paid submission** | persists `SUBMISSION_UNKNOWN`, books `UNKNOWN_EXPOSURE` (not 0), **forbids resubmit**, fires CRITICAL, halts the render lane | **always.** Look up the charge by `remote_id`. There is no endpoint or CLI that applies a `Reconciliation` — §C.3 |
+| **Unknown paid submission** | persists `SUBMISSION_UNKNOWN`, books `UNKNOWN_EXPOSURE` (not 0), **forbids resubmit**, fires CRITICAL, halts the render lane | **always.** Look up the charge by `remote_id`, then apply it with `python -m app.services.paid_reconciliation reconcile --outcome ...` — §C.3 |
 | **DB incident** | `/livez` immune; `/readyz` 503 with per-check remediation; pool pre-ping/recycle | decide restore if unrecoverable |
 | **Storage incident** | `.part` → `os.replace` → `FINALIZED` last; `sweep()` reclaims dead promises; readiness unaffected | accept data loss / re-materialise from the inventory |
 | **GPU starvation** | `sweep()` frees stale reservations; live holders never reclaimed | register devices if `devices: []` |
@@ -810,7 +873,7 @@ Every command in this document was executed against this repository. Method:
 | `storage_objects.describe(ws)` / `staging_root()` / `sweep()` | executed; `sweep()` → `{'pending_dropped': 0, 'expired_dropped': 0, 'part_removed': 0}` |
 | All SQL in §B.3, §C.2, §D.1, §E.2, §E.3 | executed against the real schema; every statement parsed and ran (0 matching rows on a clean DB). Column names read from `inspect(engine).get_columns()` for `jobs`, `gpu_devices`, `gpu_reservations`, `storage_objects`, `cost_entries`, `lipsync_jobs` |
 | `MEDIA_INTEL_GPU_SLOT` does not exist | checked against `inspect(engine).get_table_names()` |
-| `paid_executor.reconcile_submission` signature and that it does not persist | read at `paid_executor.py:512-541`; no `session_scope` / no write in the function body |
+| `paid_executor.reconcile_submission` signature and that it does not persist | read at `paid_executor.py:512-541`; no `session_scope` / no write in the function body. The persisting path is the `app.services.paid_reconciliation` CLI, whose `list` / `show` / `reconcile` subcommands were verified with `--help` and a real invocation on this repository |
 | `docker compose … ps` requires the full variable set | executed; exit 1 with the interpolation error |
 | `python -m app.scripts.backup_restore` + all four subcommands and their flags | executed `--help` for each; `--target-db` confirmed **required** on `restore` |
 

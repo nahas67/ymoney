@@ -224,7 +224,8 @@ def test_the_app_runs_at_the_servers_default_isolation_level(pg):
 # have a ``downgrade()``, which is what makes (b) possible using shipped code.
 
 _AS_OF = "0034_paid_execution_outcomes"
-_REMAINDER = ("0035_job_leases", "0036_gpu_and_storage", "0037_budget_rollups")
+_REMAINDER = ("0035_job_leases", "0036_gpu_and_storage", "0037_budget_rollups",
+              "0038_schema_parity")
 
 
 def _seed_representative(session) -> dict:
@@ -860,39 +861,68 @@ def test_the_orm_applies_its_python_defaults_on_insert(pg):
         assert pat.active is True
 
 
-def test_orm_columns_have_no_server_side_default_on_postgres(pg):
-    """An operational fact with teeth: a raw INSERT must enumerate every column.
+def test_orm_columns_carry_their_declared_server_default_on_postgres(pg):
+    """INVERTED by Work 16.1 §1 -- this test used to assert the defect.
 
-    ``create_all`` builds these columns from the ORM, where ``default=`` is a
-    Python callable and emits NO server default. 0035's declared
-    ``claimed_by VARCHAR(80) NOT NULL DEFAULT ''`` therefore never lands on a
-    database the ORM created, because ``add_column_if_missing`` sees the column
-    and returns. So a migration backfill, a ``psql`` insert, a view or a CTE
-    that omits ``claimed_by`` fails with 23502 rather than getting ``''``.
+    It previously read ``information_schema.columns`` and asserted
+    ``defaults["claimed_by"] is None``, then proved a raw INSERT omitting the
+    column fails with ``23502``. Its own docstring spelled out the operational
+    consequence: "a migration backfill, a ``psql`` insert, a view or a CTE that
+    omits ``claimed_by`` fails with 23502 rather than getting ``''``".
+
+    The cause was that ``create_all`` builds columns from the ORM, where
+    ``default=`` is a **Python callable** and emits no server default, while
+    migration 0035 declared ``claimed_by VARCHAR(80) NOT NULL DEFAULT ''``.
+    ``add_column_if_missing`` then saw the column and returned, so the migration
+    never reconciled it. Two databases, two schemas, and which one you got
+    depended on how it was created.
+
+    Production authority is migrations -> schema. The ORM now declares
+    ``server_default=`` so both paths agree, and migration 0038 sets the default
+    on databases that already exist. The same raw INSERT below now succeeds.
+
+    The mutation proof: remove ``claimed_by``'s server default and this fails
+    with the INSERT's ``23502``.
     """
     from sqlalchemy import text
-    from sqlalchemy.exc import IntegrityError
 
     with pg["Session"]() as s:
         defaults = dict(s.execute(text(
             "SELECT column_name, column_default FROM information_schema.columns "
             "WHERE table_name='jobs' AND column_name IN "
             "('claimed_by','payload','result','cancel_requested','priority')")).all())
-    assert defaults["claimed_by"] is None
-    assert defaults["payload"] is None
-    assert defaults["cancel_requested"] is None
+    assert defaults["claimed_by"] is not None, (
+        "jobs.claimed_by has no server default again; a raw INSERT, view or "
+        "CTE that omits it will fail with 23502 instead of getting ''")
+    assert defaults["claimed_by"] in ("''::character varying", "''"), (
+        f"unexpected default: {defaults['claimed_by']!r}")
 
-    with pytest.raises(IntegrityError) as caught, pg["Session"]() as s:
-        # Every NOT NULL column EXCEPT claimed_by is supplied, so the refusal is
-        # unambiguously about the missing server default.
+    # The invariant is ORM == migration, not "every column has a default".
+    # `payload`/`result`/`cancel_requested`/`priority` never had a declared
+    # server default in any of the 37 migrations, so the correct converged state
+    # is that they have none on both paths. Asserting a default here would
+    # encode a schema change nobody asked for.
+    for column in ("payload", "cancel_requested"):
+        assert defaults[column] is None, (
+            f"jobs.{column} gained a server default the migrations never "
+            "declared; ORM and migration have diverged again")
+
+    # The insert that previously raised 23502 must now succeed.
+    with pg["Session"]() as s:
+        job_id = _sid()
         s.execute(text(
             "INSERT INTO jobs (id, type, status, priority, payload, result, "
             "last_error, cancel_requested, next_run_at, max_retries, retry_count, "
             "created_at, updated_at) "
             "VALUES (:i,'w16.sem','QUEUED',100,'{}','{}','',false, now(),3,0,"
-            " now(), now())"), {"i": _sid()})
+            " now(), now())"), {"i": job_id})
         s.commit()
-    assert _sqlstate(caught.value) == "23502"
+        stored = s.execute(text(
+            "SELECT claimed_by FROM jobs WHERE id=:i"), {"i": job_id}).scalar()
+        assert stored == "", (
+            f"claimed_by should have taken its declared default, got {stored!r}")
+        s.execute(text("DELETE FROM jobs WHERE id=:i"), {"i": job_id})
+        s.commit()
 
 
 def test_the_migration_owned_rollup_table_does_have_server_defaults(pg):
@@ -1558,20 +1588,29 @@ def test_activity_query_json_path_filters_agree_on_both_backends_for_string_ids(
             s.commit()
 
 
-def test_activity_query_json_path_filters_DIVERGE_when_the_stored_id_is_numeric(pg):
-    """THE portability finding, live on both backends.
+def test_activity_query_json_path_filters_PARITY_when_the_stored_id_is_numeric(pg):
+    """The portability finding, now CLOSED.
 
-    ``services/activity.py:186-193`` filters with
+    This test used to be named ``..._DIVERGE_...`` and asserted the opposite of
+    what it asserts now, because the divergence was real:
+
+    ``services/activity.py`` filtered with
     ``EventLog.data_json["project_id"].as_string() == str(project_id)``. On
-    PostgreSQL the CAST stringifies a JSON number, so a numeric id matches. On
-    SQLite ``JSON_EXTRACT`` keeps JSON's own type and the comparison is
-    ``42 = '42'``, which SQLite answers False -- the row is invisible.
+    PostgreSQL the CAST stringifies a JSON number, so a numeric id matched. On
+    SQLite ``JSON_EXTRACT`` keeps JSON's own type, making the comparison
+    ``42 = '42'``, which SQLite answers False -- the row was invisible. Same
+    call, same data, same argument: one backend found the row, the other did
+    not.
 
-    Same call, same data, same argument: PostgreSQL returns it, SQLite does not.
-    Today every writer stores these as strings, so nothing is broken -- which is
-    precisely why this is a latent risk and not a live bug. It is pinned so the
-    day a writer emits a number, the divergence is already a failing test here
-    rather than a support ticket.
+    It was latent only because every current writer stores these as strings, so
+    nothing looked broken. That is the worst kind of defect: it is invisible
+    until a writer changes, and then it is a support ticket about missing data.
+
+    Work 16.1 §2 replaced the three ``as_string()`` filters with
+    ``json_value_equals`` (see ``services/json_portability.py``), which casts
+    explicitly on both backends. The finding is now asserted as **parity**, and
+    the anti-vacuity guard below means it can never pass by both sides returning
+    nothing.
     """
     from sqlalchemy import text
 
@@ -1591,12 +1630,12 @@ def test_activity_query_json_path_filters_DIVERGE_when_the_stored_id_is_numeric(
         lite_hits = _event_names(activity.query(lite_session,
                                                  seeded["workspace_id"],
                                                  project_id="42"))
-    assert lite_hits == ["string"], (
-        "SQLite matched the numeric payload too; if this now passes on both, "
-        "SQLAlchemy has added the CAST and the divergence is gone")
-    assert set(lite_hits) != set(pg_hits), (
-        "the two backends agree here, so this test no longer pins the "
-        "divergence it exists to pin")
+    assert lite_hits == ["numeric", "string"], (
+        f"SQLite returned {lite_hits}; it must match PostgreSQL exactly. "
+        "The numeric JSON payload is invisible again.")
+    assert set(lite_hits) == set(pg_hits) and lite_hits, (
+        "the two backends must agree, and the comparison must not be vacuous "
+        "-- both sides returning nothing would satisfy a naive equality check")
 
     with pg["Session"]() as s:
         s.execute(text("DELETE FROM events WHERE workspace_id=:w"),

@@ -52,7 +52,10 @@ from app.services import cost as cost_mod
 from app.services import provider_settings as ps
 
 REPO = Path(__file__).resolve().parents[2]
-UI = REPO / "frontend" / "src" / "components" / "ProviderStatus.tsx"
+# RE-ANCHORED in Work 16.5.2: the legacy ``components/ProviderStatus.tsx`` panel was
+# replaced by the rebuilt Distribution screen. These tests guard a RULE about
+# ambiguous paid submissions, not a file, so the target moved and the rule did not.
+UI = REPO / "frontend" / "src" / "features" / "distribution" / "Distribution.tsx"
 
 #: A value handed to a credential setter so the resolver has something to hold.
 #: No credential, no provider, no request -- the same convention
@@ -1117,24 +1120,36 @@ def test_incidents_need_a_workspace_membership(ws_a):
 def test_the_panel_offers_a_retry_only_when_retry_safety_is_proven():
     """The frontend contract, checked from the backend side.
 
-    Reads the real component. The rule is structural: the retry button is inside
-    a branch that requires ``retry_safe === true``, and the fallback branch says
-    why there is no button. A UI test framework is deliberately not added for one
-    conditional -- the property worth protecting is that the dangerous control
-    cannot be reached without the flag, and that is checkable from source.
+    RE-ANCHORED in Work 16.5.2. This used to read
+    ``components/ProviderStatus.tsx`` and assert that one component's exact JSX
+    shape (``row.retry_safe === true ? (<button``). That file is gone, replaced
+    by the rebuilt Distribution screen.
+
+    What is worth protecting did not move with the file, so neither did the
+    assertion -- only its target. The property is the RULE, not the previous
+    spelling of it:
+
+      * the incidents endpoint is read;
+      * the backend's own ``retry_safe`` verdict decides what is shown;
+      * an absent retry is EXPLAINED, not merely omitted;
+      * the ambiguous state reaches the screen under its own name.
     """
     source = UI.read_text(encoding="utf-8")
-    assert 'wsApi.get("/provider-maturity/incidents")' in source, \
-        "the panel does not read the incidents endpoint"
-    gated = re.search(r"row\.retry_safe === true\s*\?\s*\(\s*<button", source)
-    assert gated, (
-        "a retry button must be reachable only through `retry_safe === true`")
-    assert "No retry offered" in source, \
-        "the panel must say why a retry is absent, not just omit it"
-    # The state word must reach the screen, not be mapped to a friendly failure.
-    assert "row.display_state || row.state" in source
+    assert "/provider-maturity/incidents" in source, \
+        "the screen does not read the incidents endpoint"
+    # The verdict is the backend's, rendered both ways.
+    assert "retry_safe" in source, "the retry-safety verdict is not consulted"
+    assert "Resubmit NOT safe" in source and "Resubmit proven safe" in source, \
+        "both retry-safety outcomes must be visible, not just the safe one"
+    assert "recommended_action" in source, \
+        "the backend's recommended action must reach the operator"
+    # The ambiguous state is named, never hidden.
     assert "SUBMISSION_UNKNOWN" in source, \
-        "the panel must name the ambiguous state rather than hide it"
+        "the screen must name the ambiguous state rather than hide it"
+    # No retry affordance for an ambiguous paid submission. A button whose label
+    # mentions resending is exactly the control this work forbids.
+    assert not re.search(r">\s*(Retry|Resend|Resubmit|Try again|Send again)\b", source), \
+        "an ambiguous paid submission must not offer a resend control"
 
 
 def test_the_panel_does_not_render_submission_unknown_as_failed():
@@ -1149,8 +1164,27 @@ def test_the_panel_does_not_render_submission_unknown_as_failed():
         line for line in source.splitlines()
         if not line.lstrip().startswith(("*", "//", "/*")))
     bad = re.findall(r'SUBMISSION_UNKNOWN[^}\n]{0,80}["\']Failed', code)
-    assert not bad, f"the panel labels an ambiguous submit as a failure: {bad}"
-    assert 'tone: "bad"' in source, "the ambiguous state must be visually distinct"
+    assert not bad, f"the screen labels an ambiguous submit as a failure: {bad}"
+
+    # The ambiguous state must be visually distinct from a confirmed failure, and
+    # the tone must come from the SHARED mapping rather than a hardcoded danger
+    # colour -- otherwise a future edit can quietly repaint it.
+    assert "toneForStatus(i.state)" in source, \
+        "the incident state must be toned from the shared status mapping"
+
+    primitives = (REPO / "frontend" / "src" / "design-system" / "primitives.tsx")
+    design = primitives.read_text(encoding="utf-8")
+    assert '"unknown"' in design, "the `unknown` tone must still exist"
+    mapping = re.search(
+        r"function toneForStatus\([^)]*\)[^{]*\{(.*?)\n\}", design, re.S)
+    assert mapping, "could not locate toneForStatus in the design system"
+    # SUBMISSION_UNKNOWN must be routed to `unknown`, never to the danger tone.
+    unknown_rule = re.search(
+        r'SUBMISSION_UNKNOWN[^\n]*?:\s*"(\w+)"', mapping.group(1))
+    if unknown_rule:
+        assert unknown_rule.group(1) == "unknown", (
+            "SUBMISSION_UNKNOWN must map to the `unknown` tone, not "
+            f"{unknown_rule.group(1)!r}")
 
 
 def test_the_incident_payload_is_json_serialisable(ws_a):

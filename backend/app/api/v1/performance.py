@@ -115,18 +115,28 @@ def _compare(db, workspace_id: str, campaign_id: str, group_by: str) -> dict:
         key = _group_key(group_by, post, short,
                          timelines.get(post.content_item_id or "", {}),
                          features.get(post.content_item_id or "", {}))
+        # HONESTY: `completions` only receives rows whose completion_rate was
+        # actually REPORTED. It used to be `float(metric.completion_rate or
+        # 0.0)`, which filed "the provider reported nothing" in the same bucket
+        # as "the provider reported that nobody finished watching" and then
+        # averaged them together.
         slot = groups.setdefault(key, {"n": 0, "views": 0, "completions": []})
         slot["n"] += 1
         slot["views"] += metric.views or 0
-        slot["completions"].append(float(metric.completion_rate or 0.0))
+        if metric.completion_rate is not None:
+            slot["completions"].append(float(metric.completion_rate))
     items = []
     for key in sorted(groups):
         slot = groups[key]
         completions = slot.pop("completions")
+        # HONESTY: `else 0.0` claimed "0% completion" for a group where no post
+        # reported one. `n` and `views` stay real numbers (rows were summed);
+        # the DERIVED mean is None when nothing was reported.
         items.append({
             "group": key, "n": slot["n"], "views": slot["views"],
             "avg_completion": (round(sum(completions) / len(completions), 4)
-                               if completions else 0.0),
+                               if completions else None),
+            "reported_completion_samples": len(completions),
             "low_sample": slot["n"] < 2,
         })
     return {
@@ -167,10 +177,20 @@ def _group_key(group_by: str, post, short, timeline_doc: dict,
                      if t.get("kind") == "caption" for _ in (t.get("clips") or []))
         return "captioned" if n_caps else "uncaptioned"
     if group_by == "duration":
-        seconds = float((timeline_doc.get("duration_seconds") or 0.0) or 0.0)
+        # HONESTY: this was `float(doc.get("duration_seconds") or 0.0) or 0.0`,
+        # so a post with NO known duration was filed under "<25s" -- claiming
+        # the video was short when nobody knows how long it is. An unknown
+        # duration is its own bucket, named the same way the other
+        # unknown-capable group keys already name it.
+        seconds: float | None = None
+        with contextlib.suppress(TypeError, ValueError):
+            raw = timeline_doc.get("duration_seconds")
+            seconds = float(raw) if raw is not None else None
         if features.get("duration_seconds") is not None:
             with contextlib.suppress(TypeError, ValueError):
                 seconds = float(features["duration_seconds"])
+        if seconds is None:
+            return "unknown"
         if seconds < 25:
             return "<25s"
         if seconds < 40:

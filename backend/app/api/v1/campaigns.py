@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from app.services.cost import is_unknown_exposure, measured_sum
 from app.db import get_db
 from app.engine.campaign.publish_flow import register_publish_handlers
 from app.models import Campaign, ContentItem, QualityCheck, Video, VideoVariant
@@ -320,13 +321,39 @@ def _cost_summary(db, campaign_id: str, ws_id: str) -> dict:
     from app.models import CostEntry
 
     rows = db.scalars(select(CostEntry).where(CostEntry.workspace_id == ws_id)).all()
-    total, n = 0.0, 0
+    # HONESTY (Work 16.5.7 §8). This used to be
+    # `total += float(row.amount_usd or 0.0)` over the campaign's rows, which
+    # made two different things look identical in the UI:
+    #   * a campaign that spent money but has one UNKNOWN_EXPOSURE row (money
+    #     possibly spent, amount unpriceable, written as 0.0) reported the sum
+    #     of the OTHER rows as the campaign's total cost, under-reporting real
+    #     money as a confidently small number;
+    #   * a campaign with no ledger rows at all reported $0.00, which reads as
+    #     "this campaign was free" rather than "nothing has been booked".
+    # Both are now None. A campaign whose rows really do sum to 0.0 -- rows
+    # exist, each priced at zero -- still reports 0.0.
+    priced: list[CostEntry] = []
+    unknown = 0
     for row in rows:
         detail = row.detail_json or {}
-        if detail.get("campaign_id") == campaign_id:
-            total += float(row.amount_usd or 0.0)
-            n += 1
-    return {"campaign_id": campaign_id, "entries": n, "total_usd": round(total, 4)}
+        if detail.get("campaign_id") != campaign_id:
+            continue
+        if is_unknown_exposure(row):
+            unknown += 1
+            continue
+        priced.append(row)
+    total: float | None = measured_sum(float(r.amount_usd or 0.0) for r in priced)
+    if unknown:
+        # A money total that silently dropped an unpriceable row would be worse
+        # than no total: it would look audited.
+        total = None
+    return {
+        "campaign_id": campaign_id,
+        "entries": len(priced) + unknown,
+        "priced_entries": len(priced),
+        "unknown_exposure_entries": unknown,
+        "total_usd": round(total, 4) if total is not None else None,
+    }
 
 
 @campaign_flows_router.get("/{campaign_id}/qc")

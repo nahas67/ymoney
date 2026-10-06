@@ -1,0 +1,1351 @@
+{
+  "generatedFrom": "frontend/src/api/openapi.json",
+  "totalScanned": 191,
+  "resolved": 191,
+  "unresolved": 0,
+  "ambiguous": 9,
+  "byClass": {
+    "SCHEMA_COVERED": 191
+  },
+  "ordinaryJsonTotal": 191,
+  "ordinaryJsonDocumented": 191,
+  "calls": [
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/jobs",
+      "specPath": "/api/v1/workspaces/{workspace_id}/jobs",
+      "class": "SCHEMA_COVERED",
+      "file": "app\\AppShell.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/intelligence/routing/chains",
+      "specPath": "/api/v1/workspaces/{workspace_id}/intelligence/routing/chains",
+      "class": "SCHEMA_COVERED",
+      "file": "app\\AppShell.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/analytics/overview",
+      "specPath": "/api/v1/workspaces/{workspace_id}/analytics/overview",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\analytics\\Analytics.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/performance/retention",
+      "specPath": "/api/v1/workspaces/{workspace_id}/performance/retention",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\analytics\\Analytics.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/distribution/capabilities",
+      "specPath": "/api/v1/workspaces/{workspace_id}/distribution/capabilities",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\analytics\\Analytics.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/distribution/capabilities",
+      "specPath": "/api/v1/workspaces/{workspace_id}/distribution/capabilities",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\analytics\\Analytics.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/analytics/overview",
+      "specPath": "/api/v1/workspaces/{workspace_id}/analytics/overview",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\analytics\\Analytics.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/analytics/breakdowns",
+      "specPath": "/api/v1/workspaces/{workspace_id}/analytics/breakdowns",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\analytics\\Analytics.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/analytics/patterns",
+      "specPath": "/api/v1/workspaces/{workspace_id}/analytics/patterns",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\analytics\\Analytics.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/publishing/posts",
+      "specPath": "/api/v1/workspaces/{workspace_id}/publishing/posts",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\analytics\\Analytics.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/campaigns",
+      "specPath": "/api/v1/workspaces/{workspace_id}/campaigns",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\analytics\\Analytics.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/assets/media",
+      "specPath": "/api/v1/workspaces/{workspace_id}/assets/media",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\assets\\Assets.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/assets",
+      "specPath": "/api/v1/workspaces/{workspace_id}/assets",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\assets\\Assets.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/avatars",
+      "specPath": "/api/v1/workspaces/{workspace_id}/avatars",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\assets\\Assets.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/music/policy",
+      "specPath": "/api/v1/workspaces/{workspace_id}/music/policy",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\assets\\Assets.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/assets/broll/search",
+      "specPath": "/api/v1/workspaces/{workspace_id}/assets/broll/search",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\assets\\Assets.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/brands",
+      "specPath": "/api/v1/workspaces/{workspace_id}/brands",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\brands\\Brands.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/brands/presets",
+      "specPath": "/api/v1/workspaces/{workspace_id}/brands/presets",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\brands\\Brands.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/lessons",
+      "specPath": "/api/v1/workspaces/{workspace_id}/lessons",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\brands\\Brands.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/brand",
+      "specPath": "/api/v1/workspaces/{workspace_id}/brand",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\brands\\Brands.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/music/prefs",
+      "specPath": "/api/v1/workspaces/{workspace_id}/music/prefs",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\brands\\Brands.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/music/policy",
+      "specPath": "/api/v1/workspaces/{workspace_id}/music/policy",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\brands\\Brands.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/brands",
+      "specPath": "/api/v1/workspaces/{workspace_id}/brands",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\brands\\Brands.tsx"
+    },
+    {
+      "method": "PUT",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/brands/effective|/api/v1/workspaces/{workspace_id}/brands/presets|/api/v1/workspaces/{workspace_id}/brands/{brand_id}",
+      "specPath": "/api/v1/workspaces/{workspace_id}/brands/{brand_id}",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\brands\\Brands.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/brands/{brand_id}/assets",
+      "specPath": "/api/v1/workspaces/{workspace_id}/brands/{brand_id}/assets",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\brands\\Brands.tsx"
+    },
+    {
+      "method": "DELETE",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/brands/{brand_id}/assets",
+      "specPath": "/api/v1/workspaces/{workspace_id}/brands/{brand_id}/assets",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\brands\\Brands.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/brands/{brand_id}/verify",
+      "specPath": "/api/v1/workspaces/{workspace_id}/brands/{brand_id}/verify",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\brands\\Brands.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/distribution/capabilities",
+      "specPath": "/api/v1/workspaces/{workspace_id}/distribution/capabilities",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\campaigns\\CampaignDetail.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}/derive",
+      "specPath": "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}/derive",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\campaigns\\CampaignDetail.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}/generate-more",
+      "specPath": "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}/generate-more",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\campaigns\\CampaignDetail.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}/schedule",
+      "specPath": "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}/schedule",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\campaigns\\CampaignDetail.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}/publish",
+      "specPath": "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}/publish",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\campaigns\\CampaignDetail.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}/cancel",
+      "specPath": "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}/cancel",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\campaigns\\CampaignDetail.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/content/{content_id}/regenerate",
+      "specPath": "/api/v1/workspaces/{workspace_id}/content/{content_id}/regenerate",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\campaigns\\CampaignDetail.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/content/{content_id}/platform-variants",
+      "specPath": "/api/v1/workspaces/{workspace_id}/content/{content_id}/platform-variants",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\campaigns\\CampaignDetail.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/publishing/posts",
+      "specPath": "/api/v1/workspaces/{workspace_id}/publishing/posts",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\campaigns\\CampaignDetail.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/distribution/capabilities",
+      "specPath": "/api/v1/workspaces/{workspace_id}/distribution/capabilities",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\campaigns\\Campaigns.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/campaigns",
+      "specPath": "/api/v1/workspaces/{workspace_id}/campaigns",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\campaigns\\Campaigns.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/content",
+      "specPath": "/api/v1/workspaces/{workspace_id}/content",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\campaigns\\Campaigns.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/campaigns/from-master",
+      "specPath": "/api/v1/workspaces/{workspace_id}/campaigns/from-master",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\campaigns\\Campaigns.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/campaigns",
+      "specPath": "/api/v1/workspaces/{workspace_id}/campaigns",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\campaigns\\Campaigns.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/publishing/posts",
+      "specPath": "/api/v1/workspaces/{workspace_id}/publishing/posts",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\campaigns\\Campaigns.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/campaigns",
+      "specPath": "/api/v1/workspaces/{workspace_id}/campaigns",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\command-center\\CommandCenter.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/content",
+      "specPath": "/api/v1/workspaces/{workspace_id}/content",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\command-center\\CommandCenter.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/calendar",
+      "specPath": "/api/v1/workspaces/{workspace_id}/calendar",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\command-center\\CommandCenter.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/jobs",
+      "specPath": "/api/v1/workspaces/{workspace_id}/jobs",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\command-center\\CommandCenter.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/costs",
+      "specPath": "/api/v1/workspaces/{workspace_id}/costs",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\command-center\\CommandCenter.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/intelligence/routing/chains",
+      "specPath": "/api/v1/workspaces/{workspace_id}/intelligence/routing/chains",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\command-center\\CommandCenter.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/opportunities",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/opportunities",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\command-center\\CommandCenter.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/opportunities",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/opportunities",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\command-center\\CommandCenter.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/system/readiness",
+      "specPath": "/api/v1/system/readiness",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\command-center\\CommandCenter.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/provider-maturity/incidents",
+      "specPath": "/api/v1/workspaces/{workspace_id}/provider-maturity/incidents",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\command-center\\CommandCenter.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/reviews",
+      "specPath": "/api/v1/workspaces/{workspace_id}/reviews",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\command-center\\CommandCenter.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/publishing/posts",
+      "specPath": "/api/v1/workspaces/{workspace_id}/publishing/posts",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\command-center\\CommandCenter.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/interactions/{interaction_id}/read",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/interactions/{interaction_id}/read",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\community\\Community.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/interactions/{interaction_id}/classify",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/interactions/{interaction_id}/classify",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\community\\Community.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/interactions/{interaction_id}/draft",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/interactions/{interaction_id}/draft",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\community\\Community.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/actions/{action_id}/approve",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/actions/{action_id}/approve",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\community\\Community.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/actions/{action_id}/reject",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/actions/{action_id}/reject",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\community\\Community.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/conversations/{conversation_id}/reply",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/conversations/{conversation_id}/reply",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\community\\Community.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/actions/{action_id}/send",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/actions/{action_id}/send",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\community\\Community.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/interactions/{interaction_id}",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/interactions/{interaction_id}",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\community\\Community.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/conversations/{conversation_id}",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/conversations/{conversation_id}",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\community\\Community.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/platforms",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/platforms",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\community\\Community.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/autonomy",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/autonomy",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\community\\Community.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/analytics",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/analytics",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\community\\Community.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/conversations",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/conversations",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\community\\Community.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/interactions",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/interactions",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\community\\Community.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/actions",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/actions",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\community\\Community.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/opportunities",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/opportunities",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\community\\Community.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/insights",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/insights",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\community\\Community.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/sync",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/sync",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\community\\Community.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/publishing/accounts",
+      "specPath": "/api/v1/workspaces/{workspace_id}/publishing/accounts",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\distribution\\Distribution.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/publishing/jobs",
+      "specPath": "/api/v1/workspaces/{workspace_id}/publishing/jobs",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\distribution\\Distribution.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/publishing/posts",
+      "specPath": "/api/v1/workspaces/{workspace_id}/publishing/posts",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\distribution\\Distribution.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/distribution/capabilities",
+      "specPath": "/api/v1/workspaces/{workspace_id}/distribution/capabilities",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\distribution\\Distribution.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/distribution/platforms",
+      "specPath": "/api/v1/workspaces/{workspace_id}/distribution/platforms",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\distribution\\Distribution.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/calendar",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/calendar",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\distribution\\Distribution.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/provider-maturity",
+      "specPath": "/api/v1/workspaces/{workspace_id}/provider-maturity",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\distribution\\Distribution.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/provider-maturity/incidents",
+      "specPath": "/api/v1/workspaces/{workspace_id}/provider-maturity/incidents",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\distribution\\Distribution.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/system/health",
+      "specPath": "/api/v1/system/health",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\distribution\\Distribution.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/publishing/oauth/facebook/start|/api/v1/workspaces/{workspace_id}/publishing/oauth/instagram/start|/api/v1/workspaces/{workspace_id}/publishing/oauth/tiktok/start|/api/v1/workspaces/{workspace_id}/publishing/oauth/youtube/start",
+      "specPath": "/api/v1/workspaces/{workspace_id}/publishing/oauth/facebook/start",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\distribution\\Distribution.tsx"
+    },
+    {
+      "method": "DELETE",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/publishing/accounts/{account_id}",
+      "specPath": "/api/v1/workspaces/{workspace_id}/publishing/accounts/{account_id}",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\distribution\\Distribution.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/experiments/{experiment_id}/analyze|/api/v1/workspaces/{workspace_id}/experiments/{experiment_id}/cancel|/api/v1/workspaces/{workspace_id}/experiments/{experiment_id}/start",
+      "specPath": "/api/v1/workspaces/{workspace_id}/experiments/{experiment_id}/analyze",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\experiments\\Experiments.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/experiments",
+      "specPath": "/api/v1/workspaces/{workspace_id}/experiments",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\experiments\\Experiments.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/experiments/{experiment_id}",
+      "specPath": "/api/v1/workspaces/{workspace_id}/experiments/{experiment_id}",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\experiments\\Experiments.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/experiments",
+      "specPath": "/api/v1/workspaces/{workspace_id}/experiments",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\experiments\\Experiments.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/intelligence/decisions/log",
+      "specPath": "/api/v1/workspaces/{workspace_id}/intelligence/decisions/log",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\intelligence\\Intelligence.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/intelligence/decisions/shadow-report",
+      "specPath": "/api/v1/workspaces/{workspace_id}/intelligence/decisions/shadow-report",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\intelligence\\Intelligence.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/intelligence/routing/health",
+      "specPath": "/api/v1/workspaces/{workspace_id}/intelligence/routing/health",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\intelligence\\Intelligence.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/intelligence/routing/log",
+      "specPath": "/api/v1/workspaces/{workspace_id}/intelligence/routing/log",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\intelligence\\Intelligence.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/intelligence/routing/chains",
+      "specPath": "/api/v1/workspaces/{workspace_id}/intelligence/routing/chains",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\intelligence\\Intelligence.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/intelligence/verification/ledger",
+      "specPath": "/api/v1/workspaces/{workspace_id}/intelligence/verification/ledger",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\intelligence\\Intelligence.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/provider-maturity/incidents",
+      "specPath": "/api/v1/workspaces/{workspace_id}/provider-maturity/incidents",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\intelligence\\Intelligence.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/localization/glossary",
+      "specPath": "/api/v1/workspaces/{workspace_id}/localization/glossary",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/localization/glossary",
+      "specPath": "/api/v1/workspaces/{workspace_id}/localization/glossary",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "DELETE",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/localization/glossary/{term_id}",
+      "specPath": "/api/v1/workspaces/{workspace_id}/localization/glossary/{term_id}",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/assets/dub/status",
+      "specPath": "/api/v1/workspaces/{workspace_id}/assets/dub/status",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/dubbing/plans",
+      "specPath": "/api/v1/workspaces/{workspace_id}/dubbing/plans",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/assets/dub/dry-run",
+      "specPath": "/api/v1/workspaces/{workspace_id}/assets/dub/dry-run",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/lipsync/health",
+      "specPath": "/api/v1/workspaces/{workspace_id}/lipsync/health",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/lipsync/jobs",
+      "specPath": "/api/v1/workspaces/{workspace_id}/lipsync/jobs",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/lipsync/jobs",
+      "specPath": "/api/v1/workspaces/{workspace_id}/lipsync/jobs",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/lipsync/jobs/{job_id}/cancel",
+      "specPath": "/api/v1/workspaces/{workspace_id}/lipsync/jobs/{job_id}/cancel",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/media-intel/speakers",
+      "specPath": "/api/v1/workspaces/{workspace_id}/media-intel/speakers",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/media-intel/speakers/aliases",
+      "specPath": "/api/v1/workspaces/{workspace_id}/media-intel/speakers/aliases",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/costs",
+      "specPath": "/api/v1/workspaces/{workspace_id}/costs",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/localization",
+      "specPath": "/api/v1/workspaces/{workspace_id}/localization",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/jobs",
+      "specPath": "/api/v1/workspaces/{workspace_id}/jobs",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/localization/{localized_id}/qc",
+      "specPath": "/api/v1/workspaces/{workspace_id}/localization/{localized_id}/qc",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/content",
+      "specPath": "/api/v1/workspaces/{workspace_id}/content",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/assets/dub/status",
+      "specPath": "/api/v1/workspaces/{workspace_id}/assets/dub/status",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/localization/run",
+      "specPath": "/api/v1/workspaces/{workspace_id}/localization/run",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/localization/glossary|/api/v1/workspaces/{workspace_id}/localization/run|/api/v1/workspaces/{workspace_id}/localization/{localized_id}",
+      "specPath": "/api/v1/workspaces/{workspace_id}/localization/glossary",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\localization\\Localization.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/knowledge/memories",
+      "specPath": "/api/v1/workspaces/{workspace_id}/knowledge/memories",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\memory\\Memory.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/knowledge/graph",
+      "specPath": "/api/v1/workspaces/{workspace_id}/knowledge/graph",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\memory\\Memory.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/memory",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/memory",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\memory\\Memory.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/knowledge/memories/{memory_id}/disable|/api/v1/workspaces/{workspace_id}/knowledge/memories/{memory_id}/supersede|/api/v1/workspaces/{workspace_id}/knowledge/memories/{memory_id}/verify",
+      "specPath": "/api/v1/workspaces/{workspace_id}/knowledge/memories/{memory_id}/disable",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\memory\\Memory.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/knowledge/memories",
+      "specPath": "/api/v1/workspaces/{workspace_id}/knowledge/memories",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\memory\\Memory.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/knowledge/sources",
+      "specPath": "/api/v1/workspaces/{workspace_id}/knowledge/sources",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\memory\\Memory.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/knowledge/memories",
+      "specPath": "/api/v1/workspaces/{workspace_id}/knowledge/memories",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\memory\\Memory.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/ops/overview",
+      "specPath": "/api/v1/workspaces/{workspace_id}/ops/overview",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\operations\\Operations.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/jobs",
+      "specPath": "/api/v1/workspaces/{workspace_id}/jobs",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\operations\\Operations.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/costs",
+      "specPath": "/api/v1/workspaces/{workspace_id}/costs",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\operations\\Operations.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/costs/intelligence",
+      "specPath": "/api/v1/workspaces/{workspace_id}/costs/intelligence",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\operations\\Operations.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/provider-maturity/incidents",
+      "specPath": "/api/v1/workspaces/{workspace_id}/provider-maturity/incidents",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\operations\\Operations.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/retention",
+      "specPath": "/api/v1/workspaces/{workspace_id}/retention",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\operations\\Operations.tsx"
+    },
+    {
+      "method": "PATCH",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/calendar/best-times|/api/v1/workspaces/{workspace_id}/calendar/plan|/api/v1/workspaces/{workspace_id}/calendar/response-windows|/api/v1/workspaces/{workspace_id}/calendar/{entry_id}",
+      "specPath": "/api/v1/workspaces/{workspace_id}/calendar/{entry_id}",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\CalendarView.tsx"
+    },
+    {
+      "method": "DELETE",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/calendar/best-times|/api/v1/workspaces/{workspace_id}/calendar/plan|/api/v1/workspaces/{workspace_id}/calendar/response-windows|/api/v1/workspaces/{workspace_id}/calendar/{entry_id}",
+      "specPath": "/api/v1/workspaces/{workspace_id}/calendar/{entry_id}",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\CalendarView.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/calendar",
+      "specPath": "/api/v1/workspaces/{workspace_id}/calendar",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\CalendarView.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/calendar/best-times",
+      "specPath": "/api/v1/workspaces/{workspace_id}/calendar/best-times",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\CalendarView.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/calendar/response-windows",
+      "specPath": "/api/v1/workspaces/{workspace_id}/calendar/response-windows",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\CalendarView.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/calendar",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/calendar",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\CalendarView.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/campaigns",
+      "specPath": "/api/v1/workspaces/{workspace_id}/campaigns",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\CalendarView.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/calendar",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/calendar",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\Planner.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/plans",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/plans",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\Planner.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/items/{item_id}/approve",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/items/{item_id}/approve",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\Planner.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/items/{item_id}/reject",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/items/{item_id}/reject",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\Planner.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/items/{item_id}/research_more",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/items/{item_id}/research_more",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\Planner.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/items/{item_id}/campaign",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/items/{item_id}/campaign",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\Planner.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/items/{item_id}/schedule",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/items/{item_id}/schedule",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\Planner.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/plan",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/plan",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\Planner.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/calendar",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/calendar",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\Planner.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/capacity",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/capacity",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\Planner.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/policy",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/policy",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\Planner.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/inbox/autonomy",
+      "specPath": "/api/v1/workspaces/{workspace_id}/inbox/autonomy",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\Planner.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/plans",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/plans",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\Planner.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/opportunities",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/opportunities",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\Planner.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/opportunities",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/opportunities",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\Planner.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/opportunities",
+      "specPath": "/api/v1/workspaces/{workspace_id}/opportunities",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\Planner.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/signals",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/signals",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\planner\\Planner.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/content/estimate-cost|/api/v1/workspaces/{workspace_id}/content/repurpose|/api/v1/workspaces/{workspace_id}/content/{content_id}",
+      "specPath": "/api/v1/workspaces/{workspace_id}/content/{content_id}",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\projects\\ProjectDetail.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/content/{content_id}/timeline",
+      "specPath": "/api/v1/workspaces/{workspace_id}/content/{content_id}/timeline",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\projects\\ProjectDetail.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/content/{content_id}/lineage",
+      "specPath": "/api/v1/workspaces/{workspace_id}/content/{content_id}/lineage",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\projects\\ProjectDetail.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/content/{content_id}/audit",
+      "specPath": "/api/v1/workspaces/{workspace_id}/content/{content_id}/audit",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\projects\\ProjectDetail.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/calendar",
+      "specPath": "/api/v1/workspaces/{workspace_id}/calendar",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\projects\\ProjectDetail.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/campaigns",
+      "specPath": "/api/v1/workspaces/{workspace_id}/campaigns",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\projects\\Projects.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/provider-maturity",
+      "specPath": "/api/v1/workspaces/{workspace_id}/provider-maturity",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\providers\\Providers.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/connections",
+      "specPath": "/api/v1/workspaces/{workspace_id}/connections",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\providers\\Providers.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/distribution/capabilities",
+      "specPath": "/api/v1/workspaces/{workspace_id}/distribution/capabilities",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\providers\\Providers.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/intelligence/routing/health",
+      "specPath": "/api/v1/workspaces/{workspace_id}/intelligence/routing/health",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\providers\\Providers.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/provider-maturity/incidents",
+      "specPath": "/api/v1/workspaces/{workspace_id}/provider-maturity/incidents",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\providers\\Providers.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/api-keys/{key_id}/revoke",
+      "specPath": "/api/v1/workspaces/{workspace_id}/api-keys/{key_id}/revoke",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\settings\\Settings.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/members",
+      "specPath": "/api/v1/workspaces/{workspace_id}/members",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\settings\\Settings.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/planner/policy",
+      "specPath": "/api/v1/workspaces/{workspace_id}/planner/policy",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\settings\\Settings.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/safety",
+      "specPath": "/api/v1/workspaces/{workspace_id}/safety",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\settings\\Settings.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/costs",
+      "specPath": "/api/v1/workspaces/{workspace_id}/costs",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\settings\\Settings.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/notifications",
+      "specPath": "/api/v1/workspaces/{workspace_id}/notifications",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\settings\\Settings.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/retention",
+      "specPath": "/api/v1/workspaces/{workspace_id}/retention",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\settings\\Settings.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/knowledge/sources",
+      "specPath": "/api/v1/workspaces/{workspace_id}/knowledge/sources",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\settings\\Settings.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/webhooks",
+      "specPath": "/api/v1/workspaces/{workspace_id}/webhooks",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\settings\\Settings.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/api-keys",
+      "specPath": "/api/v1/workspaces/{workspace_id}/api-keys",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\settings\\Settings.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/agents/config",
+      "specPath": "/api/v1/workspaces/{workspace_id}/agents/config",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\settings\\Settings.tsx"
+    },
+    {
+      "method": "PUT",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/agents/config/{agent_key}",
+      "specPath": "/api/v1/workspaces/{workspace_id}/agents/config/{agent_key}",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\settings\\Settings.tsx"
+    },
+    {
+      "method": "PUT",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/safety",
+      "specPath": "/api/v1/workspaces/{workspace_id}/safety",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\settings\\Settings.tsx"
+    },
+    {
+      "method": "DELETE",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/webhooks/{sub_id}",
+      "specPath": "/api/v1/workspaces/{workspace_id}/webhooks/{sub_id}",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\settings\\Settings.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/timelines",
+      "specPath": "/api/v1/workspaces/{workspace_id}/timelines",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\studio\\Studio.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/timelines/from-video|/api/v1/workspaces/{workspace_id}/timelines/{timeline_id}",
+      "specPath": "/api/v1/workspaces/{workspace_id}/timelines/{timeline_id}",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\studio\\StudioEditor.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/timelines/{timeline_id}/scenes",
+      "specPath": "/api/v1/workspaces/{workspace_id}/timelines/{timeline_id}/scenes",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\studio\\StudioEditor.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/assets/media",
+      "specPath": "/api/v1/workspaces/{workspace_id}/assets/media",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\studio\\StudioEditor.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/avatars/health",
+      "specPath": "/api/v1/workspaces/{workspace_id}/avatars/health",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\ugc\\Ugc.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/avatars",
+      "specPath": "/api/v1/workspaces/{workspace_id}/avatars",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\ugc\\Ugc.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/avatars/render",
+      "specPath": "/api/v1/workspaces/{workspace_id}/avatars/render",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\ugc\\Ugc.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/avatars",
+      "specPath": "/api/v1/workspaces/{workspace_id}/avatars",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\ugc\\Ugc.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/avatars/{profile_id}/authorize",
+      "specPath": "/api/v1/workspaces/{workspace_id}/avatars/{profile_id}/authorize",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\ugc\\Ugc.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/ugc/presets",
+      "specPath": "/api/v1/workspaces/{workspace_id}/ugc/presets",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\ugc\\Ugc.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/ugc/projects",
+      "specPath": "/api/v1/workspaces/{workspace_id}/ugc/projects",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\ugc\\Ugc.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/avatars",
+      "specPath": "/api/v1/workspaces/{workspace_id}/avatars",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\ugc\\Ugc.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/ugc/projects",
+      "specPath": "/api/v1/workspaces/{workspace_id}/ugc/projects",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\ugc\\Ugc.tsx"
+    },
+    {
+      "method": "GET",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/ugc/projects/{project_id}",
+      "specPath": "/api/v1/workspaces/{workspace_id}/ugc/projects/{project_id}",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\ugc\\Ugc.tsx"
+    },
+    {
+      "method": "POST",
+      "uiPath": "/api/v1/workspaces/{workspace_id}/ugc/projects/{project_id}/render",
+      "specPath": "/api/v1/workspaces/{workspace_id}/ugc/projects/{project_id}/render",
+      "class": "SCHEMA_COVERED",
+      "file": "features\\ugc\\Ugc.tsx"
+    }
+  ]
+}

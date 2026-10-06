@@ -53,6 +53,15 @@ from app.models.content import (
 )
 from app.models.creative import CreativeCommandRow
 from app.models.dubbing import DubbingPlanRow
+
+# Work 16.1 §1: ``experiment`` was registered on ``Base.metadata`` only as a side
+# effect of importing ``app.api.v1.experiments`` or
+# ``app.engine.performance.experiments``. That made table registration depend on
+# import order -- the same class of defect ``run_migrations`` had, where schema
+# correctness depended on whether something unrelated had been imported first.
+# It also meant the Work 16.1 parity check classified ``experiments`` as a
+# "migration-only" table in some runs and an ORM table in others.
+from app.models.experiment import Experiment
 from app.models.identity import (
     ApiCredential,
     AuditLog,
@@ -127,7 +136,7 @@ from app.models.timeline import ContentTimeline
 from app.models.ugc import UgcProjectRow
 
 __all__ = [
-    "ActiveSpeakerMap",
+    "Experiment",    "ActiveSpeakerMap",
     "AgentConfig",
     "AgentRun",
     "ApiCredential",

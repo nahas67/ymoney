@@ -12,6 +12,7 @@ import AudioIntelligencePanel from "../components/intel/AudioIntelligencePanel";
 import VisualIntelligencePanel from "../components/intel/VisualIntelligencePanel";
 import type { AppliedPlan } from "../components/intel/ProposalPreview";
 import CaptionMotionPanel from "../components/motion/CaptionMotionPanel";
+import TransitionEditor from "../components/motion/TransitionEditor";
 import {
   TRACK_FAMILY, applyOpsLocal, clipEnd, findClip, inverseOps, snapTime, sortedTracks,
 } from "../editor/adapters/timelineAdapter";
@@ -521,8 +522,22 @@ export default function Editor() {
               </div>
             ))}
             {activeCaptions.map((c: any) => (
+              // `pointer-events: none` is load-bearing, not cosmetic.
+              //
+              // This overlay previews the caption ON TOP of the track area, and it
+              // spans the full width (`left-0 right-0`). Without the opt-out it
+              // is the topmost element over the caption track's own clip blocks,
+              // so `document.elementFromPoint` at a caption clip's centre returns
+              // the overlay: the block is present, painted, and UNCLICKABLE.
+              //
+              // The consequence is that a caption clip cannot be selected, which
+              // means the entire caption/motion/keyframe/effect panel -- which
+              // mounts only for `sel.track === "caption"` -- is unreachable for a
+              // user. A preview layer that blocks editing of the thing it previews
+              // is a defect, and `pointer-events: none` is the fix rather than
+              // reordering the z-index: the preview must never be an input target.
               <div key={c.id} className="absolute bottom-[8%] left-0 right-0 text-center font-bold"
-                style={{ fontSize: 22, color: "white", textShadow: "2px 2px 0 #000" }}>{c.name}</div>
+                style={{ fontSize: 22, color: "white", textShadow: "2px 2px 0 #000", pointerEvents: "none" }}>{c.name}</div>
             ))}
             {audible.map(({ track, clip }: any) => (
               <AudioTag key={clip.id} clip={clip} mediaRefs={mediaRefs} />
@@ -547,7 +562,7 @@ export default function Editor() {
           <b className="text-[13px]">Inspector</b>
           {!selClip && <div className="text-[12.5px] mt-2" style={{ color: "var(--text-faint)" }}>Select a clip.</div>}
           {selClip && sel && (
-            <Inspector sel={sel} clip={selClip} commit={commitOps} splitAt={splitAtPlayhead} time={time} timelineId={timelineId} readOnly={isViewer} />
+            <Inspector sel={sel} clip={selClip} siblings={siblingsOf(sel, tracks)} commit={commitOps} splitAt={splitAtPlayhead} time={time} timelineId={timelineId} readOnly={isViewer} />
           )}
           <div className="mt-3 pt-3" style={{ borderTop: "var(--seam)" }}>
             <button className="btn-ghost !text-xs" onClick={() => setShowVersions((v) => !v)}>
@@ -752,7 +767,14 @@ function AudioTag({ clip, mediaRefs }: any) {
   );
 }
 
-function Inspector({ sel, clip, commit, splitAt, time, timelineId, readOnly }: any) {
+/** Every clip on the SAME track as the selection -- a transition needs a
+ *  neighbour, and adjacency is per-track. */
+function siblingsOf(sel: any, all: any[] = []): Array<Record<string, any>> {
+  const track = all.find((t) => t.kind === sel?.track);
+  return (track?.clips ?? []) as Array<Record<string, any>>;
+}
+
+function Inspector({ sel, clip, siblings, commit, splitAt, time, timelineId, readOnly }: any) {
   const [start, setStart] = useState(String(clip.start));
   const [dur, setDur] = useState(String(clip.duration));
   useEffect(() => {
@@ -794,6 +816,18 @@ function Inspector({ sel, clip, commit, splitAt, time, timelineId, readOnly }: a
         <TransformEditor clip={clip} commit={(t: any) => commit(
           [{ type: "update_transform", track: sel.track, clip_id: clip.id, transform: t }], "Transform")} />
       )}
+      {/* Transitions live HERE, not in CaptionMotionPanel. See
+          components/motion/TransitionEditor.tsx for the traced rationale: the
+          renderer's transition is a video cross-dissolve, so it belongs with the
+          other VISUAL-track clip controls, gated by the same condition as
+          TransformEditor. `siblings` is the selected track's own clips, because
+          adjacency is what makes a transition legal. */}
+      <TransitionEditor
+        clip={clip}
+        track={sel.track}
+        siblings={siblings}
+        commit={commit}
+        disabled={readOnly} />
       {(sel.track === "text") && (
         <TextEditor clip={clip} commit={(patch: any) => commit(
           [{ type: "update_text", track: sel.track, clip_id: clip.id, text: patch }], "Text")} />

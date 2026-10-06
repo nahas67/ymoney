@@ -158,6 +158,7 @@ __all__ = [
     "SpendAuthority",
     "SpendOwnership",
     "absorb_paid_failure",
+    "adopt_reservation",
     "annotate_exposure",
     "cost_outcome_of",
     "execution_outcome_of",
@@ -501,6 +502,50 @@ def annotate_exposure(entry_id: str, outcome: CostOutcome, *,
     return True
 
 
+def adopt_reservation(entry_id: str, *, provider: str = "", operation: str = "",
+                      remote_id: str = "", settled_outcomes: frozenset | None = None
+                      ) -> PaidOperation | None:
+    """Adopt the accounting for a reservation row named directly by its id.
+
+    Work 16.1 §5. :func:`reattach_by_remote_id` needs a remote id, which is
+    exactly what an ambiguous submission may NOT have -- that is the whole
+    situation this module exists for. An operator holding the ledger row id (or
+    a lane row that can name the operation it belongs to) must still be able to
+    bind to it, get ``settled`` read back off the row, and therefore be unable
+    to settle or release a second time.
+
+    Returns ``None`` when the row is gone. ``None`` is "nothing to adopt", never
+    "reserve a fresh one": a vanished ledger row must not become a new charge.
+
+    ``settled_outcomes`` overrides which ledger outcomes count as ALREADY CLOSED
+    for the purpose of the ``settled`` flag. It exists for the reconciliation
+    path, whose whole job is to turn an ``UNKNOWN_EXPOSURE`` row into a priced
+    one, and it defaults to :data:`_CLOSED_OUTCOMES` so every other caller --
+    including :func:`reattach_by_remote_id` -- is unaffected.
+    """
+    if not str(entry_id or "").strip():
+        return None
+
+    from app.db import session_scope
+    from app.models import CostEntry
+
+    with session_scope() as session:
+        found = session.get(CostEntry, str(entry_id).strip())
+        if found is None:
+            logger.info("paid adopt: no reservation row %s", entry_id)
+            return None
+        detail = dict(found.detail_json or {})
+        rid = str(remote_id or detail.get("remote_id", "") or "")
+        return _adopt_entry(
+            detail=detail, entry_id=str(found.id),
+            amount_usd=float(found.amount_usd or 0.0),
+            charged_workspace_id=str(found.workspace_id or ""), remote_id=rid,
+            provider=str(provider or detail.get("provider", "") or ""),
+            operation=str(operation or detail.get("operation", "") or ""),
+            settled_outcomes=_CLOSED_OUTCOMES if settled_outcomes is None
+            else settled_outcomes)
+
+
 #: Cost outcomes that mean "this ledger row is finished being argued about".
 #: A row already carrying one of these has been accounted for, so a reattach
 #: adopts it rather than settling it a second time.
@@ -666,15 +711,15 @@ def reattach_by_remote_id(remote_id: str, *, provider: str = "",
 
     from app.db import session_scope
     from app.models import CostEntry
+    from app.services.json_portability import json_value_equals
 
     with session_scope() as session:
         query = select(CostEntry).order_by(CostEntry.created_at.desc())
         if str(provider or "").strip():
             query = query.where(CostEntry.provider == str(provider).strip())
         if str(operation or "").strip():
-            query = query.where(
-                (CostEntry.detail_json["operation"].as_string()
-                 == str(operation).strip()).is_(True))
+            query = query.where(json_value_equals(
+                CostEntry.detail_json, "operation", str(operation).strip()))
         if str(workspace_id or "").strip():
             query = query.where(
                 CostEntry.workspace_id == str(workspace_id).strip())
@@ -686,35 +731,51 @@ def reattach_by_remote_id(remote_id: str, *, provider: str = "",
         if found is None:
             logger.info("paid reattach: no reservation carries remote id %s", rid)
             return None
-        detail = dict(found.detail_json or {})
-        entry_id = str(found.id)
-        amount = float(found.amount_usd or 0.0)
-        owner = str(found.workspace_id or "")
+        return _adopt_entry(
+            detail=dict(found.detail_json or {}), entry_id=str(found.id),
+            amount_usd=float(found.amount_usd or 0.0),
+            charged_workspace_id=str(found.workspace_id or ""), remote_id=rid,
+            provider=str(provider or ""),
+            operation=str(operation or ""))
 
+
+def _adopt_entry(*, detail: dict, entry_id: str, amount_usd: float,
+                 charged_workspace_id: str, remote_id: str,
+                 provider: str, operation: str,
+                 settled_outcomes: frozenset | None = None) -> PaidOperation:
+    """Build the :class:`PaidOperation` both adoption paths share.
+
+    ``settled`` is read back off the ROW rather than assumed, which is what makes
+    a second close impossible: an operation that adopts an already-settled
+    reservation refuses to move its money again. One remote id, one accounting
+    identity.
+    """
     operation_id = str(detail.get("operation_id", "") or "")
     authority = str(detail.get("spend_authority", "") or
                     SpendAuthority.WORKSPACE_OWNED)
     adopted = PaidOperation(
-        provider=str(provider or detail.get("provider", "") or ""),
-        operation=str(operation or detail.get("operation", "") or ""),
-        workspace_id=owner,
+        provider=provider,
+        operation=operation,
+        workspace_id=charged_workspace_id,
         category=str(detail.get("category", "") or ""),
-        estimated_cost=amount,
-        remote_id=rid,
+        estimated_cost=amount_usd,
+        remote_id=remote_id,
         operation_id=operation_id,
-        settled=str(detail.get("cost_outcome", "") or "") in _CLOSED_OUTCOMES,
+        settled=str(detail.get("cost_outcome", "") or "")
+        in (_CLOSED_OUTCOMES if settled_outcomes is None else settled_outcomes),
     )
     adopted.reservation = ReattachedReservation(entry_id=entry_id,
-                                                amount_usd=amount, detail=detail)
+                                                amount_usd=amount_usd,
+                                                detail=detail)
     adopted.ownership = SpendOwnership(
         authority=coerce_authority(SpendAuthority, authority, "spend authority"),
         actor=coerce_authority(ActorAuthority,
                                detail.get("actor_authority", "") or
                                ActorAuthority.USER, "actor authority"),
         owned_workspace_id=str(detail.get("owned_workspace_id", "") or ""),
-        charged_workspace_id=owner,
+        charged_workspace_id=charged_workspace_id,
         budget_source=str(detail.get("budget_source", "") or "WORKSPACE_BUDGET"),
-        estimated_usd=amount,
+        estimated_usd=amount_usd,
         provider=adopted.provider, operation=adopted.operation,
         system_budget_usd=float(detail.get("system_budget_usd", 0.0) or 0.0),
         reservation_id=entry_id,
@@ -1069,18 +1130,34 @@ class PaidOperation:
                    f"{self.provider}.{self.operation} is SUBMISSION_UNKNOWN "
                    f"(operation {self.operation_id}); money may have been spent")
 
-    def mark_rejected(self, detail: str = "", *,
-                      nothing_billed: bool = True) -> None:
+    def mark_rejected(self, detail: str = "", *, nothing_billed: bool = True,
+                      actual_usd: float | None = None,
+                      estimate_usd: float | None = None,
+                      amount_unknown: bool = False) -> None:
         """The provider definitively refused. Nothing was created, nothing billed.
 
         ``nothing_billed=False`` keeps the reservation instead of releasing it,
-        for a provider that cannot prove a task was not created.
+        for a provider that cannot prove a task was not created. That is
+        Work 16.1 §5's ``FAILED`` observation: the provider DID create the job
+        and DID charge us, and the render then failed. Treating that as
+        never-billed would hand back capacity that was genuinely spent.
+
+        With ``nothing_billed=False`` the amount is chosen the same three ways
+        :meth:`mark_succeeded` chooses it, because the situation is the same --
+        a reported amount, else an estimate, else ``UNKNOWN_EXPOSURE`` when the
+        provider reported nothing. The arguments are accepted even when
+        ``nothing_billed=True`` so a caller can pass what it knows; the
+        reservation is released in that case regardless, because a refused
+        request cannot have been charged.
         """
         self._record_execution(SubmissionState.FAILED, detail)
         if nothing_billed:
             self.release(f"rejected before acceptance: {detail}"[:400])
+        elif amount_unknown:
+            self.unknown_exposure = True
+            self._record_cost_outcome(CostOutcome.UNKNOWN_EXPOSURE, detail)
         else:
-            self.close_book(note=detail)
+            self.close_book(actual_usd, estimate_usd=estimate_usd, note=detail)
         self._emit("rejected", "warning",
                    f"{self.provider}.{self.operation} rejected: {detail}")
 

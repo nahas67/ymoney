@@ -1,0 +1,182 @@
+/* YMONEY design tokens — the single source of visual truth.
+ *
+ * Direction: premium dark institutional creative-operations. Charcoal base,
+ * restrained indigo accent, high density, no glassmorphism theatre.
+ *
+ * Two rules this file exists to enforce:
+ *
+ * 1. NOTHING hardcodes a colour. A component that needs "danger" asks for
+ *    --status-danger, not #ef4444, so the palette stays one decision.
+ * 2. --brand-accent stays runtime-overridable. The old frontend let an
+ *    operator set it through `PUT /settings` (`settings.brand.accent`) and
+ *    Brand.tsx wrote it; that is a shipped capability, so the token is declared
+ *    with a fallback chain rather than as a fixed literal.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* ---- surface ramp: near-black to raised panel ------------------------ */
+  --surface-base: #0a0a0d;
+  --surface-sunken: #060608;
+  --surface-panel: #121216;
+  --surface-raised: #17171d;
+  --surface-overlay: #1d1d25;
+  --surface-inset: #0e0e12;
+
+  /* ---- border: hairlines, not boxes ------------------------------------ */
+  --border-subtle: #23232b;
+  --border-default: #2e2e38;
+  --border-strong: #3d3d4a;
+  --border-focus: var(--brand-accent);
+
+  /* ---- text: four steps is enough -------------------------------------- */
+  --text-primary: #f2f2f5;
+  --text-secondary: #a8a8b8;
+  --text-tertiary: #74748a;
+  --text-disabled: #4a4a58;
+  --text-inverse: #0a0a0d;
+
+  /* ---- brand accent (runtime overridable) ------------------------------ */
+  --brand-accent: #6366f1;
+  --brand-accent-hover: #7c7ff5;
+  --brand-accent-muted: #6366f126;
+  --brand-accent-border: #6366f159;
+  --brand-accent-text: #a5a8fb;
+
+  /* ---- semantic status -------------------------------------------------
+   * Deliberately distinct hues, not shades of one. An operator scanning an
+   * incident list must separate "failed" from "unknown exposure" by colour
+   * alone, because those two mean completely different things for money.
+   */
+  --status-success: #34d399;
+  --status-success-muted: #34d3991f;
+  --status-success-border: #34d39947;
+
+  --status-warning: #fbbf24;
+  --status-warning-muted: #fbbf241f;
+  --status-warning-border: #fbbf2447;
+
+  --status-danger: #f87171;
+  --status-danger-muted: #f871711f;
+  --status-danger-border: #f8717147;
+
+  --status-info: #38bdf8;
+  --status-info-muted: #38bdf81f;
+  --status-info-border: #38bdf847;
+
+  /* Money-critical: SUBMISSION_UNKNOWN / unknown exposure. Given its own
+   * colour so it is never mistaken for a plain warning. */
+  --status-unknown: #c084fc;
+  --status-unknown-muted: #c084fc1f;
+  --status-unknown-border: #c084fc47;
+
+  --status-neutral: #8b8b9e;
+  --status-neutral-muted: #8b8b9e1a;
+  --status-neutral-border: #8b8b9e3d;
+
+  /* Publication modes. LIVE must never be confused with MOCK or HANDOFF. */
+  --mode-live: #34d399;
+  --mode-mock: #fbbf24;
+  --mode-handoff: #38bdf8;
+
+  /* Provider maturity: CONTRACT_TESTED is weaker than LIVE_VERIFIED and must
+   * read that way. */
+  --maturity-contract-tested: #fbbf24;
+  --maturity-live-verified: #34d399;
+  --maturity-unverified: #6b6b7b;
+
+  /* ---- spacing: 4px base ------------------------------------------------ */
+  --space-0: 0;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* ---- radius: restrained. Big radii read as toy cards. ----------------- */
+  --radius-sm: 3px;
+  --radius-default: 5px;
+  --radius-md: 7px;
+  --radius-lg: 10px;
+  --radius-full: 999px;
+
+  /* ---- typography -------------------------------------------------------
+   * System stack: a "premium" webfont would be a network dependency on every
+   * cold start, and the density here depends on metrics we control.
+   */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono",
+    Menlo, Consolas, monospace;
+
+  --text-2xs: 0.6875rem;   /* 11px — table micro-labels, badges */
+  --text-xs: 0.75rem;      /* 12px — dense table cells, meta */
+  --text-sm: 0.8125rem;    /* 13px — default body in dense UI */
+  --text-base: 0.875rem;   /* 14px — default body */
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
+
+  --leading-tight: 1.2;
+  --leading-normal: 1.45;
+  --leading-relaxed: 1.65;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* ---- elevation: shadow, not blur. No glassmorphism. ------------------- */
+  --elevation-0: none;
+  --elevation-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --elevation-2: 0 2px 8px rgb(0 0 0 / 0.45);
+  --elevation-3: 0 8px 24px rgb(0 0 0 / 0.55);
+  --elevation-overlay: 0 16px 48px rgb(0 0 0 / 0.65);
+  --focus-ring: 0 0 0 2px var(--surface-base),
+    0 0 0 4px var(--brand-accent);
+
+  /* ---- motion: fast and understated ------------------------------------ */
+  --motion-instant: 80ms;
+  --motion-fast: 140ms;
+  --motion-base: 220ms;
+  --motion-slow: 360ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-entrance: cubic-bezier(0, 0, 0.2, 1);
+
+  /* ---- layout ----------------------------------------------------------- */
+  --sidebar-width: 232px;
+  --sidebar-collapsed: 60px;
+  --topbar-height: 52px;
+  --commandbar-height: 44px;
+  --content-max: 1680px;
+
+  /* ---- chart series: distinguishable in order, on dark ------------------
+   * Ordered so adjacent series never collide; the first four are the ones
+   * most charts use together.
+   */
+  --chart-1: #6366f1;
+  --chart-2: #38bdf8;
+  --chart-3: #34d399;
+  --chart-4: #fbbf24;
+  --chart-5: #f87171;
+  --chart-6: #c084fc;
+  --chart-7: #2dd4bf;
+  --chart-8: #fb923c;
+  --chart-grid: #23232b;
+  --chart-axis: #4a4a58;
+}
+
+/* The old UI let an operator write the accent at runtime and reload the
+ * chrome. That shipped capability is preserved: a document-level override
+ * still wins, because it is a more specific declaration. */
+[data-brand-accent] {
+  --brand-accent: var(--brand-accent-override, var(--brand-accent));
+}

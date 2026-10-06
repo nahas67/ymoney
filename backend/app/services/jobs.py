@@ -15,7 +15,9 @@ Design:
   render cannot starve the planner, inbox sync, publishing or small jobs.
 - Failures retry with exponential backoff; after max_retries they go DEAD
   (dead-letter visible via API).
-- Idempotency keys prevent duplicate submissions.
+- Idempotency keys prevent duplicate submissions -- including when two
+  writers submit the same key concurrently, which returns the same ``None`` the
+  sequential duplicate returns instead of leaking the database's 23505.
 - A re-entry attempt consults the paid ledger before it runs
   (`job_leases.assess_paid_reentry`): a crash after a billable submit must not
   become a second purchase.
@@ -36,6 +38,7 @@ from datetime import timedelta
 
 from loguru import logger
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
 from app.db import session_scope
@@ -93,6 +96,40 @@ class JobContext:
     workload: str = ""
 
 
+def _unique_violation(exc: BaseException) -> bool:
+    """Whether ``exc`` is a UNIQUE constraint being refused, on either backend.
+
+    23505 on PostgreSQL; SQLite's driver reports no SQLSTATE and puts
+    ``UNIQUE constraint failed`` in the message. Anything else (a NOT NULL, a
+    foreign key, a CHECK) is a real bug and is NOT swallowed.
+    """
+    orig = getattr(exc, "orig", None)
+    state = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
+    if state is not None:
+        return str(state) == "23505"
+    return "unique constraint failed" in str(orig).lower()
+
+
+def _idempotency_key_won(stamp_key: str) -> bool:
+    """Whether some other writer's row for this key committed.
+
+    The confirming half of the concurrent-duplicate answer. A read-then-write
+    ``SELECT``/``INSERT`` has a window between the two halves, and on a
+    server-grade engine two writers walk through it together: both read "not
+    there", both insert, and the UNIQUE index refuses the second with 23505 --
+    correctly, but as an *exception*, which is not what a dedupe is allowed to
+    look like to the caller. The index keeps guaranteeing one row per key; this
+    only decides what the loser is told.
+
+    Re-reading is deliberate rather than trusting the error text: it PROVES the
+    key was taken by somebody, so a 23505 from some other constraint can never
+    be silently converted into "duplicate, nothing to do".
+    """
+    with session_scope() as s:
+        return s.scalar(
+            select(Job.id).where(Job.idempotency_key == stamp_key)) is not None
+
+
 def enqueue(
     job_type: str,
     payload: dict,
@@ -107,6 +144,18 @@ def enqueue(
     workload: str = "",
 ) -> str | None:
     """Enqueue a job. Returns job id, or None when idempotency dedupes it.
+
+    ``None`` is the answer for **both** duplicate paths, and making it so is the
+    whole of Work 16 §4. The fast path -- a row with this key already exists --
+    has always returned ``None``. The concurrent path did not: two writers that
+    both missed the pre-read raced each other into the UNIQUE index, and the
+    loser got a raised ``23505`` out of an API that is documented to return
+    ``None`` for a duplicate. Callers were therefore forced to handle two
+    different shapes of the same event, and the shape they could not handle was
+    the one that only appeared under concurrency. Measured before this change on
+    PostgreSQL 17 with eight real sessions on one key: three raised 23505, the
+    rest returned ``None`` or an id. Integrity was never at risk -- the index
+    held, one row always survived -- only the caller-visible contract was.
 
     ``paid=True`` is a one-word contract with the recovery path: *this job may
     spend money*. It is what makes :func:`job_leases.assess_paid_reentry`
@@ -123,24 +172,36 @@ def enqueue(
         body.setdefault("paid", True)
     if workload:
         body["workload"] = str(workload)
-    with session_scope() as s:
-        if idempotency_key:
-            existing = s.scalar(select(Job).where(Job.idempotency_key == idempotency_key))
-            if existing:
-                return None
-        job = Job(
-            type=job_type,
-            payload=body,
-            workspace_id=workspace_id,
-            cycle_id=cycle_id,
-            priority=priority,
-            max_retries=settings.job_default_max_retries if max_retries is None else max_retries,
-            next_run_at=utcnow() + timedelta(seconds=delay_seconds),
-            idempotency_key=idempotency_key or None,
-        )
-        s.add(job)
-        s.flush()
-        job_id = job.id
+    key = str(idempotency_key or "") or None
+    try:
+        with session_scope() as s:
+            if key:
+                existing = s.scalar(
+                    select(Job.id).where(Job.idempotency_key == key))
+                if existing:
+                    return None
+            job = Job(
+                type=job_type,
+                payload=body,
+                workspace_id=workspace_id,
+                cycle_id=cycle_id,
+                priority=priority,
+                max_retries=settings.job_default_max_retries if max_retries is None else max_retries,
+                next_run_at=utcnow() + timedelta(seconds=delay_seconds),
+                idempotency_key=key,
+            )
+            s.add(job)
+            s.flush()
+            job_id = job.id
+    except IntegrityError as exc:
+        # ``session_scope`` has already rolled back, so this is a clean
+        # transaction and the re-read below is not reading poisoned state.
+        if not (key and _unique_violation(exc) and _idempotency_key_won(key)):
+            raise
+        logger.info(
+            "enqueue of {} lost the idempotency race for key {}: the winner's "
+            "row is canonical, so this is a no-op", job_type, key[:32])
+        return None
     # Redis dispatch signal (best-effort; DB row is the source of truth).
     try:
         from app.services import queue_redis as _qr

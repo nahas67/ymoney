@@ -17,7 +17,7 @@ because the measurement has not been made, and it says so.
 | # | Thing | How | Restorable? |
 |---|-------|-----|-------------|
 | 1 | **PostgreSQL** — every table, row, index and the `schema_migrations` ledger | `pg_dump -Fc` (custom format) | **Yes.** Verified by drill: `pg_restore` into a dropped-and-recreated database, 30/30 integrity checks pass. |
-| 2 | **Object-storage metadata + backend config** — the `storage_objects` inventory (key, sha256, size, state, kind, backend, what object it backs) plus the storage backend settings | `storage_inventory.json` + `storage_inventory.md` | **Partially.** The *inventory* restores. The *bytes* do not — see §6. |
+| 2 | **Object-storage metadata + backend config** — the `storage_objects` inventory (key, sha256, size, state, kind, backend, what object it backs) plus the storage backend settings | `storage_inventory.json` + `storage_inventory.md` | **Partially.** The *inventory* restores. The *bytes* do not — see §6 item 1 and §9. |
 | 3 | **Secret/config references** — which credential settings exist and whether each is configured | `manifest.json → secret_references` | **Yes.** No value is ever written. |
 | 4 | **SQLite deployments** (`Settings.database_url` ships SQLite) | `sqlite3.Connection.backup` + `PRAGMA integrity_check` | **Yes.** Covered by a test that runs without a database. |
 
@@ -324,7 +324,8 @@ Stated plainly, because the alternative is an incident discovering it.
    decision (see §7) that no code enforces or verifies.
 4. **S3 object bytes.** The inventory records `REMOTE:<backend>` for
    non-local rows; this process cannot see a bucket, and "cannot see" is not
-   "does not exist". No S3 lifecycle/versioning audit is performed.
+   "does not exist". No S3 lifecycle/versioning audit is performed. §9.3 gives
+   the versioning/retention settings and what they would and would not buy.
 5. **Point-in-time consistency across the three concerns.** The dump, the
    inventory and the manifest are three separate reads. The inventory is
    metadata only and cannot drift the ledger, but a `storage_objects` row
@@ -386,11 +387,13 @@ would double-take on every cron tick. This is the recommendation:
   directory to a second provider/bucket and check the copy. A backup on the same
   host as the database is not a backup of the host.
 * **Alert on:** no new backup older than `BACKUP_MAX_AGE_HOURS`, and any
-  `verify` or `drill` exiting non-zero. Both belong next to the existing
-  `services/observability/slo.py` rules — the vocabulary is the same one
-  (`ymoney_metrics_*`, alert rules evaluated against settings), but no rule was
-  added here because `backend/app/services/observability/**` is owned by another
-  lane.
+  `verify` or `drill` exiting non-zero. **Neither alert exists yet.** The
+  thresholds in `services/observability/slo.py` are now genuinely read from
+  `Settings` (Work 16.1 §6 — `ALERT_*` bound to rules, `SLO_*` bound to the
+  published objectives), so adding these two rules is now a matter of writing
+  the evaluators rather than first fixing a layer that ignored configuration.
+  Until they exist, backup staleness is a cron/monitoring responsibility and
+  nothing in the application notices.
 * **Re-run the drill after any migration lands.** A restore that predates the
   newest migration is a restore to an older schema.
 
@@ -444,3 +447,147 @@ restore silently useless:
   database migrated by something other than this codebase passed;
 * `apply_mutation` re-derived its `WHERE` clause by stripping quotes from a
   different string, so its "before" could describe a row that never existed.
+
+---
+
+## 9. Production durability scope (§7)
+
+Stated first, because the rest of this document is a drill against one of three
+things and it is easy to read "416 KB, 30/30 checks, RTO 17 s" as "the system
+is protected".
+
+### 9.1 The production architecture, explicitly
+
+```text
+PostgreSQL backup  +  object-storage durability/versioning policy  +  media inventory/checksum
+     BUILT & VERIFIED      A BUCKET PROPERTY, OFF BY DEFAULT            BUILT (metadata only)
+```
+
+| Leg | What it is | Built here? | How it is verified | The failure it covers |
+|---|---|---|---|---|
+| **PostgreSQL logical dump** | every table, row, index and the `schema_migrations` ledger, via `pg_dump -Fc` | **yes** — §2/§4, 30/30 checks after a real `pg_restore` | the drill destroys the source, mutates it, restores, boots the app and compares digests | corruption, an accidental `DROP`, a bad migration |
+| **Object-storage durability + versioning + retention** | the media BYTES, which live outside the database | **no** — `STORAGE_BACKEND`/`S3_*` only decide *where* bytes go; whether the provider keeps old versions is a bucket property this codebase never sets and never reads | **nothing in this repository.** No lifecycle or versioning audit is performed, and the drill cannot see a bucket | a deleted or overwritten media object |
+| **Media inventory + checksum** | the `storage_objects` rows: key, sha256, size, state, and what object each backs | **yes**, as *metadata inside the dump* — `storage_inventory.json` / `.md` | each object resolved `PRESENT` / `CORRUPT` / `MISSING` against the volume at backup time | knowing *which* bytes are missing, which is what makes re-rendering a decision rather than a search |
+
+**This repository builds and verifies one leg and a half.** The half is the
+inventory: it tells you the media is gone, which is worth having, but it cannot
+bring the media back. Everything in §1's table row 2 marked "Partially" is
+exactly this gap, and no amount of running §7's cron closes it.
+
+Deliberately **not** built, and not planned here: WAL archiving, logical
+replication, point-in-time recovery, multi-region buckets. §6 items 2 and 3
+record them as absent; adding them is a different piece of work with a
+different proof obligation, not a config flip.
+
+### 9.2 RPO / RTO, plainly, per leg
+
+| Leg | RPO (what you can lose) | RTO (how long to be back) |
+|---|---|---|
+| PostgreSQL | ≤ **24 h + 4.1 s** with the daily 02:00 UTC cron of §7 — because the dump is a point-in-time snapshot and there is no WAL archive | **~17 s** measured, on a 16 MB database (§5). Not extrapolated to production size |
+| Media bytes | **whatever the object provider's own durability and retention are.** Nothing in this repository bounds it, measures it or alerts on it | **not a restore at all.** A `FINALIZED` row whose bytes are gone cannot be recovered from a backup; you re-render from the script and re-finalize the object. Minutes to an hour per asset, unmeasured |
+| Inventory | one dump cycle, because it travels inside the dump | with the PostgreSQL row |
+
+The asymmetry is the point and is worth stating in an incident: **restoring the
+database restores the record that a video exists, and not the video.** A restored
+`FINALIZED` row whose bytes are gone is a database that lies about what it has,
+and `storage_inventory.md` is the only thing in this system that will tell you.
+
+The `content_items` lineage *does* survive in the dump (it is in the 30 checks:
+`content_items.lineage_links`, `content_items.no_dangling_lineage`), which is
+what makes re-rendering a mechanical operation rather than an archaeology
+project. It is still a re-render: the original bytes are not in the backup.
+
+### 9.3 Turning on object-storage versioning and retention
+
+This is an **operator action on the bucket**, not a YMONEY setting, and the code
+does not perform it, verify it or depend on it. `STORAGE_BACKEND=s3`,
+`S3_BUCKET`, `S3_ENDPOINT_URL`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`
+choose where bytes are written; none of them turn on versioning.
+
+The snippet below is verified on this repository: it was executed against a
+`botocore` `Stubber`, which asserts the exact request the SDK would send, so the
+parameter names and shapes are real rather than remembered. It was **not**
+executed against a live bucket — this repository has none.
+
+```python
+# python -  (run with the same environment the backend runs in)
+from app.services.storage import S3Storage          # the SHIPPED client,
+                                                    # built from S3_* settings
+storage = S3Storage()                                # fails closed if S3_BUCKET is unset
+bucket = storage.bucket
+
+client = storage._client()
+
+# 1. Versioning: keep every prior version of every object.
+client.put_bucket_versioning(
+    Bucket=bucket,
+    VersioningConfiguration={"Status": "Enabled"})
+print(client.get_bucket_versioning(Bucket=bucket)["Status"])   # -> Enabled
+
+# 2. Retention: expire noncurrent versions, and abort unmultipart leftovers.
+client.put_bucket_lifecycle_configuration(
+    Bucket=bucket,
+    LifecycleConfiguration={"Rules": [{
+        "ID": "ymoney-noncurrent-expire",
+        "Status": "Enabled",
+        "Filter": {"Prefix": ""},
+        "NoncurrentVersionExpiration": {"NoncurrentDays": 30},
+        "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 7},
+    }]})
+```
+
+Verified output on this repository:
+
+```text
+after enable, get_bucket_versioning -> Enabled
+Stubber asserted every parameter exactly; no pending responses left.
+lifecycle stub OK
+```
+
+`STORAGE_BACKEND=s3` must already be working before any of this is worth
+running: `S3Storage()` raises `RuntimeError("S3 storage selected but S3_BUCKET is
+not configured")` when the bucket is unset, and `/readyz` reports the storage
+probe as non-critical, so a broken object store does **not** fail readiness.
+
+**What versioning would protect against**
+
+* an application bug that overwrites an object key — the prior version is
+  recoverable;
+* an operator (or a script) that deletes a key — the object is marked deleted,
+  and the version can be restored by key;
+* a `storage_objects` row that was finalised, then had its bytes replaced.
+
+**What versioning would NOT protect against**
+
+* **the bucket or the account being deleted.** Versioning lives inside the
+  bucket. `delete_bucket` is unrecoverable, and so is losing the credentials.
+* **a provider outage or a region loss.** Versioning is not replication. For
+  that you need the provider's cross-region/cross-account replication, which is
+  a separate, unconfigured feature.
+* **anything about the DATABASE.** This is the important one: versioning makes
+  no difference to the fact that the `FINALIZED` row and the bytes disagree.
+  Recovery still requires knowing which key to ask for, which is what
+  `storage_objects.object_key` gives you — and that table is only as good as
+  the last dump.
+* **silent corruption.** An object overwritten with different bytes is a *new
+  version*, not an error. Versioning preserves the bad write; it does not
+  detect it. The sha256 in the inventory is what detects it, and only at
+  backup time.
+* **cost.** Every version bills. A busy bucket with versioning on grows without
+  bound until the lifecycle rule above exists. The rule is not optional.
+
+### 9.4 What this is not
+
+Not high availability, and not disaster recovery in the sense the phrase is
+usually sold. There is no replica, no automatic failover, no warm standby and no
+point-in-time recovery; `docker-compose.prod.yml` runs one PostgreSQL container
+and one backend replica (see `PRODUCTION_ARCHITECTURE.md` §1 and §7 items 3
+and 4). What exists is a **verified logical dump plus a drill that proves it
+restores**, and an inventory that tells you which media bytes are gone.
+
+RPO is measured in hours because there is no WAL archive. RTO is measured in
+seconds *because the database is tiny in this drill*; the first thing to do
+before trusting either number is run the drill against a copy of production and
+re-measure (§6 item 8).
+
+---

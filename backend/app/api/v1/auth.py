@@ -15,6 +15,11 @@ from app.services.auth_service import (
     register_user,
     rotate_refresh_token,
 )
+from app.services.capabilities import (
+    MeResponse,
+    WorkspaceCapability,
+    capabilities_for_role,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -84,20 +89,40 @@ def refresh(body: RefreshBody, db=Depends(get_db)):
     return result
 
 
-@router.get("/me", summary="Current user profile")
+@router.get("/me", summary="Current user profile", response_model=MeResponse)
 def me(user: User = Depends(get_current_user), db=Depends(get_db)):
-    workspaces = db.scalars(
-        select(Workspace).join(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id).where(
-            WorkspaceMember.user_id == user.id
-        )
+    rows = db.execute(
+        select(Workspace, WorkspaceMember.role)
+        .join(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id)
+        .where(WorkspaceMember.user_id == user.id)
     ).all()
-    return {
-        "id": user.id,
-        "email": user.email,
-        "display_name": user.display_name,
-        "is_superuser": user.is_superuser,
-        "workspaces": [{"id": w.id, "name": w.name, "slug": w.slug} for w in workspaces],
-    }
+
+    workspaces = [
+        WorkspaceCapability(
+            id=w.id,
+            name=w.name,
+            slug=w.slug,
+            # The raw stored role. The client branches on `capabilities`, never
+            # on this string, so adding a role cannot silently change behaviour.
+            role=str(role),
+            capabilities=capabilities_for_role(role),
+        )
+        for w, role in rows
+    ]
+
+    # Union across memberships, sorted so the UI list is stable.
+    union: set[str] = set()
+    for ws in workspaces:
+        union.update(ws.capabilities)
+
+    return MeResponse(
+        id=user.id,
+        email=user.email,
+        display_name=user.display_name or None,
+        is_superuser=bool(user.is_superuser),
+        workspaces=workspaces,
+        capabilities=sorted(union),
+    )
 
 
 

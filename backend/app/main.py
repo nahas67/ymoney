@@ -165,6 +165,29 @@ def create_app() -> FastAPI:
     # workspace scope -- an orchestrator cannot authenticate as a workspace.
     app.include_router(internal_ops_router)
 
+    # Work 16.5.4 §1/§2: attach the declared response contracts.
+    #
+    # These are REAL `response_model` values -- FastAPI validates, serialises and
+    # publishes them exactly as if they were written on the decorator. They are
+    # applied here, from one table, rather than as 100+ decorator edits spread
+    # across the router files: a mechanical change across dozens of modules is a
+    # poor trade against the syntax-damage risk, and it makes the contract set
+    # impossible to review as a whole.
+    #
+    # It must run AFTER the routers are registered, or there are no routes to
+    # attach to -- an ordering mistake that reported success while applying zero.
+    #
+    # Every generated model sets `extra="allow"`, so validating cannot DROP a
+    # field the generator did not observe; `tests/test_work16_5_4_response_
+    # filtering.py` measures that rather than assuming it.
+    try:
+        from app.schemas.contract_registry import apply_response_contracts
+
+        applied = apply_response_contracts(app)
+        logger.info(f"response contracts applied to {applied} routes")
+    except Exception:  # pragma: no cover - startup must never fail on contracts
+        logger.exception("response contracts could not be applied")
+
     # request logging for security audit trail (lightweight)
     @app.middleware("http")
     async def audit_middleware(request: Request, call_next):

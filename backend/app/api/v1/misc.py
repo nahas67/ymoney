@@ -13,7 +13,9 @@ from sqlalchemy import func, select
 
 from app.core import security
 from app.core.config import settings
+from app.services.cost import derived_ratio, is_unknown_exposure, money_total
 from app.db import get_db
+from app.schemas.responses import CostSummaryOut, JobListOut
 from app.engine.agents.registry import AGENT_META
 from app.models import (
     AgentConfig,
@@ -285,12 +287,34 @@ def list_published_posts(ws: Workspace = Depends(require_workspace_role("viewer"
                 "remote_url": p.remote_url,
                 "published_at": p.published_at.isoformat() + "Z" if p.published_at else None,
                 "is_mock": p.is_mock,
-                "metrics": {
-                    "views": latest_metrics[p.id].views if p.id in latest_metrics else 0,
-                    "likes": latest_metrics[p.id].likes if p.id in latest_metrics else 0,
-                    "comments": latest_metrics[p.id].comments if p.id in latest_metrics else 0,
-                    "completion_rate": round(latest_metrics[p.id].completion_rate, 3) if p.id in latest_metrics else None,
-                },
+                # HONESTY (Work 16.5.7 §8). These three were
+                # `latest_metrics[p.id].views if p.id in latest_metrics else 0`
+                # -- a per-post "0 views" for a post no provider ever reported on,
+                # which is the single most-read fabricated number in the product:
+                # it renders in the Campaign, Distribution, Command Center and
+                # Analytics post tables. They are None (UNAVAILABLE) when the
+                # post has no snapshot, and the measured value -- INCLUDING a
+                # genuine 0 -- when it does. `completion_rate` already did this;
+                # it is kept last so the row's nullability is uniform.
+                "metrics": (
+                    {
+                        "views": latest_metrics[p.id].views,
+                        "likes": latest_metrics[p.id].likes,
+                        "comments": latest_metrics[p.id].comments,
+                        "completion_rate": (
+                            round(latest_metrics[p.id].completion_rate, 3)
+                            if latest_metrics[p.id].completion_rate is not None
+                            else None
+                        ),
+                    }
+                    if p.id in latest_metrics
+                    else {
+                        "views": None,
+                        "likes": None,
+                        "comments": None,
+                        "completion_rate": None,
+                    }
+                ),
             }
             for p in rows
         ]
@@ -319,24 +343,43 @@ def _latest_metric_map(db, post_ids):
 def analytics_overview(ws: Workspace = Depends(require_workspace_role("viewer")), db=Depends(get_db)):
     posts = db.scalars(select(PublishedPost).where(PublishedPost.workspace_id == ws.id)).all()
     metrics = _latest_metric_map(db, [p.id for p in posts])
-    totals = {"views": 0, "likes": 0, "comments": 0, "shares": 0, "followers_gained": 0}
+    # HONESTY (Work 16.5.7 §8): these totals used to start at 0 and only ever
+    # ADD a row for a post that HAS a PostMetric snapshot, so a workspace with
+    # published posts and no provider reporting returned `views: 0` -- which
+    # reads as "nobody watched" when the truth is "nothing was measured". The
+    # accumulator is now seeded with None (UNAVAILABLE) and promoted to 0 the
+    # moment the FIRST snapshot is summed in: a real measured zero is still 0.
+    totals: dict[str, int | None] = {
+        "views": None, "likes": None, "comments": None,
+        "shares": None, "followers_gained": None,
+    }
     per_platform: dict[str, dict] = {}
+    measured_posts = 0
     for p in posts:
         m = metrics.get(p.id)
         if not m:
             continue
-        totals["views"] += m.views
-        totals["likes"] += m.likes
-        totals["comments"] += m.comments
-        totals["shares"] += m.shares
-        totals["followers_gained"] += m.followers_gained
+        measured_posts += 1
+        # `x if totals[key] is not None else 0` is the promotion: the first real
+        # snapshot turns an UNAVAILABLE total into a measured 0-or-more.
+        totals["views"] = (totals["views"] or 0) + m.views
+        totals["likes"] = (totals["likes"] or 0) + m.likes
+        totals["comments"] = (totals["comments"] or 0) + m.comments
+        totals["shares"] = (totals["shares"] or 0) + m.shares
+        totals["followers_gained"] = (totals["followers_gained"] or 0) + m.followers_gained
         slot = per_platform.setdefault(p.platform, {"posts": 0, "views": 0})
         slot["posts"] += 1
         slot["views"] += m.views
     content_count = db.scalar(
         select(func.count()).select_from(ContentItem).where(ContentItem.workspace_id == ws.id)
     )
-    cost_total = db.scalar(select(func.coalesce(func.sum(CostEntry.amount_usd), 0.0)).where(CostEntry.workspace_id == ws.id))
+    # HONESTY: was `func.coalesce(sum(amount_usd), 0.0)` rounded to 4dp, so an
+    # empty ledger reported "$0.00 spent" and a ledger holding an UNKNOWN
+    # exposure reported the priced rows' sum as if it were the whole bill.
+    cost_rows = db.scalars(
+        select(CostEntry).where(CostEntry.workspace_id == ws.id)
+    ).all()
+    cost_total, cost_unknown_rows = money_total(cost_rows)
     best_post = max(
         ((p, m) for p, m in zip(posts, [metrics.get(p.id) for p in posts]) if m),
         key=lambda pm: pm[1].views,
@@ -345,8 +388,14 @@ def analytics_overview(ws: Workspace = Depends(require_workspace_role("viewer"))
     return {
         "totals": totals,
         "posts_published": len(posts),
+        # A COUNT over an empty table is a REAL measured zero: "there are zero
+        # content rows" is a fact about the table, not a missing measurement.
+        # Left as 0 deliberately -- see docs/ANALYTICS_HONESTY_AUDIT.json.
         "content_items": content_count or 0,
-        "cost_total_usd": round(float(cost_total or 0.0), 4),
+        # HONESTY: None means UNAVAILABLE -- either the ledger is empty or it
+        # holds an exposure nobody can price. Never 0.0 for either case.
+        "cost_total_usd": cost_total,
+        "cost_total_unknown_exposure_rows": cost_unknown_rows,
         "per_platform": per_platform,
         "best_post": (
             {
@@ -441,16 +490,29 @@ def analytics_breakdowns(ws: Workspace = Depends(require_workspace_role("viewer"
     }
 
     def add(bucket: dict, key: str, m, is_mock: bool):
-        slot = bucket.setdefault(key, {"posts": 0, "mock_posts": 0, "views": 0, "likes": 0, "engagement_sum": 0.0})
+        # HONESTY: `add` registers the key BEFORE it knows whether a metric
+        # exists (`if m is None: return`), so a bucket whose posts were all
+        # published-but-never-measured exists with every counter at 0. The
+        # counters below therefore stay None until a snapshot is summed in.
+        slot = bucket.setdefault(
+            key,
+            {"posts": 0, "mock_posts": 0, "views": None, "likes": None, "engagement_sum": None},
+        )
         if m is None:
             return
         slot["posts"] += 1
         if is_mock:
             slot["mock_posts"] += 1
-        slot["views"] += m.views
-        slot["likes"] += m.likes
-        eng = (m.likes + m.comments + m.shares) / m.views if m.views else 0.0
-        slot["engagement_sum"] += eng
+        slot["views"] = (slot["views"] or 0) + m.views
+        slot["likes"] = (slot["likes"] or 0) + m.likes
+        # A post with 0 views has no engagement RATE (0/0). It contributes
+        # nothing to the average rather than contributing a 0.0, which would
+        # have dragged a real group mean toward zero on the strength of posts
+        # nobody watched.
+        if m.views:
+            eng = (m.likes + m.comments + m.shares) / m.views
+            slot["engagement_sum"] = (slot["engagement_sum"] or 0.0) + eng
+            slot["rate_samples"] = slot.get("rate_samples", 0) + 1
 
     for p in posts:
         m = metrics.get(p.id)
@@ -467,15 +529,35 @@ def analytics_breakdowns(ws: Workspace = Depends(require_workspace_role("viewer"
         out = []
         for key, s in bucket.items():
             n = s["posts"]
+            # HONESTY: `if n else 0` claimed "average 0 views, 0% engagement" for
+            # a bucket whose posts were never measured. Both are DERIVED, so
+            # both are None with no measured post. `total_views` follows the
+            # accumulator and is None in exactly the same case.
+            rate_samples = s.get("rate_samples", 0)
             out.append({
                 "key": key,
+                # A COUNT of rows: 0 measured posts is a real measurement.
                 "posts": n,
                 "mock_posts": s["mock_posts"],
                 "total_views": s["views"],
-                "avg_views": round(s["views"] / n) if n else 0,
-                "engagement_pct": round(100 * s["engagement_sum"] / n, 2) if n else 0.0,
+                "avg_views": round(s["views"] / n) if n and s["views"] is not None else None,
+                # Mean over the posts that HAVE a view count. The denominator is
+                # `rate_samples`, not `posts`: a published post with 0 views has
+                # no engagement rate to average, so it is not a sample. The old
+                # code divided a sum that had been padded with 0.0s by the full
+                # post count, which reported a low rate for a high-performing
+                # bucket purely because some of its posts had no views.
+                "engagement_pct": (
+                    round(100 * s["engagement_sum"] / rate_samples, 2)
+                    if rate_samples and s["engagement_sum"] is not None
+                    else None
+                ),
+                "engagement_samples": rate_samples,
             })
-        out.sort(key=lambda r: r["total_views"], reverse=True)
+        # HONESTY: sorting by `total_views` with None in the key raises
+        # TypeError, and an unmeasured bucket has no views to rank by, so it
+        # sorts last rather than pretending to be 0.
+        out.sort(key=lambda r: (r["total_views"] is None, r["total_views"] or 0), reverse=True)
         return out
 
     return {
@@ -591,6 +673,12 @@ def agent_detail(
     )
     total_runs = int(stats.runs or 0)
     failures = int(stats.failures or 0)
+    # HONESTY: `failure_rate` was `0.0` when the agent had never run. That is
+    # `0/0` -- an agent that has never executed has no failure rate, and
+    # rendering 0.0 next to a healthy agent made "no data" look like "never
+    # fails". None renders UNAVAILABLE. `total_cost_usd` was
+    # `round(float(stats.cost or 0.0), 4)`, and SQL SUM over zero rows is NULL,
+    # so an agent with no runs reported $0.00 of spend.
     return {
         "key": meta.key,
         "title": meta.title,
@@ -601,10 +689,16 @@ def agent_detail(
         "timeout_seconds": cfg_row.timeout_seconds if cfg_row else 300,
         "cost_limit_usd": cfg_row.cost_limit_usd if cfg_row else None,
         "stats": {
+            # A COUNT over zero rows is a real measured zero: the agent really
+            # has run zero times.
             "runs": total_runs,
-            "failure_rate": round(failures / total_runs, 3) if total_runs else 0.0,
+            "failure_rate": (
+                round(derived_ratio(failures, total_runs), 3)
+                if derived_ratio(failures, total_runs) is not None
+                else None
+            ),
             "avg_duration_ms": int(stats.avg_ms) if stats.avg_ms is not None else None,
-            "total_cost_usd": round(float(stats.cost or 0.0), 4),
+            "total_cost_usd": round(float(stats.cost), 4) if stats.cost is not None else None,
         },
         "runs": [
             {
@@ -686,6 +780,12 @@ def agent_status(ws: Workspace = Depends(require_workspace_role("viewer")), db=D
             .order_by(AgentRun.created_at.desc())
             .limit(1)
         )
+        # HONESTY: same three fabrications as `agent_detail` above, and the
+        # same correction. `runs` stays 0 for a never-run agent (a real count of
+        # rows); `failure_rate` and `total_cost_usd` become None, because both
+        # were `0/0` and `$0.00` respectively. An agent in AGENT_META with no
+        # AgentRun rows has NO group in `stats_rows`, which is why the old
+        # `if r else 0.0` branch printed $0.00 for the majority of the catalog.
         items.append(
             {
                 "key": key,
@@ -696,9 +796,13 @@ def agent_status(ws: Workspace = Depends(require_workspace_role("viewer")), db=D
                 "status": "busy" if current else "idle",
                 "current_task": current.task_type if current else None,
                 "runs": runs,
-                "failure_rate": round(failures / runs, 3) if runs else 0.0,
-                "avg_duration_ms": int(r.avg_ms or 0) if r and r.avg_ms is not None else None,
-                "total_cost_usd": round(float(r.cost or 0.0), 4) if r else 0.0,
+                "failure_rate": (
+                    round(derived_ratio(failures, runs), 3)
+                    if derived_ratio(failures, runs) is not None
+                    else None
+                ),
+                "avg_duration_ms": int(r.avg_ms) if r and r.avg_ms is not None else None,
+                "total_cost_usd": round(float(r.cost), 4) if r and r.cost is not None else None,
             }
         )
     recent = db.scalars(
@@ -1207,7 +1311,7 @@ def query_logs(
 jobs_router = APIRouter(prefix="/workspaces/{workspace_id}/jobs", tags=["jobs"])
 
 
-@jobs_router.get("")
+@jobs_router.get("", responses={200: {"model": JobListOut}})
 def list_jobs(
     ws: Workspace = Depends(require_workspace_role("viewer")),
     status_filter: str | None = None,
@@ -1228,19 +1332,41 @@ def cancel_job(job_id: str, ws: Workspace = Depends(require_workspace_role("admi
 costs_router = APIRouter(prefix="/workspaces/{workspace_id}/costs", tags=["costs"])
 
 
-@costs_router.get("")
+@costs_router.get("", responses={200: {"model": CostSummaryOut}})
 def cost_summary(ws: Workspace = Depends(require_workspace_role("viewer")), db=Depends(get_db)):
     day_ago = utcnow() - timedelta(hours=24)
-    by_cat = db.execute(
-        select(CostEntry.category, func.sum(CostEntry.amount_usd))
-        .where(CostEntry.workspace_id == ws.id, CostEntry.created_at >= day_ago)
-        .group_by(CostEntry.category)
+    # HONESTY: this was a grouped SUM re-summed as `float(a or 0)`, so an
+    # empty window reported $0.00 spent -- indistinguishable from a genuinely
+    # free day -- and a category holding an UNKNOWN_EXPOSURE row (amount 0.0,
+    # money possibly spent) contributed a hard 0 to the total.
+    #
+    # `within_budget` is a BUDGET GATE, not a display figure, so it keeps its
+    # conservative meaning: unknown spend is treated as spend, never as room.
+    window_rows = db.scalars(
+        select(CostEntry).where(
+            CostEntry.workspace_id == ws.id, CostEntry.created_at >= day_ago
+        )
     ).all()
-    spent_24h = float(sum((float(a or 0) for _, a in by_cat)))
-    remaining = settings.daily_budget_usd - spent_24h
+    spent_24h, unknown_rows = money_total(window_rows)
+    # The per-category breakdown stays a real measurement of the PRICED rows
+    # (a group that exists has rows and a sum), and unknown-exposure rows are
+    # excluded from it rather than folded in as 0 -- which is why the total can
+    # be None while this map still has numbers in it.
+    by_category: dict[str, float] = {}
+    for entry in window_rows:
+        if is_unknown_exposure(entry):
+            continue
+        by_category[str(entry.category)] = by_category.get(str(entry.category), 0.0) + float(
+            entry.amount_usd or 0.0
+        )
+    spent_for_gate = spent_24h if spent_24h is not None else (
+        float(sum(by_category.values())) if unknown_rows else 0.0
+    )
+    remaining = settings.daily_budget_usd - spent_for_gate
     return {
-        "last_24h_by_category": {c: round(float(a or 0), 4) for c, a in by_cat},
-        "spent_last_24h_usd": round(spent_24h, 4),
+        "last_24h_by_category": {c: round(v, 4) for c, v in sorted(by_category.items())},
+        "spent_last_24h_usd": spent_24h,
+        "spent_last_24h_unknown_exposure_rows": unknown_rows,
         "daily_budget_usd": settings.daily_budget_usd,
         "per_video_budget_usd": settings.per_video_budget_usd,
         "within_budget": remaining > 0,

@@ -55,11 +55,24 @@ CPU/provider fallback
 Fallback exists and is **off unless both parties opt in**: the caller must
 declare ``cpu_capable=True`` on the request *and* the operator must set
 ``settings.gpu_cpu_fallback_enabled``. When it is granted, the reservation is
-written with ``cpu_fallback=True`` and ``vram_mb=0`` on the ``cpu`` device, so
-the audit trail says in one query which work ran somewhere other than where it
-asked to run. Nothing infers CPU capability from a device being unavailable: a
-job that *needs* a GPU and finds none gets :class:`GpuUnavailable`, never a
-silent downgrade.
+written with ``cpu_fallback=True`` on the ``cpu`` device -- a device with a real
+(finite, small) capacity, so the declared footprint is still debited against
+it -- so the audit trail says in one query which work ran somewhere other than
+where it asked to run. Nothing infers CPU capability from a device being
+unavailable: a job that *needs* a GPU and finds none gets
+:class:`GpuAdmissionTimeout`, never a silent downgrade.
+
+Composition
+-----------
+This module is the DEVICE layer. It is not the whole of GPU admission: the
+per-WORKSPACE quota lives in ``services/media_intel_runs.py`` and the two are
+composed, never merged. The production entry point is
+``media_intel_runs.gpu_admitted`` / ``gpu_admitted_sync``, which takes the
+workspace slot first and this module's slot second, so a tenant over quota is
+refused before it competes for real VRAM. Reaching for :func:`gpu_slot` (or
+:func:`admit`, or :func:`cpu_slot`) directly bypasses the tenant quota, and
+``tests/test_work16_1_gpu_admission.py`` walks the AST of every module under
+``app/`` to fail that. See ``PRODUCTION_ARCHITECTURE.md`` §4.4.
 """
 
 from __future__ import annotations

@@ -14,6 +14,18 @@ The one field worth calling out is ``Opportunity.basis``:
 A plan may not schedule a ``RECOMMENDED`` item as though it were demand. That
 distinction is the point of the column, and it is enforced in
 ``engine.planning.engine`` rather than trusted to the UI.
+
+``server_default`` on these tables (Work 16 §1)
+-----------------------------------------------
+``0032`` creates all four of these tables, and its DDL carries a ``DEFAULT`` on
+almost every column. ``default=`` above is a PYTHON callable and emits no server
+default, so a database built by ``create_all`` had none: the same statement
+could land on one schema and fail ``23502`` on the other. Every ``server_default``
+here is 0032's literal, copied verbatim -- including its lower-cased strings
+(``'fresh'`` for ``FRESH``, ``'idea'`` for ``IDEA``, ``'recommend'`` for
+``RECOMMEND``), because the migration is the authority for what a deployed
+database stores and quietly "correcting" the spelling here would re-open the
+split this closes. ``default=`` is untouched, so ORM writes are unaffected.
 """
 
 from __future__ import annotations
@@ -27,6 +39,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -113,21 +126,28 @@ class TrendSignal(Base, PKMixin, TimestampMixin):
     topic_key: Mapped[str] = mapped_column(String(400))
     #: the source's own id (a post id, a URL, a request id). Empty for
     #: operator/derived signals.
-    external_ref: Mapped[str] = mapped_column(String(500), default="")
+    external_ref: Mapped[str] = mapped_column(
+        String(500), default="", server_default=text("''"))
     #: evidence record ids (Work 05 EvidenceRecord / Work 10 memory evidence)
-    evidence_ids_json: Mapped[list] = mapped_column(JSON, default=list)
+    evidence_ids_json: Mapped[list] = mapped_column(
+        JSON, default=list, server_default=text("'[]'"))
     observed_at: Mapped[datetime] = mapped_column(index=True)
-    freshness: Mapped[str] = mapped_column(String(12), default=FRESH)
+    freshness: Mapped[str] = mapped_column(
+        String(12), default=FRESH, server_default=text("'fresh'"))
     #: workspace | brand | platform
-    scope: Mapped[str] = mapped_column(String(40), default="workspace")
+    scope: Mapped[str] = mapped_column(
+        String(40), default="workspace", server_default=text("'workspace'"))
     #: None when there is a single observation and no rate is measurable
     velocity_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     #: 0..1 confidence in the OBSERVATION. Not a demand score: how sure are we
     #: the thing was actually seen. An unverified signal cannot exceed 0.5.
-    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    confidence: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default=text("0.0"))
     status: Mapped[str] = mapped_column(String(20), default=SIGNAL_ACTIVE,
-                                        index=True)
-    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+                                        index=True,
+                                        server_default=text("'active'"))
+    payload_json: Mapped[dict] = mapped_column(
+        JSON, default=dict, server_default=text("'{}'"))
 
     @property
     def evidence_ids(self) -> list:
@@ -148,15 +168,23 @@ class EditorialPlan(Base, PKMixin, TimestampMixin):
 
     workspace_id: Mapped[str] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
-    horizon_days: Mapped[int] = mapped_column(Integer, default=30)
-    goals_json: Mapped[list] = mapped_column(JSON, default=list)
-    platforms_json: Mapped[list] = mapped_column(JSON, default=list)
-    budget_usd: Mapped[float] = mapped_column(Float, default=0.0)
-    spent_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    horizon_days: Mapped[int] = mapped_column(
+        Integer, default=30, server_default=text("30"))
+    goals_json: Mapped[list] = mapped_column(
+        JSON, default=list, server_default=text("'[]'"))
+    platforms_json: Mapped[list] = mapped_column(
+        JSON, default=list, server_default=text("'[]'"))
+    budget_usd: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default=text("0.0"))
+    spent_usd: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default=text("0.0"))
     autonomy: Mapped[str] = mapped_column(String(20),
-                                          default=AUTONOMY_RECOMMEND)
-    constraints_json: Mapped[dict] = mapped_column(JSON, default=dict)
-    status: Mapped[str] = mapped_column(String(20), default="DRAFT")
+                                          default=AUTONOMY_RECOMMEND,
+                                          server_default=text("'recommend'"))
+    constraints_json: Mapped[dict] = mapped_column(
+        JSON, default=dict, server_default=text("'{}'"))
+    status: Mapped[str] = mapped_column(String(20), default="DRAFT",
+                                          server_default=text("'draft'"))
 
     @property
     def goals(self) -> list:
@@ -205,18 +233,27 @@ class EditorialPlanItem(Base, PKMixin, TimestampMixin):
     campaign_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     schedule_entry_id: Mapped[str | None] = mapped_column(String(36),
                                                            nullable=True)
-    content_format: Mapped[str] = mapped_column(String(60), default="SHORT")
-    angle: Mapped[str] = mapped_column(String(400), default="")
-    platforms_json: Mapped[list] = mapped_column(JSON, default=list)
-    priority: Mapped[float] = mapped_column(Float, default=0.0)
+    content_format: Mapped[str] = mapped_column(
+        String(60), default="SHORT", server_default=text("'short'"))
+    angle: Mapped[str] = mapped_column(
+        String(400), default="", server_default=text("''"))
+    platforms_json: Mapped[list] = mapped_column(
+        JSON, default=list, server_default=text("'[]'"))
+    priority: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default=text("0.0"))
     target_date: Mapped[datetime | None] = mapped_column(nullable=True)
-    estimated_cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
-    dependencies_json: Mapped[list] = mapped_column(JSON, default=list)
-    status: Mapped[str] = mapped_column(String(20), default=IDEA, index=True)
-    blocked_reason: Mapped[str] = mapped_column(String(400), default="")
+    estimated_cost_usd: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default=text("0.0"))
+    dependencies_json: Mapped[list] = mapped_column(
+        JSON, default=list, server_default=text("'[]'"))
+    status: Mapped[str] = mapped_column(String(20), default=IDEA, index=True,
+                                          server_default=text("'idea'"))
+    blocked_reason: Mapped[str] = mapped_column(
+        String(400), default="", server_default=text("''"))
     #: the WHY: why it was created, selected, scheduled, or rejected, which
     #: memories and lessons informed it, and which constraints changed it.
-    why_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    why_json: Mapped[dict] = mapped_column(
+        JSON, default=dict, server_default=text("'{}'"))
 
     @property
     def platforms(self) -> list:
@@ -247,16 +284,24 @@ class ProductionCapacity(Base, PKMixin, TimestampMixin):
 
     workspace_id: Mapped[str] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
-    longform_per_week: Mapped[float] = mapped_column(Float, default=0.0)
-    shorts_per_day: Mapped[float] = mapped_column(Float, default=0.0)
-    ugc_per_day: Mapped[float] = mapped_column(Float, default=0.0)
-    localization_per_day: Mapped[float] = mapped_column(Float, default=0.0)
+    longform_per_week: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default=text("0.0"))
+    shorts_per_day: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default=text("0.0"))
+    ugc_per_day: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default=text("0.0"))
+    localization_per_day: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default=text("0.0"))
     #: render/GPU hours available per day
-    render_hours_per_day: Mapped[float] = mapped_column(Float, default=0.0)
+    render_hours_per_day: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default=text("0.0"))
     #: human review slots per day -- the real bottleneck in most teams
-    review_slots_per_day: Mapped[float] = mapped_column(Float, default=0.0)
-    locale: Mapped[str] = mapped_column(String(40), default="")
-    notes: Mapped[str] = mapped_column(String(400), default="")
+    review_slots_per_day: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default=text("0.0"))
+    locale: Mapped[str] = mapped_column(
+        String(40), default="", server_default=text("''"))
+    notes: Mapped[str] = mapped_column(
+        String(400), default="", server_default=text("''"))
 
     #: pool -> (column, unit) where unit is the divisor that turns the column
     #: into a per-day figure. ``None`` would be a per-item cap, but every pool

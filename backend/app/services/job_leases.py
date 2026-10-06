@@ -27,9 +27,17 @@ breaking it:
 There is no read-then-write window for two workers to interleave in, so the
 loser of a race gets ``rowcount == 0`` and moves on instead of running a job
 somebody else already owns. PostgreSQL additionally gets ``SKIP LOCKED`` on the
-candidate SELECT so N workers do not queue behind one another's row locks;
-SQLite has no such clause and does not need one, because the conditional UPDATE
-is what decides the winner, not the SELECT.
+candidate SELECT and -- this is the part that matters -- keeps that transaction
+open through the take, so N workers read N *different* candidates instead of N
+reads of the identical head-of-queue batch that they then race over. SQLite has
+no such clause and does not need one, because the conditional UPDATE is what
+decides the winner, not the SELECT; its fairness comes from excluding the rows
+a poll demonstrably lost, which works on both backends.
+
+**Three answers to a poll, not two.** "I have nothing to do" and "somebody beat
+me to everything I could see" are different facts with opposite correct
+responses -- sleep, and try again. :class:`PollOutcome` keeps them apart; see
+:func:`claim_next_poll`.
 
 **Two real states, not one blur.** ``QUEUED -> CLAIMED -> RUNNING`` is
 observable: a lease is taken (``claimed_at``, ``started_at`` still NULL) and
@@ -62,15 +70,18 @@ from app.models import CostEntry, Job
 from app.models.base import JobStatus, utcnow
 
 __all__ = [
+    "ClaimPoll",
     "ClaimedJob",
     "LeaseKeeper",
     "LeaseState",
     "PaidAssessment",
     "PaidVerdict",
+    "PollOutcome",
     "assess_paid_reentry",
     "begin_run",
     "claim_by_id",
     "claim_next",
+    "claim_next_poll",
     "held_job_ids",
     "lease_is_valid",
     "lease_seconds",
@@ -110,8 +121,11 @@ _CANDIDATE_BATCH = 20
 #: after a full miss, so the idle cost is still one narrow read.
 _CANDIDATE_BATCH_WIDE = 1000
 
-#: How many times one claim re-reads the head of the queue before reporting
-#: "nothing for me". Each try is a handful of statements, not a stall.
+#: How many candidate windows one poll may ask for before it reports an answer.
+#: Each retry asks for a window that EXCLUDES the rows the previous one lost
+#: (:func:`_candidates`), so this bounds how many times one poll can report "a
+#: peer beat me" -- it is not a spin, because every round either wins a row or
+#: sees strictly fewer free rows than the round before it.
 _CANDIDATE_TRIES = 4
 
 #: Push-back delay for a job a worker refused (wrong class, or GPU-gated on a
@@ -307,21 +321,175 @@ class _Take(StrEnum):
     REFUSED = "REFUSED"
 
 
+# ---------------------------------------------------------------------------
+# Fairness: telling "I have nothing" apart from "I lost every race"
+# ---------------------------------------------------------------------------
+
+
+class PollOutcome(StrEnum):
+    """What one poll of the queue found. Three answers, not two.
+
+    The old return type was ``ClaimedJob | None``, and ``None`` meant two
+    different things at once: *the queue is empty, go to sleep* and *somebody
+    beat me to every row I could see, go and sleep anyway*. The second one is a
+    lie told to the caller's scheduler. A worker that lost the race slept for
+    the full poll interval while the winner -- which never sleeps, because a
+    slot that wins loops immediately -- drained the queue underneath it, so a
+    pool of N slots did the work of one and N-1 slots reported idleness against a
+    queue that was full. Measured on PostgreSQL 17 with 8 pollers: at queue
+    depth 8, 28 of 36 polls returned ``None`` with 8 jobs still due.
+
+    ``CONTENDED`` is the missing third answer. It says: there IS claimable work,
+    a peer took it, and the correct response is to look again immediately --
+    not to sleep for a poll interval and hand the next round to the winner.
+    """
+
+    #: This worker owns a job now.
+    CLAIMED = "CLAIMED"
+    #: Nothing is due for anybody. Sleep.
+    IDLE = "IDLE"
+    #: Work was due and a peer won it. Look again; do NOT sleep.
+    CONTENDED = "CONTENDED"
+
+
+@dataclass(frozen=True)
+class ClaimPoll:
+    """One poll's answer, and the evidence behind it."""
+
+    outcome: PollOutcome = PollOutcome.IDLE
+    job: ClaimedJob | None = None
+    #: Rows the candidate SELECT returned, however many turned out to be
+    #: unusable. Zero with a non-idle outcome is the tell for "hidden behind a
+    #: peer's row lock".
+    considered: int = 0
+    #: Rows skipped because they are not this slot's workload class.
+    wrong_class: int = 0
+    #: Rows won and handed straight back (GPU gate on a non-GPU worker).
+    refused: int = 0
+    #: Rows this poll lost to a concurrent claimer.
+    lost: tuple[str, ...] = ()
+
+    @property
+    def claimed(self) -> bool:
+        return self.outcome is PollOutcome.CLAIMED
+
+    @property
+    def contended(self) -> bool:
+        return self.outcome is PollOutcome.CONTENDED
+
+    @property
+    def idle(self) -> bool:
+        return self.outcome is PollOutcome.IDLE
+
+
+@dataclass
+class _Attempt:
+    """One read-and-decide round, before it is classified into an outcome."""
+
+    considered: int = 0
+    wrong_class: int = 0
+    refused: int = 0
+    lost: list[str] = field(default_factory=list)
+    job: object | None = None
+    resolved: str = ""
+
+
+def _row_locks_hold(session) -> bool:
+    """Whether a ``FOR UPDATE`` taken here outlives the SELECT that took it.
+
+    PostgreSQL: yes. Row locks live until the transaction ends, so the candidate
+    SELECT can hold them right up to the conditional UPDATE that decides the
+    winner -- which is the only arrangement in which ``SKIP LOCKED`` actually
+    does anything. The old code read the candidates in one ``session_scope``
+    and took the winner in another, so the read's locks were released by the
+    read's own COMMIT before any worker tried to claim anything: N pollers all
+    read the identical head-of-queue batch and then raced for it.
+
+    SQLite: no. There is no such clause, and its read transaction holds a
+    file-level shared lock that a writer has to *upgrade*, so merging the read
+    and the write into one transaction there buys a ``database is locked``
+    upgrade failure the two-transaction form has never had. The merge is
+    therefore PostgreSQL-only, and the fairness argument is built so that it
+    does not depend on the merge: the lost-id exclusion below works on both.
+    """
+    try:
+        return session.get_bind().dialect.name == "postgresql"
+    except Exception:  # pragma: no cover - dialect probing only
+        return False
+
+
 def _for_update(query, session):
     """Row-level lock for the candidate SELECT on Postgres only.
 
     ``SKIP LOCKED`` lets N workers read N *different* candidates instead of
     serialising on one row's lock, which is the difference between a pool that
-    scales and a pool that queues. SQLite has no such clause and silently
-    ignores the modifier on some builds, so it is not requested there. Neither
-    backend depends on it: the conditional UPDATE below decides the winner.
+    scales and a pool that queues. It is only meaningful when the locks are then
+    held through the take, so it is paired with :func:`_row_locks_hold` and the
+    single-transaction path in :func:`_round`.
+
+    Neither backend depends on it for *correctness*: the conditional UPDATE
+    still decides the winner. What it depends on is throughput, and on not
+    making a losing poll block behind a peer's row lock while it waits to be told
+    it lost.
     """
-    try:
-        if session.get_bind().dialect.name == "postgresql":
-            return query.with_for_update(skip_locked=True)
-    except Exception:  # pragma: no cover - dialect probing only
-        pass
+    if _row_locks_hold(session):
+        return query.with_for_update(skip_locked=True)
     return query
+
+
+def _take_in(session, job_id: str, worker: str, *, now: datetime, ttl: float,
+             gpu_ok: bool | None = None) -> _Take:
+    """:func:`_take` on a caller-owned session, so the locks stay held."""
+    res = session.execute(
+        update(Job)
+        .where(
+            Job.id == job_id,
+            Job.status.in_(CLAIMABLE),
+            # A live lease on a claimable row would mean an owner that never
+            # finished; refusing here surfaces it to the recovery sweep
+            # instead of hiding it behind a second claim.
+            or_(Job.lease_expires_at.is_(None), Job.lease_expires_at <= now),
+            Job.next_run_at <= now,
+        )
+        .values(
+            status=JobStatus.RUNNING.value,
+            claimed_by=worker,
+            claimed_at=now,
+            lease_expires_at=now + timedelta(seconds=ttl),
+            heartbeat_at=now,
+            # A re-entry attempt starts its own clock. Left over from the
+            # previous attempt it would make the job look like it had been
+            # running since the crash.
+            started_at=None,
+            completed_at=None,
+        )
+    )
+    if res.rowcount != 1:
+        return _Take.LOST
+    job = session.get(Job, job_id)
+    if job is None:  # pragma: no cover - deleted between select and update
+        return _Take.LOST
+    if _needs_gpu_deferral(job) and not (
+            _gpu_allowed() if gpu_ok is None else gpu_ok):
+        # Won the row and handed it straight back, in the SAME transaction.
+        # Bailing out instead would leave the row QUEUED at the head of the
+        # priority queue, so a CPU-only worker would re-read it on every
+        # poll until a GPU worker appeared. The pre-lease code pushed it
+        # back for exactly this reason and the push-back is worth keeping.
+        session.execute(
+            update(Job)
+            .where(Job.id == job_id, Job.claimed_by == worker)
+            .values(
+                status=JobStatus.QUEUED.value, claimed_by="",
+                claimed_at=None, lease_expires_at=None, heartbeat_at=None,
+                started_at=None,
+                next_run_at=now + timedelta(seconds=_REFUSED_PUSHBACK_SECONDS),
+            )
+        )
+        logger.info("job {} needs a GPU worker; pushed back {}s", job_id,
+                    int(_REFUSED_PUSHBACK_SECONDS))
+        return _Take.REFUSED
+    return _Take.WON
 
 
 def _take(job_id: str, worker: str, *, now: datetime, ttl: float,
@@ -336,58 +504,14 @@ def _take(job_id: str, worker: str, *, now: datetime, ttl: float,
     ``CLAIMABLE``. There is no window between the decision and the write, and
     the same statement is correct on SQLite (which serialises writers) and on
     PostgreSQL (which does not, and does not need to).
+
+    This form opens its own transaction and is what :func:`claim_by_id` uses.
+    The polling path uses :func:`_take_in` instead, on the same session as the
+    candidate SELECT, so that the SELECT's ``FOR UPDATE`` locks are still held at
+    the moment the winner is decided.
     """
     with session_scope() as s:
-        res = s.execute(
-            update(Job)
-            .where(
-                Job.id == job_id,
-                Job.status.in_(CLAIMABLE),
-                # A live lease on a claimable row would mean an owner that never
-                # finished; refusing here surfaces it to the recovery sweep
-                # instead of hiding it behind a second claim.
-                or_(Job.lease_expires_at.is_(None), Job.lease_expires_at <= now),
-                Job.next_run_at <= now,
-            )
-            .values(
-                status=JobStatus.RUNNING.value,
-                claimed_by=worker,
-                claimed_at=now,
-                lease_expires_at=now + timedelta(seconds=ttl),
-                heartbeat_at=now,
-                # A re-entry attempt starts its own clock. Left over from the
-                # previous attempt it would make the job look like it had been
-                # running since the crash.
-                started_at=None,
-                completed_at=None,
-            )
-        )
-        if res.rowcount != 1:
-            return _Take.LOST
-        job = s.get(Job, job_id)
-        if job is None:  # pragma: no cover - deleted between select and update
-            return _Take.LOST
-        if _needs_gpu_deferral(job) and not (
-                _gpu_allowed() if gpu_ok is None else gpu_ok):
-            # Won the row and handed it straight back, in the SAME transaction.
-            # Bailing out instead would leave the row QUEUED at the head of the
-            # priority queue, so a CPU-only worker would re-read it on every
-            # poll until a GPU worker appeared. The pre-lease code pushed it
-            # back for exactly this reason and the push-back is worth keeping.
-            s.execute(
-                update(Job)
-                .where(Job.id == job_id, Job.claimed_by == worker)
-                .values(
-                    status=JobStatus.QUEUED.value, claimed_by="",
-                    claimed_at=None, lease_expires_at=None, heartbeat_at=None,
-                    started_at=None,
-                    next_run_at=now + timedelta(seconds=_REFUSED_PUSHBACK_SECONDS),
-                )
-            )
-            logger.info("job {} needs a GPU worker; pushed back {}s", job_id,
-                        int(_REFUSED_PUSHBACK_SECONDS))
-            return _Take.REFUSED
-        return _Take.WON
+        return _take_in(s, job_id, worker, now=now, ttl=ttl, gpu_ok=gpu_ok)
 
 
 def _needs_gpu_deferral(job) -> bool:
@@ -441,6 +565,189 @@ def claim_by_id(worker: str, job_id: str, *, now: datetime | None = None,
                       workload=resolved)
 
 
+def _candidates(session, *, stamp: datetime, limit: int,
+                lost: set[str]) -> list:
+    """The candidate window: due, claimable, in priority order, minus what is lost.
+
+    ``lost`` is the fairness fix that does not depend on the dialect. The old
+    loop re-read the *same* head-of-queue batch on every try, because the rows
+    that a peer had just claimed were no longer visible to the SELECT (they are
+    ``RUNNING`` now) but were still the rows this poller had already failed to
+    take -- so try 2 saw the same rows, lost them the same way, and only after
+    ``_CANDIDATE_TRIES`` such rounds did the poller conclude the queue was
+    empty. Excluding the ids it demonstrably lost means try 2 asks for a
+    *different* window, so each round either wins something or genuinely sees
+    the tail of the queue.
+    """
+    query = (
+        select(Job)
+        .where(Job.status.in_(CLAIMABLE), Job.next_run_at <= stamp)
+        .order_by(Job.priority.asc(), Job.next_run_at.asc())
+        .limit(limit)
+    )
+    if lost:
+        query = query.where(Job.id.notin_(sorted(lost)))
+    return list(session.scalars(_for_update(query, session)).all())
+
+
+def _due_exists(stamp: datetime) -> bool:
+    """Whether ANY due claimable row exists, ignoring row locks.
+
+    Only needed to turn "I read nothing" into an honest answer. With
+    ``SKIP LOCKED`` a peer that is mid-claim hides its candidates from this
+    worker's read, so an empty read is genuinely ambiguous; this one
+    unindexed-predicate-free ``LIMIT 1`` probe resolves it. It costs one extra
+    indexed lookup on the idle path and buys the difference between a slot that
+    sleeps because there is nothing to do and a slot that sleeps because it lost
+    -- which is the defect this whole mechanism exists to remove.
+    """
+    with session_scope() as s:
+        return s.scalar(
+            select(Job.id)
+            .where(Job.status.in_(CLAIMABLE), Job.next_run_at <= stamp)
+            .limit(1)
+        ) is not None
+
+
+def _walk(read, take, *, classify, workload: str) -> _Attempt:
+    """Take the first candidate of this worker's class that it can win.
+
+    ``read`` and ``take`` are injected because the two backends want different
+    transaction shapes: PostgreSQL wants them on ONE session so the candidate
+    SELECT's row locks are still held when the winner is decided, and SQLite
+    wants the read committed before any writer starts. The decision logic is
+    shared, so the two cannot drift.
+    """
+    rows = read()
+    result = _Attempt(considered=len(rows))
+    for job in rows:
+        resolved = classify(job.type, job.payload or {})
+        if workload and str(resolved) != workload:
+            result.wrong_class += 1
+            continue
+        # Compare against the enum, never by truthiness: ``_Take`` is a
+        # StrEnum, so every member is a non-empty string and ``if not
+        # _take(...)`` is False for LOST and REFUSED too -- which is
+        # exactly how a lost race becomes a second execution of a job
+        # somebody else already owns. Only a real concurrency test catches
+        # that, and it caught this one.
+        verdict = take(job.id, resolved)
+        if verdict is _Take.WON:
+            result.job = job
+            result.resolved = str(resolved)
+            return result
+        if verdict is _Take.REFUSED:
+            result.refused += 1
+            continue
+        result.lost.append(job.id)
+    return result
+
+
+def _round(worker: str, *, stamp: datetime, limit: int, lost: set[str],
+           workload: str, classify, ttl_for) -> tuple[_Attempt, bool]:
+    """One read-and-decide round. Second value: could the read have been blind?
+
+    ``True`` means ``SKIP LOCKED`` was in effect, so an empty candidate window
+    may be hiding rows a peer is holding rather than meaning the queue is empty.
+    """
+    with session_scope() as s:
+        if _row_locks_hold(s):
+            attempt = _walk(
+                lambda: _candidates(s, stamp=stamp, limit=limit, lost=lost),
+                lambda jid, resolved: _take_in(
+                    s, jid, worker, now=stamp, ttl=ttl_for(resolved)),
+                classify=classify, workload=workload)
+            return attempt, True
+        rows = _candidates(s, stamp=stamp, limit=limit, lost=lost)
+    # The read transaction is committed before any writer starts, which is what
+    # keeps SQLite's lock upgrade out of the picture.
+    attempt = _walk(
+        lambda: rows,
+        lambda jid, resolved: _take(
+            jid, worker, now=stamp, ttl=ttl_for(resolved)),
+        classify=classify, workload=workload)
+    return attempt, False
+
+
+def claim_next_poll(worker: str, *, workload: str = "",
+                    now: datetime | None = None) -> ClaimPoll:
+    """Poll the queue and report *why* the answer is what it is.
+
+    :func:`claim_next` is this, with the outcome discarded. Use this one when the
+    caller schedules itself: :attr:`ClaimPoll.contended` means a peer took the
+    work, so retrying immediately is correct, while :attr:`ClaimPoll.idle` means
+    there is genuinely nothing to do, so sleeping is correct. Collapsing those
+    two is what let a pool of eight slots drain a depth-eight queue as if it
+    were one slot.
+
+    ``_CANDIDATE_TRIES`` rounds, each asking for a *different* window, and each
+    one strictly less likely to be able to win than the last -- so the loop is
+    bounded by the queue depth and cannot spin.
+    """
+    from app.services.worker_pool import classify_workload
+
+    stamp = _now(now)
+    limit = _CANDIDATE_BATCH
+    lost: set[str] = set()
+    ttls: dict[str, float] = {}
+
+    def ttl_for(resolved: str) -> float:
+        # Resolved once per class per poll, OUTSIDE any candidate loop. The
+        # settings lookup is trivial, but doing it twenty times inside a
+        # transaction that is holding twenty row locks is exactly the kind of
+        # hold time that turns a fair poll into a contended one.
+        if resolved not in ttls:
+            ttls[resolved] = lease_seconds(resolved)
+        return ttls[resolved]
+
+    contended = False
+    last = _Attempt()
+    for _ in range(_CANDIDATE_TRIES):
+        last, read_may_have_been_blind = _round(
+            worker, stamp=stamp, limit=limit, lost=lost, workload=workload,
+            classify=classify_workload, ttl_for=ttl_for)
+
+        if last.job is not None:
+            return ClaimPoll(
+                outcome=PollOutcome.CLAIMED,
+                job=_build(last.job, worker=worker, ttl=ttl_for(last.resolved),
+                           now=stamp, workload=last.resolved),
+                considered=last.considered, refused=last.refused,
+                lost=tuple(last.lost))
+
+        if last.lost:
+            # Contention, not idleness. Try a window that does not contain the
+            # rows a peer already owns.
+            lost.update(last.lost)
+            contended = True
+            continue
+
+        if last.considered == 0:
+            # Nothing claimable *in this window*. On PostgreSQL a peer may be
+            # holding every due row behind its own `FOR UPDATE`, and after
+            # ``lost`` excludes what we already lost, the tail of the queue may
+            # be nothing but those. One probe tells the two apart, and the
+            # difference decides whether the caller retries or sleeps.
+            if (read_may_have_been_blind or lost) and _due_exists(stamp):
+                contended = True
+                continue
+            return ClaimPoll(outcome=PollOutcome.IDLE)
+
+        # Nothing claimable for this worker in what we read. A FULL batch means
+        # there may simply be more of the queue below the cut, so widen once; an
+        # empty tail means we have seen the whole queue and can stop.
+        if last.considered >= limit:
+            limit = _CANDIDATE_BATCH_WIDE
+            continue
+        return ClaimPoll(outcome=PollOutcome.IDLE, considered=last.considered,
+                         wrong_class=last.wrong_class, refused=last.refused)
+
+    return ClaimPoll(outcome=PollOutcome.CONTENDED if contended
+                     else PollOutcome.IDLE,
+                     considered=last.considered, wrong_class=last.wrong_class,
+                     refused=last.refused, lost=tuple(sorted(lost)))
+
+
 def claim_next(worker: str, *, workload: str = "",
                now: datetime | None = None) -> ClaimedJob | None:
     """Atomically claim the highest-priority due job this worker may run.
@@ -451,42 +758,12 @@ def claim_next(worker: str, *, workload: str = "",
     worse trade than reading twenty rows. The claim itself stays a single
     conditional UPDATE, so N workers polling the same head-of-queue row still
     produce exactly one winner.
-    """
-    from app.services.worker_pool import classify_workload
 
-    stamp = _now(now)
-    limit = _CANDIDATE_BATCH
-    for _ in range(_CANDIDATE_TRIES):
-        with session_scope() as s:
-            query = (
-                select(Job)
-                .where(Job.status.in_(CLAIMABLE), Job.next_run_at <= stamp)
-                .order_by(Job.priority.asc(), Job.next_run_at.asc())
-                .limit(limit)
-            )
-            candidates = list(s.scalars(_for_update(query, s)).all())
-        if not candidates:
-            return None
-        for job in candidates:
-            resolved = classify_workload(job.type, job.payload or {})
-            if workload and resolved != workload:
-                continue
-            # Compare against the enum, never by truthiness: ``_Take`` is a
-            # StrEnum, so every member is a non-empty string and ``if not
-            # _take(...)`` is False for LOST and REFUSED too -- which is
-            # exactly how a lost race becomes a second execution of a job
-            # somebody else already owns. Only a real concurrency test catches
-            # that, and it caught this one.
-            if _take(job.id, worker, now=stamp, ttl=lease_seconds(resolved)) is not _Take.WON:
-                continue
-            return _build(job, worker=worker, ttl=lease_seconds(resolved),
-                          now=stamp, workload=resolved)
-        # Nothing claimable for this worker in what we read. A FULL batch means
-        # there may simply be more of the queue below the cut, so widen once; an
-        # empty tail means we have seen the whole queue and can stop.
-        if workload and len(candidates) >= limit:
-            limit = _CANDIDATE_BATCH_WIDE
-    return None
+    ``None`` means *not claimed*, and deliberately does not distinguish an empty
+    queue from a lost race -- see :func:`claim_next_poll` for a caller that has
+    to tell the difference, and :attr:`PollOutcome` for why.
+    """
+    return claim_next_poll(worker, workload=workload, now=now).job
 
 
 def begin_run(job_id: str, worker: str, *, now: datetime | None = None) -> bool:

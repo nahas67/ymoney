@@ -45,6 +45,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.models import CostEntry, Video, Workspace
 from app.providers import maturity
+from app.schemas.responses import (
+    ProviderMaturityListOut,
+    WorkspaceProviderMaturityOut,
+)
 from app.services.auth_service import require_workspace_role
 
 provider_maturity_router = APIRouter(tags=["provider-maturity-work15"])
@@ -116,6 +120,7 @@ def _reject_unknown_capability(capability: str) -> str:
 @provider_maturity_router.get(
     "/provider-maturity",
     summary="Every provider's honest maturity (no credential resolution)",
+    responses={200: {"model": ProviderMaturityListOut}},
 )
 @_guard()
 def list_provider_maturity(
@@ -218,6 +223,7 @@ def _probeable() -> list[str]:
 @workspace_maturity_router.get(
     "",
     summary="Maturity with this workspace's credential resolution",
+    responses={200: {"model": WorkspaceProviderMaturityOut}},
 )
 @_guard()
 def workspace_provider_maturity(

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -106,6 +106,21 @@ class ApiCredential(Base, PKMixin, TimestampMixin):
     """Generic provider credential storage (LLM keys, trend API keys, etc.)."""
 
     __tablename__ = "api_credentials"
+    __table_args__ = (
+        # Work 16 §1: 0008's two PARTIAL unique indexes. They must stay
+        # partial: NULLs are distinct in both backends' unique semantics,
+        # so a plain UNIQUE over the same columns would forbid every other
+        # workspace's copy of a provider key. A ``create_all`` database had
+        # no uniqueness here at all, so it accepted duplicates the migrated
+        # database rejects.
+        Index("uq_api_credentials_provider_ws", "provider", "workspace_id",
+              unique=True,
+              postgresql_where=text("workspace_id IS NOT NULL"),
+              sqlite_where=text("workspace_id IS NOT NULL")),
+        Index("uq_api_credentials_provider_global", "provider", unique=True,
+              postgresql_where=text("workspace_id IS NULL"),
+              sqlite_where=text("workspace_id IS NULL")),
+    )
 
     workspace_id: Mapped[str | None] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), index=True, nullable=True
@@ -123,6 +138,10 @@ class WorkspaceApiKey(Base, PKMixin, TimestampMixin):
     """
 
     __tablename__ = "workspace_api_keys"
+    __table_args__ = (
+        # 0011's index: the revocation listing is per workspace.
+        Index("ix_workspace_api_keys_workspace", "workspace_id", "revoked"),
+    )
 
     workspace_id: Mapped[str] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
@@ -143,6 +162,10 @@ class WebhookSubscription(Base, PKMixin, TimestampMixin):
     """
 
     __tablename__ = "webhook_subscriptions"
+    __table_args__ = (
+        # 0012's index: dispatch scans active subscriptions per workspace.
+        Index("ix_webhook_subscriptions_workspace", "workspace_id", "active"),
+    )
 
     workspace_id: Mapped[str] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), index=True

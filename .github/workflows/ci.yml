@@ -114,6 +114,17 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Install and verify real media binaries
+        # The contract observer provisions avatar/render fixtures with ffmpeg.
+        # Without it the generator reports unexplained observation gaps for
+        # POST /avatars/render, /exports, /ugc/projects and
+        # /ugc/projects/{id}/render and the gate fails on a healthy tree, so
+        # this is a real dependency of generation, not an optional extra.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          ffmpeg -version
+          ffprobe -version
       - name: Fresh locked Python install
         run: |
           mkdir -p ../release-evidence/generated

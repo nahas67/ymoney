@@ -132,7 +132,7 @@
       "nullable": true,
       "provenance": "DERIVED",
       "reason": "As by_topic[].avg_views.",
-      "schema": "ByDurationRow12",
+      "schema": "GetApiV1WorkspacesWorkspaceAnalyticsBreakdowns4fc5f26aByDurationRow",
       "schema_field": "avg_views",
       "site": "backend/app/api/v1/misc.py:543",
       "unresolved": ""
@@ -148,7 +148,7 @@
       "nullable": true,
       "provenance": "DERIVED",
       "reason": "As by_topic[].avg_views.",
-      "schema": "ByHookStyleRow11",
+      "schema": "GetApiV1WorkspacesWorkspaceAnalyticsBreakdowns4fc5f26aByHookStyleRow",
       "schema_field": "avg_views",
       "site": "backend/app/api/v1/misc.py:543",
       "unresolved": ""
@@ -164,7 +164,7 @@
       "nullable": true,
       "provenance": "DERIVED",
       "reason": "total_views / posts. None when the bucket has no measured post: an average over an empty sample is not zero.",
-      "schema": "ByTopicRow10",
+      "schema": "GetApiV1WorkspacesWorkspaceAnalyticsBreakdowns4fc5f26aByTopicRow",
       "schema_field": "avg_views",
       "site": "backend/app/api/v1/misc.py:543",
       "unresolved": ""
@@ -180,7 +180,7 @@
       "nullable": true,
       "provenance": "DERIVED",
       "reason": "Mean engagement over the posts that HAVE a view count. The denominator is engagement_samples, not posts: a post with 0 views has no rate to average, and padding it as a 0.0 reported a low rate for a strong bucket.",
-      "schema": "ByTopicRow10",
+      "schema": "GetApiV1WorkspacesWorkspaceAnalyticsBreakdowns4fc5f26aByTopicRow",
       "schema_field": "engagement_pct",
       "site": "backend/app/api/v1/misc.py:550",
       "unresolved": ""
@@ -196,7 +196,7 @@
       "nullable": true,
       "provenance": "UNAVAILABLE",
       "reason": "Sum over measured posts in the bucket. A bucket is registered before any post in it is known to be measured, so it was 0 for an all-unmeasured bucket.",
-      "schema": "ByTopicRow10",
+      "schema": "GetApiV1WorkspacesWorkspaceAnalyticsBreakdowns4fc5f26aByTopicRow",
       "schema_field": "total_views",
       "site": "backend/app/api/v1/misc.py:542",
       "unresolved": ""
@@ -212,7 +212,7 @@
       "nullable": false,
       "provenance": "MEASURED",
       "reason": "COUNT of content_items rows. A COUNT over an empty table is a real measured zero -- 'no rows' and 'no measurement' are different claims and only one of them is what a COUNT answers.",
-      "schema": "ApiV1WorkspacesWorkspaceAnalyticsOverview4",
+      "schema": "GetApiV1WorkspacesWorkspaceAnalyticsOverview02e895a9",
       "schema_field": "content_items",
       "site": "backend/app/api/v1/misc.py:394",
       "unresolved": ""
@@ -228,7 +228,7 @@
       "nullable": false,
       "provenance": "MEASURED",
       "reason": "COUNT of ledger rows carrying the UNKNOWN_EXPOSURE marker. Exists so the UI can say WHY the total is missing instead of rendering a bare dash.",
-      "schema": "ApiV1WorkspacesWorkspaceAnalyticsOverview4",
+      "schema": "GetApiV1WorkspacesWorkspaceAnalyticsOverview02e895a9",
       "schema_field": "cost_total_unknown_exposure_rows",
       "site": "backend/app/api/v1/misc.py:398",
       "unresolved": ""
@@ -244,7 +244,7 @@
       "nullable": true,
       "provenance": "UNAVAILABLE",
       "reason": "Sum of PRICED ledger rows. None for an empty ledger (unknown-but-zero-observed) and None when any row is an UNKNOWN_EXPOSURE.",
-      "schema": "ApiV1WorkspacesWorkspaceAnalyticsOverview4",
+      "schema": "GetApiV1WorkspacesWorkspaceAnalyticsOverview02e895a9",
       "schema_field": "cost_total_usd",
       "site": "backend/app/api/v1/misc.py:397",
       "unresolved": ""
@@ -260,7 +260,7 @@
       "nullable": false,
       "provenance": "MEASURED",
       "reason": "COUNT of published_posts rows. Zero published posts is a fact, not a gap.",
-      "schema": "ApiV1WorkspacesWorkspaceAnalyticsOverview4",
+      "schema": "GetApiV1WorkspacesWorkspaceAnalyticsOverview02e895a9",
       "schema_field": "posts_published",
       "site": "backend/app/api/v1/misc.py:393",
       "unresolved": ""
@@ -276,7 +276,7 @@
       "nullable": true,
       "provenance": "UNAVAILABLE",
       "reason": "Same accumulator as totals.views.",
-      "schema": "Totals5",
+      "schema": "GetApiV1WorkspacesWorkspaceAnalyticsOverview02e895a9Totals",
       "schema_field": "comments",
       "site": "backend/app/api/v1/misc.py:352",
       "unresolved": ""
@@ -292,7 +292,7 @@
       "nullable": true,
       "provenance": "UNAVAILABLE",
       "reason": "Same accumulator as totals.views. Only providers reporting a follower delta contribute; the rest contribute nothing rather than a zero.",
-      "schema": "Totals5",
+      "schema": "GetApiV1WorkspacesWorkspaceAnalyticsOverview02e895a9Totals",
       "schema_field": "followers_gained",
       "site": "backend/app/api/v1/misc.py:352",
       "unresolved": ""
@@ -308,7 +308,7 @@
       "nullable": true,
       "provenance": "UNAVAILABLE",
       "reason": "Same accumulator as totals.views.",
-      "schema": "Totals5",
+      "schema": "GetApiV1WorkspacesWorkspaceAnalyticsOverview02e895a9Totals",
       "schema_field": "likes",
       "site": "backend/app/api/v1/misc.py:352",
       "unresolved": ""
@@ -324,7 +324,7 @@
       "nullable": true,
       "provenance": "UNAVAILABLE",
       "reason": "Same accumulator as totals.views.",
-      "schema": "Totals5",
+      "schema": "GetApiV1WorkspacesWorkspaceAnalyticsOverview02e895a9Totals",
       "schema_field": "shares",
       "site": "backend/app/api/v1/misc.py:352",
       "unresolved": ""
@@ -340,7 +340,7 @@
       "nullable": true,
       "provenance": "UNAVAILABLE",
       "reason": "Seeded from None and promoted by the first PostMetric snapshot. Was a 0 accumulator, so an all-unmeasured workspace read 0 views.",
-      "schema": "Totals5",
+      "schema": "GetApiV1WorkspacesWorkspaceAnalyticsOverview02e895a9Totals",
       "schema_field": "views",
       "site": "backend/app/api/v1/misc.py:352",
       "unresolved": ""
@@ -563,11 +563,11 @@
       "money": true,
       "nullable": true,
       "provenance": "UNAVAILABLE",
-      "reason": "Duplicated GET /costs, so it duplicated the fabrication: a grouped SUM re-summed as `float(amount or 0.0)`. The Command Center reads THIS section, so fixing /costs alone would have left the dashboard lying.",
+      "reason": "Duplicated GET /costs, so it duplicated the fabrication: a grouped SUM re-summed as `float(amount or 0.0)`. The NEW UI Command Center reads GET /costs instead, so this legacy endpoint's stale field does not drive the dashboard. The backend metric remains inaccurate and out of scope.",
       "schema": null,
       "schema_field": "spent_last_24h_usd",
       "site": "backend/app/api/v1/ops.py:278",
-      "unresolved": "NOT FIXED \u2014 OUT OF SCOPE (`api/v1/ops.py`). The Command Center reads this section rather than GET /costs, so the dashboard's spend tile still reads $0.0000 for an empty window. Fix: route this through `money_total` exactly as `misc.py` does."
+      "unresolved": "NOT FIXED \u2014 OUT OF SCOPE (`api/v1/ops.py`). The backend field remains fabricated for an empty window. The NEW UI Command Center reads `/costs` instead, so this legacy field does not drive the dashboard spend tile. Fix: route this endpoint through `money_total` exactly as `misc.py` does."
     },
     {
       "endpoint": "/ops/overview",
@@ -798,7 +798,7 @@
     "/costs/intelligence.totals.views: NOT FIXED \u2014 OUT OF SCOPE (safety.py): the `views = 0` seed is still there, so an unmeasured workspace claims 0 views.",
     "/intelligence/decisions/shadow-report.total_cost_usd: NOT FIXED \u2014 OUT OF SCOPE (`engine/intelligence/shadow.py`). `Intelligence.tsx` still types this `number` and the endpoint still answers $0.000000 for no runs.",
     "/opportunities.items[].virality: Provenance is UNRESOLVED at the storage layer: the column is NOT NULL DEFAULT 0.0, so a genuinely-scored 0.0 and a never-scored row are indistinguishable without a migration. The serializer now refuses to invent the value; it cannot yet recover which case it is in.",
-    "/ops/overview.costs.spent_last_24h_usd: NOT FIXED \u2014 OUT OF SCOPE (`api/v1/ops.py`). The Command Center reads this section rather than GET /costs, so the dashboard's spend tile still reads $0.0000 for an empty window. Fix: route this through `money_total` exactly as `misc.py` does."
+    "/ops/overview.costs.spent_last_24h_usd: NOT FIXED \u2014 OUT OF SCOPE (`api/v1/ops.py`). The backend field remains fabricated for an empty window. The NEW UI Command Center reads `/costs` instead, so this legacy field does not drive the dashboard spend tile. Fix: route this endpoint through `money_total` exactly as `misc.py` does."
   ],
   "vocabulary": {
     "DERIVED": "Computed from measured values by the formula named in `formula`.",

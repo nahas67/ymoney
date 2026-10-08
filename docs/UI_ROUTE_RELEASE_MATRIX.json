@@ -1,5 +1,10 @@
 {
-  "contentSha256": "6a4b41b852384cbb4b0206acf9cb62691cd4d7083620f2672819cfb26e302f1d",
+  "schema": "ymoney.route-release-matrix/1",
+  "generatedBy": "frontend/e2e/route-matrix.spec.ts",
+  "sources": {
+    "registry": "frontend/src/routes/registry.ts",
+    "openapi": "frontend/src/api/openapi.json"
+  },
   "dimensions": [
     "render",
     "loading",
@@ -14,764 +19,7 @@
     "responsive_360",
     "a11y"
   ],
-  "generatedBy": "scripts/gen_route_release_matrix.py merged with measurements from frontend/e2e/route-matrix.spec.ts",
-  "honestStrings": [
-    "not-applicable",
-    "not-seedable",
-    "provider-gated",
-    "skipped",
-    "unobserved"
-  ],
-  "openapiPaths": 406,
-  "routeCount": 22,
-  "routes": [
-    {
-      "403": true,
-      "a11y": true,
-      "component": "CommandCenter",
-      "contract": {
-        "declared": 12,
-        "endpoints": 12,
-        "ok": true,
-        "undeclared": []
-      },
-      "empty": true,
-      "error": true,
-      "group": "command",
-      "hidden": false,
-      "label": "Command Center",
-      "loading": true,
-      "notes": [
-        "/api/v1/workspaces/{workspace_id}/campaigns gained rows from the seeds but the screen still shows 2 empty state(s)",
-        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/planner/opportunities, /api/v1/workspaces/{workspace_id}/provider-maturity/incidents (canonical data)",
-        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/calendar",
-        "collection probe skipped the root-internal probe(s) /api/v1/system/readiness",
-        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/calendar)",
-        "the remaining panels are behind: 2 of this route's endpoints can only be filled by real work -- a real social account must be connected and OAuth'd; inbox rows come from syncing a real social platform: /api/v1/workspaces/{workspace_id}/inbox/opportunities, /api/v1/workspaces/{workspace_id}/publishing/posts"
-      ],
-      "path": "/",
-      "permission": null,
-      "populated": "provider-gated",
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": true,
-      "a11y": true,
-      "component": "Analytics",
-      "contract": {
-        "declared": 7,
-        "endpoints": 8,
-        "ok": false,
-        "undeclared": [
-          "/api/v1/workspaces/{workspace_id}/performance/overview"
-        ]
-      },
-      "empty": true,
-      "error": true,
-      "group": "learn",
-      "hidden": false,
-      "label": "Analytics",
-      "loading": true,
-      "notes": [
-        "/api/v1/workspaces/{workspace_id}/campaigns gained rows from the seeds but the screen still shows 1 empty state(s)",
-        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/distribution/capabilities (canonical data)",
-        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/analytics/breakdowns",
-        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/analytics/breakdowns)",
-        "the remaining panels are behind: 1 of this route's endpoints can only be filled by real work -- a real social account must be connected and OAuth'd: /api/v1/workspaces/{workspace_id}/publishing/posts"
-      ],
-      "path": "/analytics",
-      "permission": "content.read",
-      "populated": "provider-gated",
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": true,
-      "a11y": true,
-      "component": "Assets",
-      "contract": {
-        "declared": 4,
-        "endpoints": 4,
-        "ok": true,
-        "undeclared": []
-      },
-      "empty": true,
-      "error": true,
-      "group": "library",
-      "hidden": false,
-      "label": "Assets",
-      "loading": true,
-      "notes": [
-        "/api/v1/workspaces/{workspace_id}/assets/media gained rows from the seeds but the screen still shows 1 empty state(s)",
-        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/music/policy (canonical data)",
-        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/assets",
-        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/assets)",
-        "the remaining panels are behind: 1 of this route's endpoints can only be filled by real work -- an avatar profile needs a provider render: /api/v1/workspaces/{workspace_id}/avatars"
-      ],
-      "path": "/assets",
-      "permission": "content.read",
-      "populated": "provider-gated",
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": true,
-      "a11y": true,
-      "component": "Brands",
-      "contract": {
-        "declared": 6,
-        "endpoints": 7,
-        "ok": false,
-        "undeclared": [
-          "/api/v1/workspaces/{workspace_id}/brands/effective"
-        ]
-      },
-      "empty": true,
-      "error": true,
-      "group": "library",
-      "hidden": false,
-      "label": "Brands",
-      "loading": true,
-      "notes": [
-        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/music/policy, /api/v1/workspaces/{workspace_id}/music/prefs (canonical data)",
-        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/brand",
-        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/brand)"
-      ],
-      "path": "/brands",
-      "permission": "brand.manage",
-      "populated": true,
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": true,
-      "a11y": true,
-      "component": "CalendarView",
-      "contract": {
-        "declared": 4,
-        "endpoints": 4,
-        "ok": true,
-        "undeclared": []
-      },
-      "empty": true,
-      "error": true,
-      "group": "plan",
-      "hidden": false,
-      "label": "Editorial Calendar",
-      "loading": true,
-      "notes": [
-        "/api/v1/workspaces/{workspace_id}/campaigns gained rows from the seeds but the screen still shows 1 empty state(s)",
-        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/calendar/best-times (canonical data)",
-        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/calendar",
-        "no spec path for /api/v1/workspaces/{workspace_id}/calendar/response-windows${platformFilter ? ",
-        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/calendar)"
-      ],
-      "path": "/calendar",
-      "permission": "content.write",
-      "populated": "not-seedable",
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": true,
-      "a11y": true,
-      "component": "Campaigns",
-      "contract": {
-        "declared": 4,
-        "endpoints": 4,
-        "ok": true,
-        "undeclared": []
-      },
-      "empty": false,
-      "error": true,
-      "group": "build",
-      "hidden": false,
-      "label": "Campaigns",
-      "loading": true,
-      "notes": [
-        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/distribution/capabilities (canonical data)",
-        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/campaigns",
-        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
-        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/campaigns)"
-      ],
-      "path": "/campaigns",
-      "permission": "content.read",
-      "populated": true,
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": false,
-      "a11y": true,
-      "component": "CampaignDetail",
-      "contract": {
-        "declared": 2,
-        "endpoints": 3,
-        "ok": false,
-        "undeclared": [
-          "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}"
-        ]
-      },
-      "empty": false,
-      "error": false,
-      "group": "build",
-      "hidden": true,
-      "label": "Campaign Detail",
-      "loading": true,
-      "notes": [
-        "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id} gained rows from the seeds but the screen still shows 1 empty state(s)",
-        "1 error state(s) on a virgin workspace: not an empty state",
-        "a real 403 on /api/v1/workspaces/{workspace_id}/campaigns/{campaign_id} rendered no refusal message in <main>",
-        "a real 403 on /api/v1/workspaces/{workspace_id}/distribution/capabilities rendered no refusal message in <main>",
-        "a real 403 on /api/v1/workspaces/{workspace_id}/publishing/posts rendered no refusal message in <main>",
-        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/distribution/capabilities (canonical data)",
-        "exercised at /campaigns/79b904da-f60f-43a4-b12f-0669f035e941 (detail route)",
-        "failing /api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}, /api/v1/workspaces/{workspace_id}/distribution/capabilities, /api/v1/workspaces/{workspace_id}/publishing/posts rendered no error state inside <main>",
-        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
-        "non-member request status: /api/v1/workspaces/{workspace_id}/campaigns/{campaign_id} -> HTTP 403; /api/v1/workspaces/{workspace_id}/distribution/capabilities -> HTTP 403; /api/v1/workspaces/{workspace_id}/publishing/posts -> HTTP 403",
-        "the remaining panels are behind: 1 of this route's endpoints can only be filled by real work -- a real social account must be connected and OAuth'd: /api/v1/workspaces/{workspace_id}/publishing/posts"
-      ],
-      "path": "/campaigns/:campaignId",
-      "permission": "publish.approve",
-      "populated": "provider-gated",
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": true,
-      "a11y": true,
-      "component": "Community",
-      "contract": {
-        "declared": 10,
-        "endpoints": 10,
-        "ok": true,
-        "undeclared": []
-      },
-      "empty": true,
-      "error": true,
-      "group": "reach",
-      "hidden": false,
-      "label": "Community",
-      "loading": true,
-      "notes": [
-        "a real 403 on /api/v1/workspaces/{workspace_id}/inbox/actions rendered no refusal message in <main>",
-        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/inbox/autonomy, /api/v1/workspaces/{workspace_id}/inbox/platforms (canonical data)",
-        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/inbox/analytics",
-        "no seed reached this route -- 7 of this route's endpoints can only be filled by real work -- inbox rows come from syncing a real social platform: /api/v1/workspaces/{workspace_id}/inbox/actions, /api/v1/workspaces/{workspace_id}/inbox/conversations, /api/v1/workspaces/{workspace_id}/inbox/conversations/{conversation_id}, /api/v1/workspaces/{workspace_id}/inbox/insights, /api/v1/workspaces/{workspace_id}/inbox/interactions, /api/v1/workspaces/{workspace_id}/inbox/interactions/{interaction_id}, /api/v1/workspaces/{workspace_id}/inbox/opportunities",
-        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/inbox/analytics)"
-      ],
-      "path": "/community",
-      "permission": "reviews.approve",
-      "populated": "provider-gated",
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": true,
-      "a11y": true,
-      "component": "Distribution",
-      "contract": {
-        "declared": 10,
-        "endpoints": 10,
-        "ok": true,
-        "undeclared": []
-      },
-      "empty": false,
-      "error": true,
-      "group": "reach",
-      "hidden": false,
-      "label": "Distribution",
-      "loading": true,
-      "notes": [
-        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/distribution/capabilities, /api/v1/workspaces/{workspace_id}/distribution/platforms, /api/v1/workspaces/{workspace_id}/provider-maturity, /api/v1/workspaces/{workspace_id}/provider-maturity/incidents (canonical data)",
-        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/distribution/capabilities",
-        "collection probe skipped the root-internal probe(s) /api/v1/system/health",
-        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
-        "no seed reached this route -- 3 of this route's endpoints can only be filled by real work -- a real social account must be connected and OAuth'd: /api/v1/workspaces/{workspace_id}/publishing/accounts, /api/v1/workspaces/{workspace_id}/publishing/jobs, /api/v1/workspaces/{workspace_id}/publishing/posts",
-        "refusal rendered for /api/v1/workspaces/{workspace_id}/distribution/capabilities, but NOT through PermissionAwareError's denial state: isPermissionDenial() does not match the backend's own detail, so a 403 offers a Retry button that can never succeed"
-      ],
-      "path": "/distribution",
-      "permission": "publish.approve",
-      "populated": "provider-gated",
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": true,
-      "a11y": true,
-      "component": "Experiments",
-      "contract": {
-        "declared": 2,
-        "endpoints": 2,
-        "ok": true,
-        "undeclared": []
-      },
-      "empty": false,
-      "error": true,
-      "group": "learn",
-      "hidden": false,
-      "label": "Experiments",
-      "loading": true,
-      "notes": [
-        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/experiments",
-        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
-        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/experiments)"
-      ],
-      "path": "/experiments",
-      "permission": "content.read",
-      "populated": true,
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": false,
-      "a11y": true,
-      "component": "Intelligence",
-      "contract": {
-        "declared": 7,
-        "endpoints": 7,
-        "ok": true,
-        "undeclared": []
-      },
-      "empty": false,
-      "error": true,
-      "group": "learn",
-      "hidden": false,
-      "label": "Intelligence",
-      "loading": true,
-      "notes": [
-        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/provider-maturity/incidents (canonical data)",
-        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/intelligence/decisions/log",
-        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
-        "no seed reached this route -- 2 of this route's endpoints can only be filled by real work -- decision records and browser runs need real routed work: /api/v1/workspaces/{workspace_id}/intelligence/decisions/log, /api/v1/workspaces/{workspace_id}/intelligence/decisions/shadow-report",
-        "non-member request status: /api/v1/workspaces/{workspace_id}/intelligence/decisions/log -> HTTP 404; /api/v1/workspaces/{workspace_id}/intelligence/decisions/shadow-report -> HTTP 404; /api/v1/workspaces/{workspace_id}/intelligence/routing/chains -> HTTP 404"
-      ],
-      "path": "/intelligence",
-      "permission": "operations.view",
-      "populated": "provider-gated",
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": true,
-      "a11y": true,
-      "component": "Localization",
-      "contract": {
-        "declared": 12,
-        "endpoints": 12,
-        "ok": true,
-        "undeclared": []
-      },
-      "empty": false,
-      "error": true,
-      "group": "reach",
-      "hidden": false,
-      "label": "Localization",
-      "loading": true,
-      "notes": [
-        "a real 403 on /api/v1/workspaces/{workspace_id}/assets/dub/status rendered no refusal message in <main>",
-        "a real 403 on /api/v1/workspaces/{workspace_id}/content rendered no refusal message in <main>",
-        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/assets/dub/status (canonical data)",
-        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/costs",
-        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
-        "refusal rendered for /api/v1/workspaces/{workspace_id}/costs, but NOT through PermissionAwareError's denial state: isPermissionDenial() does not match the backend's own detail, so a 403 offers a Retry button that can never succeed"
-      ],
-      "path": "/localization",
-      "permission": "content.write",
-      "populated": true,
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": true,
-      "a11y": true,
-      "component": "Memory",
-      "contract": {
-        "declared": 4,
-        "endpoints": 5,
-        "ok": false,
-        "undeclared": [
-          "/api/v1/workspaces/{workspace_id}/knowledge/sources/{connector_id}/documents"
-        ]
-      },
-      "empty": false,
-      "error": true,
-      "group": "learn",
-      "hidden": false,
-      "label": "Memory",
-      "loading": true,
-      "notes": [
-        "a real 403 on /api/v1/workspaces/{workspace_id}/knowledge/graph rendered no refusal message in <main>",
-        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/knowledge/memories",
-        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
-        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/knowledge/memories)"
-      ],
-      "path": "/memory",
-      "permission": "content.read",
-      "populated": true,
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": false,
-      "a11y": true,
-      "component": "Operations",
-      "contract": {
-        "declared": 6,
-        "endpoints": 6,
-        "ok": true,
-        "undeclared": []
-      },
-      "empty": false,
-      "error": true,
-      "group": "operate",
-      "hidden": false,
-      "label": "Operations",
-      "loading": true,
-      "notes": [
-        "1 error state(s) on a virgin workspace: not an empty state",
-        "a real 403 on /api/v1/workspaces/{workspace_id}/costs rendered no refusal message in <main>",
-        "a real 403 on /api/v1/workspaces/{workspace_id}/costs/intelligence rendered no refusal message in <main>",
-        "a real 403 on /api/v1/workspaces/{workspace_id}/jobs rendered no refusal message in <main>",
-        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/ops/overview, /api/v1/workspaces/{workspace_id}/provider-maturity/incidents (canonical data)",
-        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/costs",
-        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
-        "no seed reached this route (nothing gained rows: /api/v1/workspaces/{workspace_id}/costs, /api/v1/workspaces/{workspace_id}/costs/intelligence, /api/v1/workspaces/{workspace_id}/jobs, /api/v1/workspaces/{workspace_id}/retention)",
-        "non-member request status: /api/v1/workspaces/{workspace_id}/costs -> HTTP 403; /api/v1/workspaces/{workspace_id}/costs/intelligence -> HTTP 403; /api/v1/workspaces/{workspace_id}/jobs -> HTTP 403"
-      ],
-      "path": "/operations",
-      "permission": "operations.view",
-      "populated": "not-seedable",
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": true,
-      "a11y": true,
-      "component": "Planner",
-      "contract": {
-        "declared": 7,
-        "endpoints": 7,
-        "ok": true,
-        "undeclared": []
-      },
-      "empty": false,
-      "error": true,
-      "group": "plan",
-      "hidden": false,
-      "label": "Planner",
-      "loading": true,
-      "notes": [
-        "a real 403 on /api/v1/workspaces/{workspace_id}/inbox/autonomy rendered no refusal message in <main>",
-        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/inbox/autonomy, /api/v1/workspaces/{workspace_id}/planner/opportunities, /api/v1/workspaces/{workspace_id}/planner/policy, /api/v1/workspaces/{workspace_id}/planner/signals (canonical data)",
-        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/opportunities",
-        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
-        "no seed reached this route -- 1 of this route's endpoints can only be filled by real work -- a plan needs a content item to schedule: /api/v1/workspaces/{workspace_id}/planner/plans",
-        "refusal rendered for /api/v1/workspaces/{workspace_id}/opportunities, but NOT through PermissionAwareError's denial state: isPermissionDenial() does not match the backend's own detail, so a 403 offers a Retry button that can never succeed"
-      ],
-      "path": "/planner",
-      "permission": "content.write",
-      "populated": "provider-gated",
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": true,
-      "a11y": true,
-      "component": "Projects",
-      "contract": {
-        "declared": 2,
-        "endpoints": 2,
-        "ok": true,
-        "undeclared": []
-      },
-      "empty": true,
-      "error": true,
-      "group": "build",
-      "hidden": false,
-      "label": "Projects",
-      "loading": true,
-      "notes": [
-        "/api/v1/workspaces/{workspace_id}/campaigns gained rows from the seeds but the screen still shows 1 empty state(s)",
-        "a real 403 on /api/v1/workspaces/{workspace_id}/campaigns rendered no refusal message in <main>",
-        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/content",
-        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/content)"
-      ],
-      "path": "/projects",
-      "permission": "content.read",
-      "populated": "not-seedable",
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": true,
-      "a11y": true,
-      "component": "ProjectDetail",
-      "contract": {
-        "declared": 5,
-        "endpoints": 5,
-        "ok": true,
-        "undeclared": []
-      },
-      "empty": false,
-      "error": true,
-      "group": "build",
-      "hidden": true,
-      "label": "Project",
-      "loading": true,
-      "notes": [
-        "5 error state(s) on a virgin workspace: not an empty state",
-        "a real 403 on /api/v1/workspaces/{workspace_id}/calendar rendered no refusal message in <main>",
-        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/calendar",
-        "exercised at /projects/missing-id (detail route)",
-        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
-        "no seed reached this route (nothing gained rows: /api/v1/workspaces/{workspace_id}/calendar, /api/v1/workspaces/{workspace_id}/content/{content_id} (refused), /api/v1/workspaces/{workspace_id}/content/{content_id}/audit (refused), /api/v1/workspaces/{workspace_id}/content/{content_id}/lineage (refused), /api/v1/workspaces/{workspace_id}/content/{content_id}/timeline (refused))",
-        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/content/{content_id})"
-      ],
-      "path": "/projects/:contentId",
-      "permission": "content.write",
-      "populated": "not-seedable",
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": false,
-      "a11y": true,
-      "component": "Providers",
-      "contract": {
-        "declared": 5,
-        "endpoints": 5,
-        "ok": true,
-        "undeclared": []
-      },
-      "empty": false,
-      "error": false,
-      "group": "operate",
-      "hidden": false,
-      "label": "Providers",
-      "loading": true,
-      "notes": [
-        "a real 403 on /api/v1/workspaces/{workspace_id}/connections rendered no refusal message in <main>",
-        "a real 403 on /api/v1/workspaces/{workspace_id}/distribution/capabilities rendered no refusal message in <main>",
-        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/connections, /api/v1/workspaces/{workspace_id}/distribution/capabilities, /api/v1/workspaces/{workspace_id}/provider-maturity, /api/v1/workspaces/{workspace_id}/provider-maturity/incidents (canonical data)",
-        "failing /api/v1/workspaces/{workspace_id}/connections, /api/v1/workspaces/{workspace_id}/distribution/capabilities, /api/v1/workspaces/{workspace_id}/intelligence/routing/health rendered no error state inside <main>",
-        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
-        "no seed reached this route (nothing gained rows: /api/v1/workspaces/{workspace_id}/intelligence/routing/health)",
-        "non-member request status: /api/v1/workspaces/{workspace_id}/connections -> HTTP 403; /api/v1/workspaces/{workspace_id}/distribution/capabilities -> HTTP 403; /api/v1/workspaces/{workspace_id}/intelligence/routing/health -> HTTP 404"
-      ],
-      "path": "/providers",
-      "permission": "providers.manage",
-      "populated": "not-seedable",
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": false,
-      "a11y": true,
-      "component": "Settings",
-      "contract": {
-        "declared": 10,
-        "endpoints": 10,
-        "ok": true,
-        "undeclared": []
-      },
-      "empty": false,
-      "error": false,
-      "group": "operate",
-      "hidden": false,
-      "label": "Settings",
-      "loading": true,
-      "notes": [
-        "a real 403 on /api/v1/workspaces/{workspace_id}/agents/config rendered no refusal message in <main>",
-        "a real 403 on /api/v1/workspaces/{workspace_id}/api-keys rendered no refusal message in <main>",
-        "a real 403 on /api/v1/workspaces/{workspace_id}/costs rendered no refusal message in <main>",
-        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/agents/config, /api/v1/workspaces/{workspace_id}/members, /api/v1/workspaces/{workspace_id}/planner/policy, /api/v1/workspaces/{workspace_id}/webhooks (canonical data)",
-        "failing /api/v1/workspaces/{workspace_id}/agents/config, /api/v1/workspaces/{workspace_id}/api-keys, /api/v1/workspaces/{workspace_id}/costs rendered no error state inside <main>",
-        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
-        "non-member request status: /api/v1/workspaces/{workspace_id}/agents/config -> HTTP 403; /api/v1/workspaces/{workspace_id}/api-keys -> HTTP 403; /api/v1/workspaces/{workspace_id}/costs -> HTTP 403"
-      ],
-      "path": "/settings",
-      "permission": "content.write",
-      "populated": true,
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": true,
-      "a11y": true,
-      "component": "Studio",
-      "contract": {
-        "declared": 1,
-        "endpoints": 1,
-        "ok": true,
-        "undeclared": []
-      },
-      "empty": true,
-      "error": true,
-      "group": "build",
-      "hidden": false,
-      "label": "Studio",
-      "loading": true,
-      "notes": [
-        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/timelines",
-        "horizontal-scroll assertion exempt: a timeline is deliberately wider than its container",
-        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/timelines)"
-      ],
-      "path": "/studio",
-      "permission": "content.write",
-      "populated": true,
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": true,
-      "a11y": true,
-      "component": "StudioEditor",
-      "contract": {
-        "declared": 3,
-        "endpoints": 3,
-        "ok": true,
-        "undeclared": []
-      },
-      "empty": false,
-      "error": true,
-      "group": "build",
-      "hidden": true,
-      "label": "Studio Editor",
-      "loading": true,
-      "notes": [
-        "1 error state(s) on a virgin workspace: not an empty state",
-        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/assets/media",
-        "exercised at /studio/2251f0c9-140d-4d94-be45-29701bb0da04 (detail route)",
-        "horizontal-scroll assertion exempt: a timeline is deliberately wider than its container",
-        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/assets/media)"
-      ],
-      "path": "/studio/:timelineId",
-      "permission": "content.write",
-      "populated": true,
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    },
-    {
-      "403": true,
-      "a11y": true,
-      "component": "Ugc",
-      "contract": {
-        "declared": 5,
-        "endpoints": 5,
-        "ok": true,
-        "undeclared": []
-      },
-      "empty": false,
-      "error": true,
-      "group": "reach",
-      "hidden": false,
-      "label": "UGC",
-      "loading": true,
-      "notes": [
-        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/avatars/health, /api/v1/workspaces/{workspace_id}/ugc/presets (canonical data)",
-        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/avatars",
-        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
-        "no seed reached this route -- 2 of this route's endpoints can only be filled by real work -- an avatar profile needs a provider render: /api/v1/workspaces/{workspace_id}/avatars, /api/v1/workspaces/{workspace_id}/avatars/health",
-        "refusal rendered for /api/v1/workspaces/{workspace_id}/avatars, but NOT through PermissionAwareError's denial state: isPermissionDenial() does not match the backend's own detail, so a 403 offers a Retry button that can never succeed"
-      ],
-      "path": "/ugc",
-      "permission": "content.write",
-      "populated": "provider-gated",
-      "render": true,
-      "responsive_1024": true,
-      "responsive_1440": true,
-      "responsive_360": true,
-      "responsive_768": true,
-      "state": "REBUILT"
-    }
-  ],
-  "schema": "ymoney.route-release-matrix/1",
+  "routeCount": 23,
   "seeds": {
     "applied": [
       "timeline",
@@ -788,10 +36,735 @@
     ],
     "failed": []
   },
-  "sources": {
-    "app": "frontend/src/app/App.tsx",
-    "measurement": "frontend/e2e/route-matrix.spec.ts",
-    "openapi": "frontend/src/api/openapi.json",
-    "registry": "frontend/src/routes/registry.ts"
-  }
+  "routes": [
+    {
+      "403": true,
+      "path": "/",
+      "label": "Command Center",
+      "permission": null,
+      "hidden": false,
+      "component": "CommandCenter",
+      "render": true,
+      "loading": true,
+      "populated": true,
+      "empty": false,
+      "error": true,
+      "contract": {
+        "endpoints": 14,
+        "declared": 14,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
+        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/planner/opportunities, /api/v1/workspaces/{workspace_id}/provider-maturity/incidents (canonical data)",
+        "collection probe skipped the root-internal probe(s) /api/v1/system/readiness",
+        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/campaigns",
+        "a real 403 on /api/v1/workspaces/{workspace_id}/calendar rendered no refusal message in <main>",
+        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/campaigns)"
+      ]
+    },
+    {
+      "403": true,
+      "path": "/analytics",
+      "label": "Analytics",
+      "permission": "content.read",
+      "hidden": false,
+      "component": "Analytics",
+      "render": true,
+      "loading": true,
+      "populated": "provider-gated",
+      "empty": true,
+      "error": true,
+      "contract": {
+        "endpoints": 8,
+        "declared": 8,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "/api/v1/workspaces/{workspace_id}/campaigns gained rows from the seeds but the screen still shows 1 empty state(s)",
+        "the remaining panels are behind: 1 of this route's endpoints can only be filled by real work -- a real social account must be connected and OAuth'd: /api/v1/workspaces/{workspace_id}/publishing/posts",
+        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/distribution/capabilities (canonical data)",
+        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/analytics/breakdowns",
+        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/analytics/breakdowns)"
+      ]
+    },
+    {
+      "403": true,
+      "path": "/assets",
+      "label": "Assets",
+      "permission": "content.read",
+      "hidden": false,
+      "component": "Assets",
+      "render": true,
+      "loading": true,
+      "populated": "provider-gated",
+      "empty": false,
+      "error": true,
+      "contract": {
+        "endpoints": 9,
+        "declared": 9,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "could not resolve the argument \"selectedId\"",
+        "/api/v1/workspaces/{workspace_id}/assets/media gained rows from the seeds but the screen still shows 2 empty state(s)",
+        "the remaining panels are behind: 1 of this route's endpoints can only be filled by real work -- an avatar profile needs a provider render: /api/v1/workspaces/{workspace_id}/avatars",
+        "1 error state(s) on a virgin workspace: not an empty state",
+        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/exports/formats, /api/v1/workspaces/{workspace_id}/exports/profiles, /api/v1/workspaces/{workspace_id}/music/policy, /api/v1/workspaces/{workspace_id}/voice-preview/providers (canonical data)",
+        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/assets",
+        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/assets)"
+      ]
+    },
+    {
+      "403": true,
+      "path": "/automation",
+      "label": "Automation",
+      "permission": "operations.view",
+      "hidden": false,
+      "component": "Automation",
+      "render": true,
+      "loading": true,
+      "populated": "not-seedable",
+      "empty": true,
+      "error": true,
+      "contract": {
+        "endpoints": 4,
+        "declared": 4,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "no seed reached this route (nothing gained rows: /api/v1/workspaces/{workspace_id}/autopilot/status, /api/v1/workspaces/{workspace_id}/cycles)",
+        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/agents/config, /api/v1/workspaces/{workspace_id}/decision (canonical data)",
+        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/agents/config",
+        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/agents/config)"
+      ]
+    },
+    {
+      "403": true,
+      "path": "/brands",
+      "label": "Brands",
+      "permission": "brand.manage",
+      "hidden": false,
+      "component": "Brands",
+      "render": true,
+      "loading": true,
+      "populated": true,
+      "empty": true,
+      "error": true,
+      "contract": {
+        "endpoints": 7,
+        "declared": 6,
+        "ok": false,
+        "undeclared": [
+          "/api/v1/workspaces/{workspace_id}/brands/effective"
+        ]
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/music/policy, /api/v1/workspaces/{workspace_id}/music/prefs (canonical data)",
+        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/brand",
+        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/brand)"
+      ]
+    },
+    {
+      "403": true,
+      "path": "/calendar",
+      "label": "Editorial Calendar",
+      "permission": "content.write",
+      "hidden": false,
+      "component": "CalendarView",
+      "render": true,
+      "loading": true,
+      "populated": "not-seedable",
+      "empty": true,
+      "error": true,
+      "contract": {
+        "endpoints": 4,
+        "declared": 4,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "no spec path for /api/v1/workspaces/{workspace_id}/calendar/response-windows${platformFilter ? ",
+        "/api/v1/workspaces/{workspace_id}/campaigns gained rows from the seeds but the screen still shows 1 empty state(s)",
+        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/calendar/best-times (canonical data)",
+        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/calendar",
+        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/calendar)"
+      ]
+    },
+    {
+      "403": true,
+      "path": "/campaigns",
+      "label": "Campaigns",
+      "permission": "content.read",
+      "hidden": false,
+      "component": "Campaigns",
+      "render": true,
+      "loading": true,
+      "populated": true,
+      "empty": false,
+      "error": true,
+      "contract": {
+        "endpoints": 4,
+        "declared": 4,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
+        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/distribution/capabilities (canonical data)",
+        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/campaigns",
+        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/campaigns)"
+      ]
+    },
+    {
+      "403": false,
+      "path": "/campaigns/:campaignId",
+      "label": "Campaign Detail",
+      "permission": "publish.approve",
+      "hidden": true,
+      "component": "CampaignDetail",
+      "render": true,
+      "loading": true,
+      "populated": "provider-gated",
+      "empty": false,
+      "error": false,
+      "contract": {
+        "endpoints": 3,
+        "declared": 3,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "exercised at /campaigns/3e15440a-721d-43a6-b3ad-ffcebe75f943 (detail route)",
+        "/api/v1/workspaces/{workspace_id}/campaigns/{campaign_id} gained rows from the seeds but the screen still shows 1 empty state(s)",
+        "the remaining panels are behind: 1 of this route's endpoints can only be filled by real work -- a real social account must be connected and OAuth'd: /api/v1/workspaces/{workspace_id}/publishing/posts",
+        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
+        "1 error state(s) on a virgin workspace: not an empty state",
+        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/distribution/capabilities (canonical data)",
+        "failing /api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}, /api/v1/workspaces/{workspace_id}/distribution/capabilities, /api/v1/workspaces/{workspace_id}/publishing/posts rendered no error state inside <main>",
+        "a real 403 on /api/v1/workspaces/{workspace_id}/campaigns/{campaign_id} rendered no refusal message in <main>",
+        "a real 403 on /api/v1/workspaces/{workspace_id}/distribution/capabilities rendered no refusal message in <main>",
+        "a real 403 on /api/v1/workspaces/{workspace_id}/publishing/posts rendered no refusal message in <main>",
+        "non-member request status: /api/v1/workspaces/{workspace_id}/campaigns/{campaign_id} -> HTTP 403; /api/v1/workspaces/{workspace_id}/distribution/capabilities -> HTTP 403; /api/v1/workspaces/{workspace_id}/publishing/posts -> HTTP 403"
+      ]
+    },
+    {
+      "403": true,
+      "path": "/community",
+      "label": "Community",
+      "permission": "reviews.approve",
+      "hidden": false,
+      "component": "Community",
+      "render": true,
+      "loading": true,
+      "populated": "provider-gated",
+      "empty": true,
+      "error": true,
+      "contract": {
+        "endpoints": 10,
+        "declared": 8,
+        "ok": false,
+        "undeclared": [
+          "/api/v1/workspaces/{workspace_id}/inbox/conversations",
+          "/api/v1/workspaces/{workspace_id}/inbox/interactions"
+        ]
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "no seed reached this route -- 7 of this route's endpoints can only be filled by real work -- inbox rows come from syncing a real social platform: /api/v1/workspaces/{workspace_id}/inbox/actions, /api/v1/workspaces/{workspace_id}/inbox/conversations, /api/v1/workspaces/{workspace_id}/inbox/conversations/{conversation_id}, /api/v1/workspaces/{workspace_id}/inbox/insights, /api/v1/workspaces/{workspace_id}/inbox/interactions, /api/v1/workspaces/{workspace_id}/inbox/interactions/{interaction_id}, /api/v1/workspaces/{workspace_id}/inbox/opportunities",
+        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/inbox/autonomy, /api/v1/workspaces/{workspace_id}/inbox/platforms (canonical data)",
+        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/inbox/analytics",
+        "a real 403 on /api/v1/workspaces/{workspace_id}/inbox/actions rendered no refusal message in <main>",
+        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/inbox/analytics)"
+      ]
+    },
+    {
+      "403": true,
+      "path": "/distribution",
+      "label": "Distribution",
+      "permission": "publish.approve",
+      "hidden": false,
+      "component": "Distribution",
+      "render": true,
+      "loading": true,
+      "populated": "provider-gated",
+      "empty": false,
+      "error": true,
+      "contract": {
+        "endpoints": 10,
+        "declared": 10,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "no seed reached this route -- 3 of this route's endpoints can only be filled by real work -- a real social account must be connected and OAuth'd: /api/v1/workspaces/{workspace_id}/publishing/accounts, /api/v1/workspaces/{workspace_id}/publishing/jobs, /api/v1/workspaces/{workspace_id}/publishing/posts",
+        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
+        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/distribution/capabilities, /api/v1/workspaces/{workspace_id}/distribution/platforms, /api/v1/workspaces/{workspace_id}/provider-maturity, /api/v1/workspaces/{workspace_id}/provider-maturity/incidents (canonical data)",
+        "collection probe skipped the root-internal probe(s) /api/v1/system/health",
+        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/distribution/capabilities",
+        "refusal rendered for /api/v1/workspaces/{workspace_id}/distribution/capabilities, but NOT through PermissionAwareError's denial state: isPermissionDenial() does not match the backend's own detail, so a 403 offers a Retry button that can never succeed"
+      ]
+    },
+    {
+      "403": true,
+      "path": "/experiments",
+      "label": "Experiments",
+      "permission": "content.read",
+      "hidden": false,
+      "component": "Experiments",
+      "render": true,
+      "loading": true,
+      "populated": true,
+      "empty": false,
+      "error": true,
+      "contract": {
+        "endpoints": 2,
+        "declared": 2,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
+        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/experiments",
+        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/experiments)"
+      ]
+    },
+    {
+      "403": false,
+      "path": "/intelligence",
+      "label": "Intelligence",
+      "permission": "operations.view",
+      "hidden": false,
+      "component": "Intelligence",
+      "render": true,
+      "loading": true,
+      "populated": "provider-gated",
+      "empty": false,
+      "error": true,
+      "contract": {
+        "endpoints": 7,
+        "declared": 7,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "no seed reached this route -- 2 of this route's endpoints can only be filled by real work -- decision records and browser runs need real routed work: /api/v1/workspaces/{workspace_id}/intelligence/decisions/log, /api/v1/workspaces/{workspace_id}/intelligence/decisions/shadow-report",
+        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
+        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/provider-maturity/incidents (canonical data)",
+        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/intelligence/decisions/log",
+        "non-member request status: /api/v1/workspaces/{workspace_id}/intelligence/decisions/log -> HTTP 404; /api/v1/workspaces/{workspace_id}/intelligence/decisions/shadow-report -> HTTP 404; /api/v1/workspaces/{workspace_id}/intelligence/routing/chains -> HTTP 404"
+      ]
+    },
+    {
+      "403": true,
+      "path": "/localization",
+      "label": "Localization",
+      "permission": "content.write",
+      "hidden": false,
+      "component": "Localization",
+      "render": true,
+      "loading": true,
+      "populated": true,
+      "empty": false,
+      "error": true,
+      "contract": {
+        "endpoints": 12,
+        "declared": 12,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
+        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/assets/dub/status (canonical data)",
+        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/costs",
+        "a real 403 on /api/v1/workspaces/{workspace_id}/assets/dub/status rendered no refusal message in <main>",
+        "a real 403 on /api/v1/workspaces/{workspace_id}/content rendered no refusal message in <main>",
+        "refusal rendered for /api/v1/workspaces/{workspace_id}/costs, but NOT through PermissionAwareError's denial state: isPermissionDenial() does not match the backend's own detail, so a 403 offers a Retry button that can never succeed"
+      ]
+    },
+    {
+      "403": true,
+      "path": "/memory",
+      "label": "Memory",
+      "permission": "content.read",
+      "hidden": false,
+      "component": "Memory",
+      "render": true,
+      "loading": true,
+      "populated": true,
+      "empty": false,
+      "error": true,
+      "contract": {
+        "endpoints": 5,
+        "declared": 5,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
+        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/knowledge/memories",
+        "a real 403 on /api/v1/workspaces/{workspace_id}/knowledge/graph rendered no refusal message in <main>",
+        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/knowledge/memories)"
+      ]
+    },
+    {
+      "403": false,
+      "path": "/operations",
+      "label": "Operations",
+      "permission": "operations.view",
+      "hidden": false,
+      "component": "Operations",
+      "render": true,
+      "loading": true,
+      "populated": "not-seedable",
+      "empty": false,
+      "error": false,
+      "contract": {
+        "endpoints": 6,
+        "declared": 6,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "no seed reached this route (nothing gained rows: /api/v1/workspaces/{workspace_id}/costs, /api/v1/workspaces/{workspace_id}/costs/intelligence, /api/v1/workspaces/{workspace_id}/jobs, /api/v1/workspaces/{workspace_id}/retention)",
+        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
+        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/ops/overview, /api/v1/workspaces/{workspace_id}/provider-maturity/incidents (canonical data)",
+        "failing /api/v1/workspaces/{workspace_id}/costs, /api/v1/workspaces/{workspace_id}/costs/intelligence, /api/v1/workspaces/{workspace_id}/jobs rendered no error state inside <main>",
+        "a real 403 on /api/v1/workspaces/{workspace_id}/costs rendered no refusal message in <main>",
+        "a real 403 on /api/v1/workspaces/{workspace_id}/costs/intelligence rendered no refusal message in <main>",
+        "a real 403 on /api/v1/workspaces/{workspace_id}/jobs rendered no refusal message in <main>",
+        "non-member request status: /api/v1/workspaces/{workspace_id}/costs -> HTTP 403; /api/v1/workspaces/{workspace_id}/costs/intelligence -> HTTP 403; /api/v1/workspaces/{workspace_id}/jobs -> HTTP 403"
+      ]
+    },
+    {
+      "403": true,
+      "path": "/planner",
+      "label": "Planner",
+      "permission": "content.write",
+      "hidden": false,
+      "component": "Planner",
+      "render": true,
+      "loading": true,
+      "populated": "provider-gated",
+      "empty": false,
+      "error": true,
+      "contract": {
+        "endpoints": 7,
+        "declared": 7,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "no seed reached this route -- 1 of this route's endpoints can only be filled by real work -- a plan needs a content item to schedule: /api/v1/workspaces/{workspace_id}/planner/plans",
+        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
+        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/inbox/autonomy, /api/v1/workspaces/{workspace_id}/planner/opportunities, /api/v1/workspaces/{workspace_id}/planner/policy, /api/v1/workspaces/{workspace_id}/planner/signals (canonical data)",
+        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/opportunities",
+        "a real 403 on /api/v1/workspaces/{workspace_id}/inbox/autonomy rendered no refusal message in <main>",
+        "refusal rendered for /api/v1/workspaces/{workspace_id}/opportunities, but NOT through PermissionAwareError's denial state: isPermissionDenial() does not match the backend's own detail, so a 403 offers a Retry button that can never succeed"
+      ]
+    },
+    {
+      "403": true,
+      "path": "/projects",
+      "label": "Projects",
+      "permission": "content.read",
+      "hidden": false,
+      "component": "Projects",
+      "render": true,
+      "loading": true,
+      "populated": "not-seedable",
+      "empty": true,
+      "error": true,
+      "contract": {
+        "endpoints": 2,
+        "declared": 2,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "/api/v1/workspaces/{workspace_id}/campaigns gained rows from the seeds but the screen still shows 1 empty state(s)",
+        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/content",
+        "a real 403 on /api/v1/workspaces/{workspace_id}/campaigns rendered no refusal message in <main>",
+        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/content)"
+      ]
+    },
+    {
+      "403": true,
+      "path": "/projects/:contentId",
+      "label": "Project",
+      "permission": "content.write",
+      "hidden": true,
+      "component": "ProjectDetail",
+      "render": true,
+      "loading": true,
+      "populated": "not-seedable",
+      "empty": false,
+      "error": true,
+      "contract": {
+        "endpoints": 5,
+        "declared": 5,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "exercised at /projects/missing-id (detail route)",
+        "no seed reached this route (nothing gained rows: /api/v1/workspaces/{workspace_id}/calendar, /api/v1/workspaces/{workspace_id}/content/{content_id} (refused), /api/v1/workspaces/{workspace_id}/content/{content_id}/audit (refused), /api/v1/workspaces/{workspace_id}/content/{content_id}/lineage (refused), /api/v1/workspaces/{workspace_id}/content/{content_id}/timeline (refused))",
+        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
+        "5 error state(s) on a virgin workspace: not an empty state",
+        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/calendar",
+        "a real 403 on /api/v1/workspaces/{workspace_id}/calendar rendered no refusal message in <main>",
+        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/content/{content_id})"
+      ]
+    },
+    {
+      "403": false,
+      "path": "/providers",
+      "label": "Providers",
+      "permission": "providers.manage",
+      "hidden": false,
+      "component": "Providers",
+      "render": true,
+      "loading": true,
+      "populated": "not-seedable",
+      "empty": false,
+      "error": false,
+      "contract": {
+        "endpoints": 5,
+        "declared": 5,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "no seed reached this route (nothing gained rows: /api/v1/workspaces/{workspace_id}/intelligence/routing/health)",
+        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
+        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/connections, /api/v1/workspaces/{workspace_id}/distribution/capabilities, /api/v1/workspaces/{workspace_id}/provider-maturity, /api/v1/workspaces/{workspace_id}/provider-maturity/incidents (canonical data)",
+        "failing /api/v1/workspaces/{workspace_id}/connections, /api/v1/workspaces/{workspace_id}/distribution/capabilities, /api/v1/workspaces/{workspace_id}/intelligence/routing/health rendered no error state inside <main>",
+        "a real 403 on /api/v1/workspaces/{workspace_id}/connections rendered no refusal message in <main>",
+        "a real 403 on /api/v1/workspaces/{workspace_id}/distribution/capabilities rendered no refusal message in <main>",
+        "non-member request status: /api/v1/workspaces/{workspace_id}/connections -> HTTP 403; /api/v1/workspaces/{workspace_id}/distribution/capabilities -> HTTP 403; /api/v1/workspaces/{workspace_id}/intelligence/routing/health -> HTTP 404"
+      ]
+    },
+    {
+      "403": false,
+      "path": "/settings",
+      "label": "Settings",
+      "permission": "content.write",
+      "hidden": false,
+      "component": "Settings",
+      "render": true,
+      "loading": true,
+      "populated": true,
+      "empty": false,
+      "error": false,
+      "contract": {
+        "endpoints": 24,
+        "declared": 24,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
+        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/agents/config, /api/v1/workspaces/{workspace_id}/connections, /api/v1/workspaces/{workspace_id}/connections/images, /api/v1/workspaces/{workspace_id}/connections/tts, /api/v1/workspaces/{workspace_id}/connections/video-engine, /api/v1/workspaces/{workspace_id}/decision, /api/v1/workspaces/{workspace_id}/members, /api/v1/workspaces/{workspace_id}/music/policy, /api/v1/workspaces/{workspace_id}/music/providers, /api/v1/workspaces/{workspace_id}/planner/policy, /api/v1/workspaces/{workspace_id}/webhooks (canonical data)",
+        "failing /api/v1/workspaces/{workspace_id}/agents/config, /api/v1/workspaces/{workspace_id}/api-keys, /api/v1/workspaces/{workspace_id}/assets rendered no error state inside <main>",
+        "a real 403 on /api/v1/workspaces/{workspace_id}/agents/config rendered no refusal message in <main>",
+        "a real 403 on /api/v1/workspaces/{workspace_id}/api-keys rendered no refusal message in <main>",
+        "a real 403 on /api/v1/workspaces/{workspace_id}/assets rendered no refusal message in <main>",
+        "non-member request status: /api/v1/workspaces/{workspace_id}/agents/config -> HTTP 403; /api/v1/workspaces/{workspace_id}/api-keys -> HTTP 403; /api/v1/workspaces/{workspace_id}/assets -> HTTP 403"
+      ]
+    },
+    {
+      "403": true,
+      "path": "/studio",
+      "label": "Studio",
+      "permission": "content.write",
+      "hidden": false,
+      "component": "Studio",
+      "render": true,
+      "loading": true,
+      "populated": true,
+      "empty": true,
+      "error": true,
+      "contract": {
+        "endpoints": 1,
+        "declared": 1,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/timelines",
+        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/timelines)",
+        "horizontal-scroll assertion exempt: a timeline is deliberately wider than its container"
+      ]
+    },
+    {
+      "403": true,
+      "path": "/studio/:timelineId",
+      "label": "Studio Editor",
+      "permission": "content.write",
+      "hidden": true,
+      "component": "StudioEditor",
+      "render": true,
+      "loading": true,
+      "populated": true,
+      "empty": false,
+      "error": true,
+      "contract": {
+        "endpoints": 3,
+        "declared": 3,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "exercised at /studio/8813e3ce-f3e9-42d3-81ae-2a33a733d1d0 (detail route)",
+        "1 error state(s) on a virgin workspace: not an empty state",
+        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/assets/media",
+        "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/assets/media)",
+        "horizontal-scroll assertion exempt: a timeline is deliberately wider than its container"
+      ]
+    },
+    {
+      "403": true,
+      "path": "/ugc",
+      "label": "UGC",
+      "permission": "content.write",
+      "hidden": false,
+      "component": "Ugc",
+      "render": true,
+      "loading": true,
+      "populated": "provider-gated",
+      "empty": false,
+      "error": true,
+      "contract": {
+        "endpoints": 5,
+        "declared": 5,
+        "ok": true,
+        "undeclared": []
+      },
+      "responsive_1440": true,
+      "responsive_1024": true,
+      "responsive_768": true,
+      "responsive_360": true,
+      "a11y": true,
+      "notes": [
+        "no seed reached this route -- 2 of this route's endpoints can only be filled by real work -- an avatar profile needs a provider render: /api/v1/workspaces/{workspace_id}/avatars, /api/v1/workspaces/{workspace_id}/avatars/health",
+        "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
+        "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/avatars/health, /api/v1/workspaces/{workspace_id}/ugc/presets (canonical data)",
+        "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/avatars",
+        "refusal rendered for /api/v1/workspaces/{workspace_id}/avatars, but NOT through PermissionAwareError's denial state: isPermissionDenial() does not match the backend's own detail, so a 403 offers a Retry button that can never succeed"
+      ]
+    }
+  ]
 }

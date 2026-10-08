@@ -1,0 +1,130 @@
+{
+  "starting_sha": "07b6d0f1e3154ef2888156879431a3fc11258fd6",
+  "verified_sha": "PENDING — candidate commit SHA is not release evidence",
+  "github_run_id": "PENDING",
+  "github_result": "PENDING — candidate not yet pushed",
+  "local_gates": [
+    {
+      "name": "Dependency-clean snapshot installs",
+      "command": "uv sync --locked --python 3.12.13; npm ci",
+      "exit": 0,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "Generated contracts and release docs",
+      "command": "python scripts/verify_generated_artifacts.py; python scripts/gen_new_ui_release_docs.py --check",
+      "exit": 0,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "Frontend typecheck and production build",
+      "command": "npm run build",
+      "exit": 0,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "Frontend Vitest",
+      "command": "npm test -- --reporter=default --reporter=junit",
+      "exit": 0,
+      "passed": 1291,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 235.67
+    },
+    {
+      "name": "Media-cache security regressions",
+      "command": "python scripts/release_pytest.py tests/test_work15_5_media_cache.py -q",
+      "exit": 0,
+      "passed": 111,
+      "failed": 0,
+      "skipped": 2,
+      "duration_seconds": 8.57
+    },
+    {
+      "name": "Security-adjacent SSRF/media regressions",
+      "command": "python scripts/release_pytest.py tests/test_work15_netguard.py tests/test_sources.py tests/test_input_hardening.py tests/test_media_intel_runs.py tests/test_media_intel_providers.py tests/test_media_intel_fixtures.py -q",
+      "exit": 0,
+      "passed": 170,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 34.61
+    },
+    {
+      "name": "Backend fast offline lane",
+      "command": "python scripts/run_backend_gate.py fast",
+      "exit": 0,
+      "passed": 3879,
+      "failed": 0,
+      "skipped": 245,
+      "duration_seconds": 995.07
+    },
+    {
+      "name": "Backend slow/media lane",
+      "command": "python scripts/run_backend_gate.py slow",
+      "exit": 0,
+      "passed": 72,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 335.99
+    },
+    {
+      "name": "Fresh disposable PostgreSQL",
+      "command": "python scripts/run_release_postgres.py",
+      "exit": 0,
+      "passed": 298,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 171.25
+    },
+    {
+      "name": "Backend startup smoke (import, create_app, OpenAPI, health, readiness)",
+      "command": "release_app configure; app.main:app; openapi(); GET /health; GET /readyz",
+      "exit": 0,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "Full real-Chrome browser suite",
+      "command": "python scripts/run_release_e2e.py",
+      "exit": 0,
+      "passed": 103,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 775.5
+    },
+    {
+      "name": "Route-matrix endpoint discovery and validation",
+      "command": "Playwright route-matrix suite; python scripts/gen_route_release_matrix.py --check",
+      "exit": 0,
+      "passed": 23,
+      "failed": 0,
+      "skipped": 0
+    }
+  ],
+  "github_jobs": [],
+  "secret_scan": "PASS — independent read-only scan of all 117 candidate paths plus both untracked test files found zero real secrets. Credential-shaped hits are synthetic fixtures (synthetic-access-token, TEST_JWT_VALUE, DO-NOT-LEAK sentinels); no private key, AWS/GCP/Slack token, real JWT, .env file, Playwright auth state, or credentialed DSN is present. Path/local-env hygiene is clean: no C:\\Users, /Users, /home, file:///, or developer-absolute path in the candidate; localhost usage is confined to dev/test/release tooling with strict ports and disposable databases.",
+  "generation_determinism": "PASS — after refreshing the browser-measured matrix, seven generated artifacts stayed byte-identical across two --pipeline --check passes; 798 contract tests passed on each generation pass; route matrix validator confirms all 23 routes have measured endpoint coverage. Five generated NEW UI docs were checked separately.",
+  "dependency_advisories": {
+    "npm_ci_reported": {
+      "moderate": 1,
+      "high": 1,
+      "critical": 2
+    },
+    "triage": "TRIAGED — no production-reachable finding. vitest@3.2.7 (moderate, GHSA-82fw-gwwq-j7x9) and tinypool@1.1.1 (critical x2, GHSA-5gmw-xhrv-c9v3 / GHSA-85c8-ppgw-ccpr) are devDependencies reached only through the test runner; zero occurrences in the 25 built dist chunks. source-map-js@1.2.1 (high, GHSA-68fv-2mgg-jv7q) is a build/test-time transitive of tailwind/jsdom/postcss and never ships to the browser. Disposition: DEV_ONLY_ACCEPTED for all four; no FIX_NOW and no BLOCK_RELEASE item. Vitest 4 is a semver-major upgrade deferred past the frontend freeze; source-map-js 1.2.2 is an available patch follow-up.",
+    "python_audit": "NOT RUN — uv sync --locked resolves the pinned lockfile; no pip-audit result is claimed."
+  },
+  "dependency_lock_consistency": "CONSISTENT — package.json, package-lock.json (lockfileVersion 3) and installed versions agree (vitest 3.2.7 vs ^3.2.7, vite 7.3.6 vs ^7.2.7, tailwind 4.3.3 vs ^4.1.17). engines ^20.19.0 || ^22.13.0 || >=24.0.0 covers the CI pin NODE_VERSION 22.20.0. CI relies only on npm ci/npx; no developer-global package is referenced.",
+  "fresh_postgres": "PASS — disposable fresh database; 38 migrations applied, 0 replayed; 112 tables; two startup/readiness cycles; schema SHA256 82672475635740c7bb02a1335d6c8ebb74d035e24687884cffafe3526c720e19.",
+  "smoke": "PASS — 103/103 real-Chrome Playwright tests, zero failures or skips, against the isolated disposable SQLite backend (775.5 seconds). All 23 route-matrix screens resolved 1–24 GET endpoints each; 19 recorded visible error probes and 18 recorded outsider/403 probes; routes not proving those dimensions remain False rather than vacuous. This does not establish full live-provider or paid-operation lifecycle coverage.",
+  "environment_parity": "Local reproduction used the candidate worktree on Windows with portable Node 22.20.0, locked Python 3.12.13, npm ci, uv sync --locked, ffmpeg/ffprobe 8.1.1 and a disposable PostgreSQL 16.13 container. npm ci reported 4 dev-only advisories (triaged above). Linux clean-install parity remains pending exact-SHA GitHub Actions.",
+  "git_status": "DIRTY — 117 release-candidate paths (59 modified, 20 deleted, 38 added); three private planning files are excluded. Staging, commit, push and the clean-tree check follow these local gates.",
+  "branch_protection": "Main is currently unprotected; verify every required job on the exact pushed SHA, but do not claim server-enforced branch protection.",
+  "verdict": "LOCAL GATES GREEN — media-cache security regressions (111 passed), security-adjacent SSRF/media regressions (170 passed), backend fast (3879 passed / 0 failed), backend slow (72/0), fresh PostgreSQL (298/0), backend startup, dependency advisory triage, secret scan, artifact determinism, 23-route matrix, five-doc drift, Vitest 1291/1291, production build and Playwright 103/103 all pass on the current candidate. Commit, push and exact-SHA GitHub Actions verification remain."
+}

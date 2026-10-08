@@ -5,8 +5,8 @@
 ## Identity
 
 - Starting SHA: `07b6d0f1e3154ef2888156879431a3fc11258fd6`.
-- Verified release/code SHA: `PENDING — candidate commit SHA is not release evidence`.
-- GitHub Actions run: `PENDING`; result: **PENDING — candidate not yet pushed**.
+- Verified release/code SHA: `0fb3caa1040ada3d9a2b3b762e5a73654c5c7f3a`.
+- GitHub Actions run: `37776558829`; result: **PENDING — run 37776558829 is executing on the exact pushed SHA 0fb3caa1040ada3d9a2b3b762e5a73654c5c7f3a; six required jobs observed in_progress**.
 - Exact final documentation-head SHA is resolved from `git rev-parse HEAD` and the SHA-bearing CI run receipts, not a self-referential hash embedded in this file. A documentation-only successor must receive the same required checks.
 
 Historical dirty-tree totals were incorrectly attributed to the base commit and the slice runner could exit 0 after test failures. Those historical numbers are context, not clean-release evidence.
@@ -47,11 +47,11 @@ See `NEW_UI_GAP_AUDIT.md` for precise classifications, storage-level analytics d
 - Fresh postgres: PASS — disposable fresh database; 38 migrations applied, 0 replayed; 112 tables; two startup/readiness cycles; schema SHA256 82672475635740c7bb02a1335d6c8ebb74d035e24687884cffafe3526c720e19.
 - Smoke: PASS — 103/103 real-Chrome Playwright tests, zero failures or skips, against the isolated disposable SQLite backend (775.5 seconds). All 23 route-matrix screens resolved 1–24 GET endpoints each; 19 recorded visible error probes and 18 recorded outsider/403 probes; routes not proving those dimensions remain False rather than vacuous. This does not establish full live-provider or paid-operation lifecycle coverage.
 - Environment parity: Local reproduction used the candidate worktree on Windows with portable Node 22.20.0, locked Python 3.12.13, npm ci, uv sync --locked, ffmpeg/ffprobe 8.1.1 and a disposable PostgreSQL 16.13 container. npm ci reported 4 dev-only advisories (triaged above). Linux clean-install parity remains pending exact-SHA GitHub Actions.
-- Git status: DIRTY — 117 release-candidate paths (59 modified, 20 deleted, 38 added); three private planning files are excluded. Staging, commit, push and the clean-tree check follow these local gates.
+- Git status: CLEAN — 117 candidate paths committed as 5 commits (faff191 feat(ui), 7f68a15 fix(security), 1ad4a89 test, 02178eb ci, 0fb3caa docs) and pushed; local HEAD equals origin/main at 0fb3caa1040ada3d9a2b3b762e5a73654c5c7f3a with an empty working tree. Three private planning files remain excluded.
 - Branch protection: Main is currently unprotected; verify every required job on the exact pushed SHA, but do not claim server-enforced branch protection.
 
 Path-by-path reconciliation: `NEW_UI_CHANGED_PATHS.md`. No bulk `git add -A`, history rewrite or force-push is authorized.
 
 ## Verdict
 
-LOCAL GATES GREEN — media-cache security regressions (111 passed), security-adjacent SSRF/media regressions (170 passed), backend fast (3879 passed / 0 failed), backend slow (72/0), fresh PostgreSQL (298/0), backend startup, dependency advisory triage, secret scan, artifact determinism, 23-route matrix, five-doc drift, Vitest 1291/1291, production build and Playwright 103/103 all pass on the current candidate. Commit, push and exact-SHA GitHub Actions verification remain.
+PUSHED — every current-candidate local gate is green and SHA 0fb3caa1040ada3d9a2b3b762e5a73654c5c7f3a is on origin/main with a clean tree. Remote CI run 37776558829 is the remaining gate.

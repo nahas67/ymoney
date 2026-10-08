@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import WaveSurfer from "wavesurfer.js";
-import { api, getToken, mediaFileUrl, videoFileUrl, wsApi } from "../lib/api";
+import { api, fetchMediaFile, fetchVideoFile, getToken, wsApi } from "../lib/api";
 import { Badge, Card, PageHeader, toast } from "../components/ui";
 import CreativeDirector from "../components/CreativeDirector";
 import CommentsPanel from "../components/collab/CommentsPanel";
@@ -19,7 +19,7 @@ import {
 
 type Sel = { track: string; clipId: string } | null;
 type UndoEntry = { label: string; forward: any[]; inverse: any[] };
-type SaveState = "Saved" | "Savingâ€¦" | "Unsaved changes" | "Save failed" | "Conflict";
+type SaveState = "Saved" | "Saving…" | "Unsaved changes" | "Save failed" | "Conflict";
 
 const KIND_ICON: Record<string, string> = {
   video: "ðŸŽ¥", broll: "ðŸŽ¬", avatar: "ðŸ‘¤", text: "ðŸ“",
@@ -69,6 +69,7 @@ export default function Editor() {
   const [assetQ, setAssetQ] = useState("");
   const [rendering, setRendering] = useState(false);
   const [renderOut, setRenderOut] = useState<any>(null);
+  const [renderDownloading, setRenderDownloading] = useState(false);
 
   const docRef = useRef<any>(null);
   const versionRef = useRef(1);
@@ -82,11 +83,27 @@ export default function Editor() {
   const timeRef = useRef(0);
   const scenesRef = useRef<any[]>([]);
   const snapRef = useRef(true);
+  const mountedRef = useRef(true);
+  const renderOutRef = useRef<any>(renderOut);
+  const renderDownloadUrls = useRef(new Map<string, number>());
 
   docRef.current = doc;
   timeRef.current = time;
   scenesRef.current = scenes;
   snapRef.current = snap;
+  renderOutRef.current = renderOut;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      renderDownloadUrls.current.forEach((timer, url) => {
+        window.clearTimeout(timer);
+        URL.revokeObjectURL(url);
+      });
+      renderDownloadUrls.current.clear();
+    };
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -122,7 +139,7 @@ export default function Editor() {
     const ops = pendingRef.current;
     if (!ops.length) return;
     pendingRef.current = [];
-    setSaveState("Savingâ€¦");
+    setSaveState("Saving…");
     try {
       const res: any = await wsApi.post(`/timelines/${timelineId}/operations`, {
         base_version: versionRef.current, operations: ops,
@@ -136,15 +153,15 @@ export default function Editor() {
       if (e.status === 409) {
         // Optimistic-concurrency conflict: the server moved on. Keep the local
         // tracks on screen (user intent stays visible) and require an explicit
-        // reload â€” never a silent last-write-wins overwrite.
+        // reload — never a silent last-write-wins overwrite.
         const detail = parseConflict(e.message);
         setConflict(detail);
         setSaveState("Conflict");
-        toast("Someone else saved this timeline â€” reload latest to continue",
+        toast("Someone else saved this timeline — reload latest to continue",
           "warning", "Edit conflict");
       } else {
         setSaveState("Save failed");
-        toast(e.message, "error", "Autosave failed â€” reloading server state");
+        toast(e.message, "error", "Autosave failed — reloading server state");
         await load();
       }
     }
@@ -268,7 +285,7 @@ export default function Editor() {
   const intelConflict = useCallback((detail: unknown) => {
     setConflict(detail);
     setSaveState("Conflict");
-    toast("Someone else saved this timeline â€” reload latest to continue", "warning", "Edit conflict");
+    toast("Someone else saved this timeline — reload latest to continue", "warning", "Edit conflict");
   }, []);
 
   // ---- preview clock ----
@@ -312,32 +329,53 @@ export default function Editor() {
   }, [duration]);
 
   // ---- waveform for selected audio clip ----
-  const selAudioUrl = useMemo(() => {
+  const selAudioAssetId = useMemo(() => {
     if (!selClip || !sel) return null;
     const fam = TRACK_FAMILY[sel.track];
     if (fam !== "audio") return null;
     const src = selClip.source ?? {};
-    if (src.asset_id) return mediaFileUrl(src.asset_id);
+    if (src.asset_id) return String(src.asset_id);
     return null;
   }, [selClip, sel]);
+  const [waveState, setWaveState] = useState<"idle" | "loading" | "error">("idle");
 
   useEffect(() => {
-    if (!waveRef.current) return;
     wave.current?.destroy();
     wave.current = null;
-    if (!selAudioUrl) return;
-    const ws = WaveSurfer.create({
-      container: waveRef.current, url: selAudioUrl,
-      waveColor: "#4ade80", progressColor: "#16a34a", height: 64,
-    });
-    ws.on("click", (rel: number) => {
-      if (selClip) seek(selClip.start + rel * selClip.duration);
-    });
-    wave.current = ws;
+    const container = waveRef.current;
+    if (!container || !selAudioAssetId) {
+      setWaveState("idle");
+      return;
+    }
+    let active = true;
+    let objectUrl: string | null = null;
+    let instance: WaveSurfer | null = null;
+    setWaveState("loading");
+    void Promise.resolve()
+      .then(() => fetchMediaFile(selAudioAssetId))
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        instance = WaveSurfer.create({
+          container, url: objectUrl,
+          waveColor: "#4ade80", progressColor: "#16a34a", height: 64,
+        });
+        instance.on("click", (rel: number) => {
+          if (selClip) seek(selClip.start + rel * selClip.duration);
+        });
+        wave.current = instance;
+        setWaveState("idle");
+      })
+      .catch(() => {
+        if (active) setWaveState("error");
+      });
     return () => {
-      ws.destroy();
+      active = false;
+      instance?.destroy();
+      if (wave.current === instance) wave.current = null;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [selAudioUrl, seek, selClip]);
+  }, [selAudioAssetId, seek, selClip]);
 
   // ---- editing actions ----
   function clipAt(kind: string, t: number): any | null {
@@ -400,6 +438,38 @@ export default function Editor() {
     }
   }
 
+  async function downloadRender() {
+    const assetId = renderOut?.asset_id;
+    if (typeof assetId !== "string" || !assetId || renderDownloading) return;
+    setRenderDownloading(true);
+    let objectUrl: string | null = null;
+    try {
+      const blob = await fetchMediaFile(assetId);
+      if (!mountedRef.current || renderOutRef.current?.asset_id !== assetId) return;
+      objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = "render.mp4";
+      anchor.style.display = "none";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      const url = objectUrl;
+      const timer = window.setTimeout(() => {
+        URL.revokeObjectURL(url);
+        renderDownloadUrls.current.delete(url);
+      }, 1000);
+      renderDownloadUrls.current.set(url, timer);
+      objectUrl = null;
+      toast("Render downloaded", "success");
+    } catch (e: any) {
+      if (mountedRef.current) toast(e.message, "error", "Render download failed");
+    } finally {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      if (mountedRef.current) setRenderDownloading(false);
+    }
+  }
+
   async function downloadExport(fmt: "otio" | "fcpxml") {
     try {
       const token = getToken();
@@ -444,7 +514,7 @@ export default function Editor() {
   }
 
   if (loadError) return <Card>Error: {loadError}</Card>;
-  if (!doc) return <Card>Loading editorâ€¦</Card>;
+  if (!doc) return <Card>Loading editor…</Card>;
 
   const activeVisual = (["avatar", "broll", "video"] as const)
     .map((k) => ({ k, c: clipAt(k, time) }))
@@ -460,13 +530,13 @@ export default function Editor() {
 
   return (
     <div className="space-y-3">
-      <PageHeader title={doc.name ?? "Editor"} subtitle={`v${version} Â· ${fmt(duration)} Â· ${saveState}`}
+      <PageHeader title={doc.name ?? "Editor"} subtitle={`v${version} · ${fmt(duration)} · ${saveState}`}
         actions={<>
-          <button className="btn-ghost !text-xs" onClick={() => nav(-1)}>â† Back</button>
+          <button className="btn-ghost !text-xs" onClick={() => nav(-1)}>← Back</button>
           <button className="btn-outline !text-xs" onClick={() => downloadExport("otio")}>Export .otio</button>
           <button className="btn-outline !text-xs" onClick={() => downloadExport("fcpxml")}>Export FCPXML</button>
           <button className="btn-primary !text-xs" disabled={rendering} onClick={renderNow}>
-            {rendering ? "Renderingâ€¦" : "Render MP4"}
+            {rendering ? "Rendering…" : "Render MP4"}
           </button>
         </>} />
       {saveState === "Conflict" && (
@@ -483,13 +553,13 @@ export default function Editor() {
         {/* Assets */}
         <Card>
           <b className="text-[13px]">Assets</b>
-          <input className="input mt-2" placeholder="Filterâ€¦" value={assetQ} onChange={(e) => setAssetQ(e.target.value)} />
+          <input className="input mt-2" placeholder="Filter…" value={assetQ} onChange={(e) => setAssetQ(e.target.value)} />
           <div className="mt-2 space-y-1 max-h-[420px] overflow-auto">
             {assets.filter((a) => (a.storage_key + a.type).toLowerCase().includes(assetQ.toLowerCase())).map((a) => (
               <div key={a.id} draggable onDragStart={(e) => e.dataTransfer.setData("text/ym-asset", a.id)}
                 className="text-[12.5px] font-mono px-2 py-1 rounded cursor-grab" style={{ background: "var(--seam)" }}
                 title="Drag onto a timeline track">
-                {a.type} Â· {(a.storage_key ?? "").split("/").pop()}
+                {a.type} · {(a.storage_key ?? "").split("/").pop()}
               </div>
             ))}
             {!assets.length && <div className="text-[12.5px]" style={{ color: "var(--text-faint)" }}>No media assets yet.</div>}
@@ -499,7 +569,7 @@ export default function Editor() {
               <b className="text-[13px]">Scenes ({scenes.length})</b>
               {scenes.map((s: any) => (
                 <button key={s.id} className="btn-ghost !text-xs w-full text-left mt-1" onClick={() => seek(s.start_seconds)}>
-                  #{s.index + 1} {s.title} <span className="font-mono">[{fmt(s.start_seconds)}â€“{fmt(s.end_seconds)}]</span>
+                  #{s.index + 1} {s.title} <span className="font-mono">[{fmt(s.start_seconds)}–{fmt(s.end_seconds)}]</span>
                 </button>
               ))}
             </div>
@@ -550,9 +620,11 @@ export default function Editor() {
               onChange={(e) => seek(Number(e.target.value))} aria-label="Seek" />
           </div>
           <div ref={waveRef} className="mt-2" />
-          {!selAudioUrl && sel && TRACK_FAMILY[sel.track] === "audio" && (
+          {!selAudioAssetId && sel && TRACK_FAMILY[sel.track] === "audio" && (
             <div className="text-[12px]" style={{ color: "var(--text-faint)" }}>Waveform needs an asset-backed clip.</div>
           )}
+          {selAudioAssetId && waveState === "loading" && <div role="status" className="text-[12px]">Loading waveform…</div>}
+          {selAudioAssetId && waveState === "error" && <div role="alert" className="text-[12px]">Waveform unavailable.</div>}
         </Card>
 
         {/* Inspector + Work 12 media intelligence (sibling of the Versions
@@ -594,8 +666,11 @@ export default function Editor() {
           </div>
           {renderOut && (
             <div className="mt-3 text-[12.5px]">
-              <b>Render:</b> <a className="underline" href={mediaFileUrl(renderOut.asset_id)} target="_blank" rel="noreferrer">
-                {renderOut.width}Ã—{renderOut.height} Â· {Number(renderOut.duration_seconds ?? 0).toFixed(1)}s</a>
+              <b>Render:</b>{" "}
+              <button type="button" className="underline" aria-label="Download render"
+                disabled={renderDownloading} onClick={() => void downloadRender()}>
+                {renderDownloading ? "Downloading render…" : `${renderOut.width}×${renderOut.height} · ${Number(renderOut.duration_seconds ?? 0).toFixed(1)}s`}
+              </button>
             </div>
           )}
         </Card>
@@ -620,7 +695,7 @@ export default function Editor() {
       {/* Toolbar */}
       <Card>
         <div className="flex gap-2 flex-wrap items-center">
-          <button className="btn-outline !text-xs" onClick={splitAtPlayhead}>âœ‚ Split @ {fmt(time)}</button>
+          <button className="btn-outline !text-xs" onClick={splitAtPlayhead}>✂ Split @ {fmt(time)}</button>
           <button className="btn-outline !text-xs" disabled={!sel} onClick={() => sel && commitOps(
             [{ type: "delete_item", track: sel.track, clip_id: sel.clipId }], "Delete")}>ðŸ—‘ Delete</button>
           <button className="btn-outline !text-xs" disabled={!sel} onClick={() => {
@@ -628,10 +703,10 @@ export default function Editor() {
             commitOps([{ type: "duplicate_item", track: sel.track, clip_id: sel.clipId,
               at: clipEnd(selClip), new_id: nid("clip") }], "Duplicate");
           }}>ðŸ“‘ Duplicate</button>
-          <button className="btn-ghost !text-xs" disabled={!undo.length} onClick={doUndo}>â†© Undo ({undo.length})</button>
-          <button className="btn-ghost !text-xs" disabled={!redo.length} onClick={doRedo}>â†ª Redo ({redo.length})</button>
+          <button className="btn-ghost !text-xs" disabled={!undo.length} onClick={doUndo}>↩ Undo ({undo.length})</button>
+          <button className="btn-ghost !text-xs" disabled={!redo.length} onClick={doRedo}>↪ Redo ({redo.length})</button>
           <button className="btn-ghost !text-xs" onClick={() => setPxPerSec((z) => Math.min(240, z * 1.25))}>ðŸ”+</button>
-          <button className="btn-ghost !text-xs" onClick={() => setPxPerSec((z) => Math.max(8, z / 1.25))}>ðŸ”Žâˆ’</button>
+          <button className="btn-ghost !text-xs" onClick={() => setPxPerSec((z) => Math.max(8, z / 1.25))}>🔎−</button>
           <button className={snap ? "btn-primary !text-xs" : "btn-ghost !text-xs"} onClick={() => setSnap((s) => !s)}>
             ðŸ§² Snap {snap ? "on" : "off"}
           </button>
@@ -641,7 +716,7 @@ export default function Editor() {
           </button>
           <button className={showCompare ? "btn-primary !text-xs" : "btn-ghost !text-xs"}
             onClick={() => setShowCompare((v) => !v)}>
-            {showCompare ? "Hide compare" : "â‡„ Compare"}
+            {showCompare ? "Hide compare" : "⇄ Compare"}
           </button>
           <Badge tone={saveState === "Saved" ? "success" : saveState === "Conflict" ? "error" : "warning"}>{saveState}</Badge>
         </div>
@@ -662,7 +737,7 @@ export default function Editor() {
         <VersionCompare timelineId={timelineId} versions={versions} />
       )}
 
-      {/* Creative Director: NL â†’ parse â†’ preview â†’ apply â†’ undo */}
+      {/* Creative Director: NL → parse → preview → apply → undo */}
       {timelineId && <CreativeDirector timelineId={timelineId} onApplied={load} />}
 
       {/* Tracks */}
@@ -715,20 +790,70 @@ export default function Editor() {
   );
 }
 
-function MediaURL({ clip }: { clip: any }): string | null {
+type MediaSource = { kind: "asset" | "video"; id: string } | null;
+
+function mediaSourceForClip(clip: any): MediaSource {
   const src = clip.source ?? {};
-  if (src.asset_id) return mediaFileUrl(src.asset_id);
-  if (src.video_id) return videoFileUrl(src.video_id);
+  if (src.asset_id) return { kind: "asset", id: String(src.asset_id) };
+  if (src.video_id) return { kind: "video", id: String(src.video_id) };
   return null;
 }
 
+function useAuthenticatedMediaUrl(source: MediaSource) {
+  const kind = source?.kind ?? null;
+  const id = source?.id ?? null;
+  const key = kind && id ? `${kind}:${id}` : null;
+  const [loaded, setLoaded] = useState<{ key: string; url?: string; error?: boolean } | null>(null);
+
+  useEffect(() => {
+    if (!kind || !id || !key) {
+      setLoaded(null);
+      return;
+    }
+    let active = true;
+    let objectUrl: string | null = null;
+    setLoaded(null);
+    const fetchBlob = kind === "asset" ? fetchMediaFile : fetchVideoFile;
+    void Promise.resolve()
+      .then(() => fetchBlob(id))
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setLoaded({ key, url: objectUrl });
+      })
+      .catch(() => {
+        if (active) setLoaded({ key, error: true });
+      });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [kind, id, key]);
+
+  const current = key !== null && loaded?.key === key ? loaded : null;
+  return {
+    url: current?.url ?? null,
+    loading: key !== null && current === null,
+    error: Boolean(current?.error),
+  };
+}
+
 function PreviewMedia({ clip, mediaRefs, time }: any) {
-  const url = clip ? MediaURL({ clip }) : null;
-  if (!clip || !url) {
+  const source = clip ? mediaSourceForClip(clip) : null;
+  const { url, loading, error } = useAuthenticatedMediaUrl(source);
+  if (!clip || !source) {
     return <div className="absolute inset-0 flex items-center justify-center text-white/40 text-[13px]">No visual at {fmt(time)}</div>;
   }
+  if (!url) {
+    return <div role={error ? "alert" : "status"} aria-busy={loading}
+      className="absolute inset-0 flex items-center justify-center text-white/60 text-[13px]">
+      {error ? "Media unavailable." : "Loading media…"}
+    </div>;
+  }
   const key = `pv-${clip.id}`;
-  if (clip.source?.asset_id && url.endsWith(".png")) {
+  const mimeType = String(clip.source?.mime_type ?? clip.source?.type ?? "").toLowerCase();
+  const name = String(clip.name ?? clip.source?.filename ?? "").toLowerCase();
+  if (mimeType.startsWith("image/") || /\.(?:png|jpe?g|gif|webp|avif)$/.test(name)) {
     return <img src={url} alt="" className="absolute inset-0 w-full h-full object-cover" />;
   }
   return (
@@ -748,8 +873,14 @@ function PreviewMedia({ clip, mediaRefs, time }: any) {
 }
 
 function AudioTag({ clip, mediaRefs }: any) {
-  const url = MediaURL({ clip });
-  if (!url) return null;
+  const source = mediaSourceForClip(clip);
+  const { url, loading, error } = useAuthenticatedMediaUrl(source);
+  if (!source) return null;
+  if (!url) {
+    return <span className="sr-only" role={error ? "alert" : "status"} aria-busy={loading}>
+      {error ? "Audio unavailable." : "Loading audio…"}
+    </span>;
+  }
   const key = `au-${clip.id}`;
   return (
     <audio src={url} preload="auto" ref={(el) => {
@@ -791,7 +922,7 @@ function Inspector({ sel, clip, siblings, commit, splitAt, time, timelineId, rea
 
   return (
     <div className="mt-2 space-y-2 text-[12.5px]">
-      <div className="font-mono text-[11.5px]" style={{ color: "var(--text-faint)" }}>{sel.track} Â· {clip.id.slice(0, 12)}</div>
+      <div className="font-mono text-[11.5px]" style={{ color: "var(--text-faint)" }}>{sel.track} · {clip.id.slice(0, 12)}</div>
       <label className="block">Start (s)
         <input className="input mt-0.5" value={start} onChange={(e) => setStart(e.target.value)}
           onBlur={() => commit([{ type: "move_item", track: sel.track, clip_id: clip.id, start: Math.max(0, num(start, clip.start)) }], "Move")} />
@@ -806,7 +937,7 @@ function Inspector({ sel, clip, siblings, commit, splitAt, time, timelineId, rea
             <input type="range" min={0} max={2} step={0.05} defaultValue={clip.volume ?? 1} className="w-full"
               onMouseUp={(e) => commit([{ type: "update_volume", track: sel.track, clip_id: clip.id, volume: Number((e.target as HTMLInputElement).value) }], "Volume")} />
           </label>
-          <label className="block">Speed ({clip.speed ?? 1}Ã—)
+          <label className="block">Speed ({clip.speed ?? 1}×)
             <input type="range" min={0.25} max={2} step={0.05} defaultValue={clip.speed ?? 1} className="w-full"
               onMouseUp={(e) => commit([{ type: "update_speed", track: sel.track, clip_id: clip.id, speed: Number((e.target as HTMLInputElement).value) }], "Speed")} />
           </label>
@@ -957,7 +1088,7 @@ const ClipBlock = memo(function ClipBlock({ clip, trackKind, pxPerSec, selected,
       onPointerDown={(e) => onPointerDown(e, "move")}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      title={`${clip.name} [${clip.start.toFixed(2)}â€“${(clip.start + clip.duration).toFixed(2)}]`}
+      title={`${clip.name} [${clip.start.toFixed(2)}–${(clip.start + clip.duration).toFixed(2)}]`}
     >
       <span className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize"
         onPointerDown={(e) => onPointerDown(e, "l")} />

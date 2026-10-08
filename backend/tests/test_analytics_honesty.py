@@ -531,10 +531,16 @@ def test_unmeasured_duration_is_its_own_compare_bucket_not_a_short_video(api):
 # §7 the frontend contract: a nullable field must be nullable in the schema
 # ---------------------------------------------------------------------------
 
-AUDITED_SCHEMAS = {
-    "ApiV1WorkspacesWorkspaceAnalyticsOverview4": ["cost_total_usd"],
-    "Totals5": ["views", "likes", "comments", "shares", "followers_gained"],
-    "CostSummaryOut": ["spent_last_24h_usd"],
+AUDITED_FIELDS = {
+    "/api/v1/workspaces/{workspace_id}/analytics/overview": (
+        "cost_total_usd",
+        "totals.views",
+        "totals.likes",
+        "totals.comments",
+        "totals.shares",
+        "totals.followers_gained",
+    ),
+    "/api/v1/workspaces/{workspace_id}/costs": ("spent_last_24h_usd",),
 }
 
 
@@ -543,6 +549,30 @@ def _openapi() -> dict:
     if not path.exists():
         pytest.skip("openapi.json not generated")
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _schema_for_endpoint_field(openapi: dict, path: str, field_path: str) -> dict:
+    """Resolve a response field by stable endpoint path, not generated names."""
+    schema = openapi["paths"][path]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+    components = openapi["components"]["schemas"]
+    for part in field_path.split("."):
+        ref = schema.get("$ref")
+        if ref:
+            prefix = "#/components/schemas/"
+            assert ref.startswith(prefix), f"unexpected response schema ref: {ref}"
+            schema = components[ref[len(prefix):]]
+        schema = schema["properties"][part]
+    return schema
+
+
+def _audited_nullable_fields(openapi: dict):
+    for path, field_paths in AUDITED_FIELDS.items():
+        for field_path in field_paths:
+            yield f"{path}.{field_path}", _schema_for_endpoint_field(
+                openapi, path, field_path
+            )
 
 
 def test_every_audited_endpoint_still_publishes_a_schema():
@@ -601,17 +631,12 @@ def test_every_widened_field_is_nullable_in_the_published_schema():
     Every audited endpoint's schema is checked, not just the ones that once
     lagged, because a field can be narrowed back without anyone noticing.
     """
-    schemas = _openapi()["components"]["schemas"]
+    openapi = _openapi()
     non_nullable = []
-    for name, fields in AUDITED_SCHEMAS.items():
-        assert name in schemas, f"{name} is not published; a null cannot be typed"
-        props = schemas[name]["properties"]
-        for field in fields:
-            assert field in props, f"{name}.{field} vanished from the schema"
-            spec = props[field]
-            nullable = spec.get("type") == "null" or "null" in str(spec.get("anyOf", ""))
-            if not nullable:
-                non_nullable.append(f"{name}.{field}")
+    for name, spec in _audited_nullable_fields(openapi):
+        nullable = spec.get("type") == "null" or "null" in str(spec.get("anyOf", ""))
+        if not nullable:
+            non_nullable.append(name)
     assert not non_nullable, (
         "these fields can be null at runtime but the published schema is "
         f"non-nullable: {sorted(non_nullable)}"
@@ -630,15 +655,12 @@ def test_no_contract_lag_remains_because_the_schemas_caught_up():
     Every audited endpoint's schema is checked, not just the ones that once
     lagged, because a field can regress without anyone noticing the change.
     """
-    schemas = _openapi()["components"]["schemas"]
+    openapi = _openapi()
     missing = []
-    for name, fields in AUDITED_SCHEMAS.items():
-        assert name in schemas, f"{name} is not published"
-        for field in fields:
-            spec = schemas[name]["properties"][field]
-            nullable = spec.get("type") == "null" or "null" in str(spec.get("anyOf", ""))
-            if not nullable:
-                missing.append(f"{name}.{field}")
+    for name, spec in _audited_nullable_fields(openapi):
+        nullable = spec.get("type") == "null" or "null" in str(spec.get("anyOf", ""))
+        if not nullable:
+            missing.append(name)
     assert not missing, (
         "these runtime-nullable fields are non-nullable in the published "
         f"schema: {sorted(missing)}"

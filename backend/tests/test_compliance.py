@@ -16,12 +16,14 @@ def _has_ffmpeg() -> bool:
 
 
 def _make_video(dest: Path, w: int = 1080, h: int = 1920, seconds: int = 30) -> None:
+    # Preflight only reads duration, dimensions, size, and container. A one-fps
+    # solid-color source preserves those properties without rendering 6,000
+    # full-resolution testsrc frames for the 200-second duration case.
     proc = subprocess.run(
         ["ffmpeg", "-y", "-v", "error",
-         "-f", "lavfi", "-i", f"testsrc=size={w}x{h}:rate=30:duration={seconds}",
-         "-f", "lavfi", "-i", f"sine=frequency=440:duration={seconds}",
-         "-c:v", "libx264", "-pix_fmt", "yuv420p",
-         "-c:a", "aac", "-shortest", str(dest)],
+         "-f", "lavfi", "-i", f"color=c=black:s={w}x{h}:r=1:d={seconds}",
+         "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+         "-an", str(dest)],
         capture_output=True, timeout=120,
     )
     assert proc.returncode == 0, proc.stderr.decode()[:300]

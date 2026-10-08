@@ -73,7 +73,7 @@ def running_workers():
         loop.close()
 
 
-def test_single_cycle_reaches_learned(workspace_with_user, running_workers, monkeypatch):
+def test_single_cycle_reaches_learned(workspace_with_user, running_workers, monkeypatch, tmp_path):
     ws = workspace_with_user["workspace"]
     from app.models import Workspace
 
@@ -112,7 +112,7 @@ def test_single_cycle_reaches_learned(workspace_with_user, running_workers, monk
             evs = s.query(EventLog).order_by(EventLog.created_at.desc()).limit(14).all()
             for e in reversed(evs):
                 dbg.append(f"EV {e.level} {e.source}: {e.message[:130]}")
-            pathlib.Path(r"C:\Users\nahas\AppData\Local\Temp\opencode\b8_dump.txt").write_text(
+            (tmp_path / "pipeline-failure.txt").write_text(
                 chr(10).join(dbg), encoding="utf-8")
         assert learned, f"expected LEARNED content, got {[i.status for i in items]}"
         posts = s.query(PublishedPost).filter(PublishedPost.workspace_id == ws).all()

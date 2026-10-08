@@ -21,6 +21,22 @@ const proxy = {
     target: API_TARGET,
     changeOrigin: true,
   },
+  // Root-mounted process probes (`api/internalOps.ts`). The backend mounts
+  // `internal_ops_router` on the APP ROOT -- not under `/api/v1` -- because
+  // they carry no workspace scope. Without these entries the browser asks the
+  // static server for `/livez` and gets a 404, so Operations shows "Could not
+  // load" with a Retry on every load while every other panel is green. That
+  // is exactly the failure this comment exists to prevent from recurring:
+  // a probe path that is correct in the client but unreachable through the
+  // proxy reads as a backend outage.
+  "/livez": {
+    target: API_TARGET,
+    changeOrigin: true,
+  },
+  "/internal": {
+    target: API_TARGET,
+    changeOrigin: true,
+  },
 };
 
 export default defineConfig({

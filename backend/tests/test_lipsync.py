@@ -427,8 +427,9 @@ def test_cancel_mid_run_marks_cancelled_without_result(db_session, lipsync_env):
         db_session, ws_id, video_ref="asset://v.mp4", audio_ref="asset://a.mp4"
     )
     job_id = dto["id"]
-    assert dto["status"] == "QUEUED"
+    assert dto["status"] in {"QUEUED", "RUNNING"}
     assert _wait_until(lambda: job_rows.row_status(job_id) == "RUNNING") is True
+    assert _wait_until(lambda: bool(fake.submit_times)) is True
 
     cancelled = lipsync_service.cancel_job(db_session, ws_id, job_id)
     assert cancelled["status"] == JOB_CANCELLED

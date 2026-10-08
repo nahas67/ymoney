@@ -83,15 +83,22 @@ export function useActivityFeed(onEvent?: (e: FeedItem) => void): FeedItem[] {
 }
 
 export function useTheme(): ["light" | "dark" | "system", (t: "light" | "dark" | "system") => void] {
+  // Dark-first (from-scratch rebuild §5): the product direction is dark, and
+  // the design-system token layer is dark-only -- under `html.light` the page
+  // chrome goes paper while every `ym-*` surface stays graphite, which is an
+  // incoherent mixed theme, not a light theme. So the DEFAULT is dark; "light"
+  // and "system" remain explicit user choices in Appearance. This also makes
+  // rendering deterministic: headless Chrome reports a light OS scheme, so a
+  // "system" default renders CI screenshots in a theme no developer ever sees.
   const [theme, setThemeState] = useState<"light" | "dark" | "system">(
-    () => (localStorage.getItem("ym_theme") as any) || "system"
+    () => (localStorage.getItem("ym_theme") as any) || "dark"
   );
   const apply = (t: "light" | "dark" | "system") => {
-    const dark = t === "dark" || (t !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    const dark = t !== "light" && (t === "dark" || window.matchMedia("(prefers-color-scheme: dark)").matches);
     document.documentElement.classList.toggle("light", !dark);
   };
   useEffect(() => {
-    apply(localStorage.getItem("ym_theme") as any || "system");
+    apply(localStorage.getItem("ym_theme") as any || "dark");
   }, []);
   const setTheme = (t: "light" | "dark" | "system") => {
     setThemeState(t);

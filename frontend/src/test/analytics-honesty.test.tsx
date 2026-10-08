@@ -405,16 +405,25 @@ describe("Analytics: per-post metrics distinguish unmeasured from zero", () => {
  * ========================================================================== */
 
 describe("Command Center: spend is UNAVAILABLE, not $0.00", () => {
+  /* The spend figure lives in the status rail (kicker "Spend 24h"), not in a
+   * StatTile: the redesign moved it, but the honesty contract is unchanged —
+   * a null total renders UNAVAILABLE, never $0. */
+  async function spendRail(): Promise<HTMLElement> {
+    const kicker = await screen.findByText("Spend 24h");
+    const block = kicker.closest("button") as HTMLElement;
+    expect(block, "no spend rail block").not.toBeNull();
+    return block;
+  }
+
   it("marks the spend tile unavailable when the window is empty", async () => {
     serveCenter(UNAVAILABLE_COSTS, []);
     renderCenter();
 
-    await waitFor(async () => {
-      const el = await screen.findByText("Spend last 24h");
-      const tile = el.closest(".ym-stat") as HTMLElement;
-      expect(within(tile).getByText("UNAVAILABLE")).toBeInTheDocument();
-      // And never "$0.0000" anywhere in that tile.
-      expect(tile.textContent).not.toContain("$0.0000");
+    const block = await spendRail();
+    await waitFor(() => {
+      expect(within(block).getByText("UNAVAILABLE")).toBeInTheDocument();
+      // And never "$0.0000" anywhere in that block.
+      expect(block.textContent).not.toContain("$0.0000");
     });
   });
 
@@ -446,11 +455,10 @@ describe("Command Center: spend is UNAVAILABLE, not $0.00", () => {
     serveCenter(UNKNOWN_EXPOSURE_COSTS, []);
     renderCenter();
 
+    // The unpriceable-row count lives in the Costs & risk tab.
+    (await screen.findByRole("tab", { name: /Costs & risk/ })).click();
     await waitFor(async () => {
-      const el = await screen.findByText("Spend last 24h");
-      const tile = el.closest(".ym-stat") as HTMLElement;
-      expect(within(tile).getByText("UNAVAILABLE")).toBeInTheDocument();
-      expect(tile.textContent).toMatch(/unpriceable exposure/);
+      expect(screen.getByText(/cost row\(s\) record an exposure nobody can price/)).toBeInTheDocument();
     });
   });
 
@@ -458,11 +466,10 @@ describe("Command Center: spend is UNAVAILABLE, not $0.00", () => {
     serveCenter(MEASURED_ZERO_COSTS, []);
     renderCenter();
 
-    await waitFor(async () => {
-      const el = await screen.findByText("Spend last 24h");
-      const tile = el.closest(".ym-stat") as HTMLElement;
-      expect(tile.textContent).toContain("$0.0000");
-      expect(within(tile).queryByText("UNAVAILABLE")).not.toBeInTheDocument();
+    const block = await spendRail();
+    await waitFor(() => {
+      expect(block.textContent).toContain("$0.0000");
+      expect(within(block).queryByText("UNAVAILABLE")).not.toBeInTheDocument();
     });
   });
 
@@ -474,11 +481,13 @@ describe("Command Center: spend is UNAVAILABLE, not $0.00", () => {
     serveCenter(UNKNOWN_EXPOSURE_COSTS, []);
     renderCenter();
 
+    // The gate lives in the Costs & risk tab next to the "Remaining" metric.
+    (await screen.findByRole("tab", { name: /Costs & risk/ })).click();
     await waitFor(async () => {
       const el = await screen.findByText("Remaining");
-      const tile = el.closest(".ym-stat") as HTMLElement;
-      expect(within(tile).queryByText("UNAVAILABLE")).not.toBeInTheDocument();
-      expect(tile.textContent).toMatch(/\$/);
+      const metric = (el.closest("[class*='metric']") ?? el.parentElement) as HTMLElement;
+      expect(within(metric).queryByText("UNAVAILABLE")).not.toBeInTheDocument();
+      expect(metric.textContent).toMatch(/\$/);
     });
   });
 
@@ -489,10 +498,12 @@ describe("Command Center: spend is UNAVAILABLE, not $0.00", () => {
     serveCenter(MEASURED_ZERO_COSTS, [post("p-zero", ZERO_METRICS)]);
     renderCenter();
 
+    // The measured-post count lives in the Publish tab.
+    (await screen.findByRole("tab", { name: /^Publish/ })).click();
     await waitFor(async () => {
       const el = await screen.findByText("With a metric snapshot");
-      const tile = el.closest(".ym-stat") as HTMLElement;
-      expect(within(tile).getByText("1")).toBeInTheDocument();
+      const metric = (el.closest("[class*='metric']") ?? el.parentElement) as HTMLElement;
+      expect(within(metric).getByText("1")).toBeInTheDocument();
     });
   });
 
@@ -500,12 +511,13 @@ describe("Command Center: spend is UNAVAILABLE, not $0.00", () => {
     serveCenter(UNAVAILABLE_COSTS, [post("p-none", NO_METRICS)]);
     renderCenter();
 
+    (await screen.findByRole("tab", { name: /^Publish/ })).click();
     await waitFor(async () => {
       const el = await screen.findByText("With a metric snapshot");
-      const tile = el.closest(".ym-stat") as HTMLElement;
-      expect(within(tile).getByText("0")).toBeInTheDocument();
-      // 0 measured posts is a real count, so the tile is NOT "unavailable".
-      expect(within(tile).queryByText("UNAVAILABLE")).not.toBeInTheDocument();
+      const metric = (el.closest("[class*='metric']") ?? el.parentElement) as HTMLElement;
+      expect(within(metric).getByText("0")).toBeInTheDocument();
+      // 0 measured posts is a real count, so the metric is NOT "unavailable".
+      expect(within(metric).queryByText("UNAVAILABLE")).not.toBeInTheDocument();
     });
   });
 });
@@ -515,6 +527,8 @@ describe("Command Center: the post table shows no-metric, not 0 views", () => {
     serveCenter(UNAVAILABLE_COSTS, [post("p-x", NO_METRICS)]);
     renderCenter();
 
+    // The recent-output table lives in the Publish tab.
+    (await screen.findByRole("tab", { name: /^Publish/ })).click();
     await waitFor(async () => {
       const row = (await screen.findByText("p-x")).closest("tr") as HTMLElement;
       expect(row.textContent).toContain("no metric");
@@ -525,6 +539,7 @@ describe("Command Center: the post table shows no-metric, not 0 views", () => {
     serveCenter(MEASURED_ZERO_COSTS, [post("p-y", ZERO_METRICS)]);
     renderCenter();
 
+    (await screen.findByRole("tab", { name: /^Publish/ })).click();
     await waitFor(async () => {
       const row = (await screen.findByText("p-y")).closest("tr") as HTMLElement;
       expect(row.textContent).not.toContain("no metric");

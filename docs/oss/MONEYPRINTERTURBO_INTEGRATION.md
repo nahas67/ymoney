@@ -32,7 +32,7 @@ Two notes on the join:
 
 ## 1. Donor licence verification
 
-**Archive:** `C:\Users\nahas\Downloads\MoneyPrinterTurbo-1.3.7.zip` (134.11 MB)
+**Archive:** `MoneyPrinterTurbo-1.3.7.zip` (134.11 MB; operator-supplied donor archive)
 **Declared version:** `moneyprinterturbo` 1.3.7 (`pyproject.toml`)
 **Python requirement:** `>= 3.11`
 

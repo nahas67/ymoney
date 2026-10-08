@@ -6,11 +6,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>YMONEY — Autonomous Content OS</title>
     <script>
-      // Apply theme before first paint (no flash); default = system preference.
+      // Apply theme before first paint (no flash). Dark-first: the default is
+      // dark unless the operator explicitly chose "light"; "system" follows
+      // the OS. (The design-system token layer is dark-only, so a light OS
+      // default would render dark components on a paper page -- an incoherent
+      // mixed theme, not a light theme.)
       (function () {
         try {
           var v = localStorage.getItem("ym_theme");
-          var dark = v === "dark" || (v !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          var dark = v !== "light" && (v === "dark" || window.matchMedia("(prefers-color-scheme: dark)").matches || !v);
           if (dark) document.documentElement.classList.add("dark");
         } catch (e) {}
       })();

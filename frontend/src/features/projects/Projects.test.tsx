@@ -9,6 +9,10 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 const wsGet = vi.fn();
+const sessionState: { capabilities: string[]; capabilitiesKnown?: boolean } = {
+  capabilities: [],
+  capabilitiesKnown: undefined,
+};
 
 vi.mock("../../lib/api", () => ({
   // queries.ts reads ApiError to decide whether a status is ignorable, so the
@@ -20,7 +24,9 @@ vi.mock("../../lib/api", () => ({
       this.status = status;
     }
   },
-  wsApi: { get: (path: string) => wsGet(path) },
+  wsApi: {
+    get: (path: string) => wsGet(path),
+  },
   api: vi.fn(),
   videoFileUrl: (id: string) => `/video/${id}.mp4`,
   videoThumbUrl: (id: string) => `/thumb/${id}.jpg`,
@@ -31,7 +37,8 @@ vi.mock("../../state/session", () => ({
     workspaceId: "ws-1",
     workspace: { id: "ws-1", name: "Test Workspace" },
     workspaces: [{ id: "ws-1", name: "Test Workspace" }],
-    capabilities: [],
+    capabilities: sessionState.capabilities,
+    capabilitiesKnown: sessionState.capabilitiesKnown,
   }),
 }));
 
@@ -40,6 +47,8 @@ import { Projects } from "./Projects";
 afterEach(() => {
   cleanup();
   wsGet.mockReset();
+  sessionState.capabilities = [];
+  sessionState.capabilitiesKnown = undefined;
 });
 
 function route(overrides: { content?: unknown; campaigns?: unknown } = {}) {
@@ -72,6 +81,16 @@ describe("Projects", () => {
     expect(screen.getByText(/A project appears here once/)).toBeInTheDocument();
     // Zero items really is zero, so the count tile is allowed to say 0.
     expect(screen.getByText("Projects on this page")).toBeInTheDocument();
+  });
+
+  it("does not mount the out-of-scope long-form workflow", async () => {
+    route();
+    renderProjects();
+
+    expect(await screen.findByText("No project yet")).toBeInTheDocument();
+    expect(screen.queryByText("No long-form project yet")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Generate" })).toBeNull();
+    expect(wsGet).not.toHaveBeenCalledWith("/long-form/projects");
   });
 
   it("renders a failed list as an error with a retry, never as an empty library", async () => {

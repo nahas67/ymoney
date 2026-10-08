@@ -285,7 +285,7 @@ def test_one_batch_reserves_once_not_twice_across_the_two_gates(ws, monkeypatch)
 
     # The settings object is immutable, so configure through the real resolver
     # the same way a workspace would.
-    set_credential("llm.api_key", "sk-w158-double-reserve", ws)
+    set_credential("llm.api_key", "sk-fake-test-w158-double-reserve", ws)
     set_credential("llm.base_url", "https://llm.test/v1", ws)
     # MOCK_LLM is true in the test env, so llm_available() short-circuits.
     monkeypatch.setattr(llm_mod, "llm_available", lambda *a, **k: True)

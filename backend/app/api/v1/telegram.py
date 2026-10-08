@@ -87,7 +87,21 @@ class TestBody(BaseModel):
     message: str = ""
 
 
-@router.post("/test", summary="Send a test message to all linked chats")
+class TelegramTestOut(BaseModel):
+    """Result of `POST /telegram/test`, declared from the handler source.
+
+    The success shape is `{"sent": <chat count>}` (`test_send` returns it
+    directly). This contract is hand-written rather than observed because
+    observing it sends a REAL Telegram message -- a live external side effect
+    the contract harness must never trigger. A reviewed declaration beats an
+    unobservable inference; inventing coverage by firing the route would be
+    the fabrication.
+    """
+
+    sent: int
+
+
+@router.post("/test", summary="Send a test message to all linked chats", response_model=TelegramTestOut)
 async def test_send(body: TestBody, ws: Workspace = _admin()):
     if not tg.bot_configured():
         raise HTTPException(

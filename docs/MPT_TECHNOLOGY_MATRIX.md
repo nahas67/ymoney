@@ -1,6 +1,6 @@
 # MPT Technology Matrix
 
-**Donor:** MoneyPrinterTurbo 1.3.7 (`C:\Users\nahas\Downloads\MoneyPrinterTurbo-1.3.7.zip`, 134.11 MB)
+**Donor:** MoneyPrinterTurbo 1.3.7 (`MoneyPrinterTurbo-1.3.7.zip`, 134.11 MB; operator-supplied archive, not required for release tests)
 **Recipient:** YMONEY, post-Work-15 (2225 tests green, 0 failed)
 **Rule:** MPT is a technology **donor**. YMONEY remains authoritative for the data model, ContentTimeline, editor, campaigns, planner, BrandDNA, DecisionEngine/ModelRouter, memory graph, publishing, analytics, community, RBAC, CompletionVerifier, and durable workflow state.
 

@@ -20,11 +20,17 @@ export type RouteState = "REBUILT" | "LEGACY_BRIDGE";
 export type RouteGroup =
   | "command"
   | "plan"
-  | "build"
+  | "create"
+  | "studio"
+  | "campaigns"
   | "library"
+  | "brand"
   | "reach"
+  | "community"
   | "learn"
-  | "operate";
+  | "automation"
+  | "operations"
+  | "settings";
 
 export type AppRoute = {
   /** Router path, always absolute. */
@@ -46,13 +52,19 @@ export type AppRoute = {
 };
 
 export const ROUTE_GROUPS: { id: RouteGroup; label: string }[] = [
-  { id: "command", label: "Command" },
+  { id: "command", label: "Command Center" },
   { id: "plan", label: "Plan" },
-  { id: "build", label: "Build" },
+  { id: "create", label: "Create" },
+  { id: "studio", label: "Studio" },
+  { id: "campaigns", label: "Campaigns" },
   { id: "library", label: "Library" },
+  { id: "brand", label: "Brand" },
   { id: "reach", label: "Reach" },
+  { id: "community", label: "Community" },
   { id: "learn", label: "Learn" },
-  { id: "operate", label: "Operate" },
+  { id: "automation", label: "Automation" },
+  { id: "operations", label: "Operations" },
+  { id: "settings", label: "Settings" },
 ];
 
 export const GROUP_LABEL: Record<RouteGroup, string> = Object.fromEntries(
@@ -60,12 +72,11 @@ export const GROUP_LABEL: Record<RouteGroup, string> = Object.fromEntries(
 ) as Record<RouteGroup, string>;
 
 /**
- * The target information architecture.
+ * The target information architecture (new product, from-scratch rebuild).
  *
- * This phase (16.5.1) rebuilds command/plan/build/library for the core
- * workflows. The reach/learn/operate entries are marked LEGACY_BRIDGE because
- * they are Work 16.5.2 scope -- the shell must be able to TELL the truth about
- * which is which, which is exactly what `state` is for.
+ * Thirteen product domains, each owning distinct workflows — no generic
+ * "Build" bucket, no "Operate" catch-all. Every entry is REBUILT; the shell
+ * no longer renders legacy markers because there is no legacy IA left.
  */
 export const ROUTES: AppRoute[] = [
   /* ---- command ---------------------------------------------------------- */
@@ -83,23 +94,23 @@ export const ROUTES: AppRoute[] = [
     description: "Day, week and month placement with capacity",
     keywords: ["schedule", "reschedule"] },
 
-  /* ---- build ------------------------------------------------------------ */
-  { path: "/projects", label: "Projects", group: "build",
+  /* ---- create ----------------------------------------------------------- */
+  { path: "/projects", label: "Projects", group: "create",
     permission: "content.read", state: "REBUILT",
     description: "One workspace per project: research, script, scenes, timeline" },
-  { path: "/projects/:contentId", label: "Project", group: "build",
+  { path: "/projects/:contentId", label: "Project", group: "create",
     permission: "content.write", state: "REBUILT", hidden: true,
     description: "A single project across its whole lifecycle" },
-  { path: "/studio", label: "Studio", group: "build",
+  { path: "/studio", label: "Studio", group: "studio",
     permission: "content.write", state: "REBUILT",
     description: "Timeline editor with assets, preview, inspector" },
-  { path: "/studio/:timelineId", label: "Studio Editor", group: "build",
+  { path: "/studio/:timelineId", label: "Studio Editor", group: "studio",
     permission: "content.write", state: "REBUILT", hidden: true,
     description: "Editing one timeline" },
-  { path: "/campaigns", label: "Campaigns", group: "build",
+  { path: "/campaigns", label: "Campaigns", group: "campaigns",
     permission: "content.read", state: "REBUILT",
     description: "Master, derived shorts, platform variants, publications" },
-  { path: "/campaigns/:campaignId", label: "Campaign Detail", group: "build",
+  { path: "/campaigns/:campaignId", label: "Campaign Detail", group: "campaigns",
     permission: "publish.approve", state: "REBUILT", hidden: true,
     description: "One campaign and everything derived from it" },
 
@@ -107,8 +118,8 @@ export const ROUTES: AppRoute[] = [
   { path: "/assets", label: "Assets", group: "library",
     permission: "content.read", state: "REBUILT",
     description: "Video, image, audio, voice, music, generated and source media",
-    keywords: ["media", "library", "files"] },
-  { path: "/brands", label: "Brands", group: "library",
+    keywords: ["media", "library", "files", "exports"] },
+  { path: "/brands", label: "Brands", group: "brand",
     permission: "brand.manage", state: "REBUILT",
     description: "BrandDNA, creative rules, voice, effective policy",
     keywords: ["branddna", "identity", "voice"] },
@@ -126,7 +137,7 @@ export const ROUTES: AppRoute[] = [
     permission: "publish.approve", state: "REBUILT",
     description: "Accounts, readiness, variants, schedule, LIVE/MOCK/HANDOFF",
     keywords: ["publishing", "platforms", "accounts"] },
-  { path: "/community", label: "Community", group: "reach",
+  { path: "/community", label: "Community", group: "community",
     permission: "reviews.approve", state: "REBUILT",
     description: "Inbox, threads, moderation, questions, suggested replies",
     keywords: ["inbox", "comments", "moderation", "replies"] },
@@ -149,16 +160,22 @@ export const ROUTES: AppRoute[] = [
     description: "Decision records, routing, evidence, WHY, verifier, cost",
     keywords: ["decisions", "routing", "why"] },
 
-  /* ---- operate ---------------------------------------------------------- */
-  { path: "/operations", label: "Operations", group: "operate",
+  /* ---- automation ------------------------------------------------------- */
+  { path: "/automation", label: "Automation", group: "automation",
+    permission: "operations.view", state: "REBUILT",
+    description: "Autopilot loop, next best action, agents, cycles",
+    keywords: ["autopilot", "agents", "loop", "autonomous"] },
+
+  /* ---- operations ------------------------------------------------------- */
+  { path: "/operations", label: "Operations", group: "operations",
     permission: "operations.view", state: "REBUILT",
     description: "Workers, queues, GPU, renders, SLO, cost incidents, reconciliation",
     keywords: ["workers", "queue", "gpu", "alerts", "slo"] },
-  { path: "/providers", label: "Providers", group: "operate",
+  { path: "/providers", label: "Providers", group: "operations",
     permission: "providers.manage", state: "REBUILT",
     description: "Canonical maturity, credentials, health, capabilities",
     keywords: ["integrations", "credentials", "maturity"] },
-  { path: "/settings", label: "Settings", group: "operate",
+  { path: "/settings", label: "Settings", group: "settings",
     permission: "content.write", state: "REBUILT",
     description: "Workspace, members, autonomy, budgets, storage, security",
     keywords: ["keys", "webhooks", "configuration", "appearance"] },
@@ -262,5 +279,6 @@ export const ROUTE_GLYPH: Record<string, ReactNode> = {
   "/intelligence": "◭",
   "/operations": "◮",
   "/providers": "◯",
+  "/automation": "⬡",
   "/settings": "◱",
 };

@@ -18,41 +18,50 @@ import { LEGACY_ROUTES, NAV_ROUTES, REBUILT_ROUTES, ROUTES } from "../routes/reg
 
 /* Every feature module default-exports its screen. Default imports keep this
  * file uniform and make a screen that only offers named exports a compile error
- * here rather than a blank page at runtime. */
+ * here rather than a blank page at runtime.
+ *
+ * Every route is LAZY: one 990KB synchronous bundle is how the app shipped
+ * before this rebuild, and the Studio editor in particular pulls the timeline
+ * engine, motion panels and intel surfaces that no other route needs. `lazy`
+ * splits one chunk per screen; the `<Suspense>` below already wraps `<Routes>`,
+ * so a slow chunk shows a skeleton rather than a blank page. Login stays
+ * explicitly lazy for the same reason it always was: an unauthenticated visitor
+ * must not download the application. */
 
 /* ---- command + plan ---------------------------------------------------- */
-import CommandCenter from "../features/command-center/CommandCenter";
-import Planner from "../features/planner/Planner";
-import CalendarView from "../features/planner/CalendarView";
+const CommandCenter = lazy(() => import("../features/command-center/CommandCenter"));
+const Planner = lazy(() => import("../features/planner/Planner"));
+const CalendarView = lazy(() => import("../features/planner/CalendarView"));
 
-/* ---- build ------------------------------------------------------------- */
-import Projects from "../features/projects/Projects";
-import ProjectDetail from "../features/projects/ProjectDetail";
-import Campaigns from "../features/campaigns/Campaigns";
-import CampaignDetail from "../features/campaigns/CampaignDetail";
-import Studio from "../features/studio/Studio";
-import StudioEditor from "../features/studio/StudioEditor";
+/* ---- create / studio / campaigns --------------------------------------- */
+const Projects = lazy(() => import("../features/projects/Projects"));
+const ProjectDetail = lazy(() => import("../features/projects/ProjectDetail"));
+const Campaigns = lazy(() => import("../features/campaigns/Campaigns"));
+const CampaignDetail = lazy(() => import("../features/campaigns/CampaignDetail"));
+const Studio = lazy(() => import("../features/studio/Studio"));
+const StudioEditor = lazy(() => import("../features/studio/StudioEditor"));
 
-/* ---- library ----------------------------------------------------------- */
-import Assets from "../features/assets/Assets";
-import Brands from "../features/brands/Brands";
+/* ---- library + brand ---------------------------------------------------- */
+const Assets = lazy(() => import("../features/assets/Assets"));
+const Brands = lazy(() => import("../features/brands/Brands"));
 
-/* ---- reach (Work 16.5.2) ----------------------------------------------- */
-import Localization from "../features/localization/Localization";
-import Ugc from "../features/ugc/Ugc";
-import Distribution from "../features/distribution/Distribution";
-import Community from "../features/community/Community";
+/* ---- reach -------------------------------------------------------------- */
+const Localization = lazy(() => import("../features/localization/Localization"));
+const Ugc = lazy(() => import("../features/ugc/Ugc"));
+const Distribution = lazy(() => import("../features/distribution/Distribution"));
+const Community = lazy(() => import("../features/community/Community"));
 
-/* ---- learn (Work 16.5.2) ----------------------------------------------- */
-import Analytics from "../features/analytics/Analytics";
-import Experiments from "../features/experiments/Experiments";
-import Memory from "../features/memory/Memory";
-import Intelligence from "../features/intelligence/Intelligence";
+/* ---- learn -------------------------------------------------------------- */
+const Analytics = lazy(() => import("../features/analytics/Analytics"));
+const Experiments = lazy(() => import("../features/experiments/Experiments"));
+const Memory = lazy(() => import("../features/memory/Memory"));
+const Intelligence = lazy(() => import("../features/intelligence/Intelligence"));
 
-/* ---- operate (Work 16.5.2) --------------------------------------------- */
-import Operations from "../features/operations/Operations";
-import Providers from "../features/providers/Providers";
-import Settings from "../features/settings/Settings";
+/* ---- automation + operations + settings --------------------------------- */
+const Operations = lazy(() => import("../features/operations/Operations"));
+const Providers = lazy(() => import("../features/providers/Providers"));
+const Settings = lazy(() => import("../features/settings/Settings"));
+const Automation = lazy(() => import("../features/automation/Automation"));
 
 /* Login is not a product screen: it stays lazy so an unauthenticated visitor
  * does not download the whole application. */
@@ -87,6 +96,7 @@ const COMPONENTS: Record<string, ReactNode> = {
   "/intelligence": <Intelligence />,
   "/operations": <Operations />,
   "/providers": <Providers />,
+  "/automation": <Automation />,
   "/settings": <Settings />,
 };
 

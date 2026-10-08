@@ -104,7 +104,7 @@ from __future__ import annotations
 import json as _json
 from typing import Any
 
-from sqlalchemy import Text, cast, func, literal, or_
+from sqlalchemy import Text, cast, func, literal, or_, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -225,19 +225,35 @@ def json_has_key(column: ColumnElement[Any], key: str,
     contains the characters ``"b"``, but the substring and the key coincide
     often enough that using one operator for the two hides real bugs.
 
-    ===========  ===================================  =============================
-    backend      operator                             measured
-    ===========  ===================================  =============================
-    PostgreSQL   ``json_exists(col, '$."key"')``      ``{"k": "42"}`` -> True
-    SQLite       ``json_type(col, '$."key"') IS NOT   same -> True
-                NULL``
-    ===========  ===================================  =============================
+    ===========  ==========================================  ==========================
+    backend      operator                                        measured
+    ==========  ==========================================  ==========================
+    PostgreSQL   ``jsonb_path_exists(col::jsonb, '$.**."k"'::jsonpath)``  nested -> True
+    SQLite       ``json_tree(col)`` object member lookup                    nested -> True
+    ==========  ==========================================  ==========================
 
-    ``json_exists`` is PostgreSQL 12+, and its second argument is a **jsonpath**,
-    not a bare key name -- passing ``'project_id'`` directly is a server SYNTAX
-    ERROR (``syntax error at end of jsonpath input``), because the text is
-    parsed as a path expression. So the key is quoted and rooted with ``$``,
-    which also makes a key containing a dot addressable.
+    Three PostgreSQL key-existence constructs were measured on a live PG 16.13
+    catalog before choosing one, because the names look interchangeable and are
+    not, and only two of the three answer this question at all::
+
+        json_exists(col, '$."k"')     -> UndefinedFunction (no such function)
+        jsonb_exists(col::jsonb, '$."k"')  -> FALSE: this form takes a BARE
+                                          top-level key name, not a jsonpath,
+                                          so it silently matched nothing
+        jsonb_path_exists(col::jsonb, '$."k"'::jsonpath) -> TRUE
+        (col::jsonb ? 'k')            -> top-level key only, no path syntax
+
+    ``jsonb_exists`` is the trap worth recording: a wrongly-shaped argument makes
+    it answer FALSE rather than error, so the query returns zero rows forever and
+    reads as "no document has that key". Two PostgreSQL parity tests caught it,
+    and SQLite could not, because SQLite has no operator of any of these names
+    and always takes the ``json_type`` branch below.
+
+    PostgreSQL uses JSONPath recursive descent and quotes the member name, so a
+    key containing a dot is not re-parsed as several path segments. SQLite's
+    ``json_tree`` walks nested values; its ``key`` column is text for object
+    members and integer for array indexes, so the type guard keeps array
+    positions from being misreported as object keys.
 
     Note the asymmetry with :func:`json_value_equals`: key PRESENCE ignores
     depth, so use it to ask "is this shape known", not "is this exact field set".
@@ -245,19 +261,24 @@ def json_has_key(column: ColumnElement[Any], key: str,
     if not key or not isinstance(key, str):
         raise ValueError(f"json key must be a non-empty str, got {key!r}")
     if dialect_name == "postgresql":
-        return func.json_exists(
-            column, literal(_json_path([], key))).is_(True)
-    return func.json_type(
-        column, literal(_json_path([], key))).is_not(None)
+        return func.jsonb_path_exists(
+            cast(column, postgresql.JSONB),
+            cast(literal("$.**." + _json.dumps(key)),
+                 postgresql.JSONPATH)).is_(True)
+    members = func.json_tree(column).table_valued("key", name="json_tree")
+    return select(literal(1)).select_from(members).where(
+        func.typeof(members.c.key) == "text",
+        members.c.key == key,
+    ).exists()
 
 
 def _json_path(prefix: list[str], *keys: str) -> str:
     """A JSON path such as ``'$."target"."id"'``, valid on BOTH backends.
 
     Valid on both because SQLite's ``json_type`` and PostgreSQL's
-    ``json_exists``/jsonpath share this syntax. Quoting each key individually
-    is what makes a key containing a dot or a quote addressable, instead of
-    being re-parsed as several path segments.
+    ``jsonb_path_exists``/jsonpath share this syntax. Quoting each key
+    individually is what makes a key containing a dot or a quote addressable,
+    instead of being re-parsed as several path segments.
     """
     segments = [*prefix, *keys]
     return "$" + "".join(f".{_json.dumps(seg)}" for seg in segments)

@@ -97,6 +97,11 @@ requires_postgres = pytest.mark.skipif(
 #:   4: project_id "4242"        -- a DIFFERENT id, must never match 42
 #:   5: target.type/id STRINGS
 #:   6: target.type/id NUMBERS, project_id NUMBER
+#:   7: key nested in an object
+#:   8: key nested in an array object
+#:   9: key-like text, not an object member
+#:  10: numeric-looking object member key "0"
+#:  11: array index 0 is not an object member key
 CANONICAL: dict[int, dict[str, Any]] = {
     1: {"actor": "u1", "project_id": "42"},
     2: {"actor": "u2", "project_id": 42},
@@ -106,6 +111,11 @@ CANONICAL: dict[int, dict[str, Any]] = {
         "target": {"type": "content_item", "id": "c-1"}},
     6: {"actor": "u6", "project_id": 42,
         "target": {"type": 7, "id": 88}},
+    7: {"outer": {"deep_key": "nested"}},
+    8: {"items": [{"deep_key": "in array"}]},
+    9: {"description": "deep_key"},
+    10: {"outer": {"0": "object member"}},
+    11: {"items": ["array index only"]},
 }
 
 #: Every row that legitimately carries project_id 42 (as a string OR a number).
@@ -393,6 +403,28 @@ def test_the_two_containment_questions_genuinely_disagree(
     assert ids(sqlite_backend,
                lambda c, d: json_text_contains(c, "no")) == [3]
     assert ids(pg_backend, lambda c, d: json_text_contains(c, "no")) == [3]
+
+
+def test_json_has_key_finds_nested_object_members_not_text_or_array_indexes(
+        sqlite_backend: dict) -> None:
+    """Recursive key lookup includes object names but excludes array indexes."""
+    from app.services.json_portability import json_has_key
+
+    assert ids(sqlite_backend, lambda c, d: json_has_key(c, "deep_key", d)) == [7, 8]
+    assert ids(sqlite_backend, lambda c, d: json_has_key(c, "0", d)) == [10]
+
+
+@requires_postgres
+def test_json_has_key_recursive_results_match_postgresql(
+        sqlite_backend: dict, pg_backend: dict) -> None:
+    from app.services.json_portability import json_has_key
+
+    for key, expected in (("deep_key", [7, 8]), ("0", [10])):
+        result = assert_parity(
+            sqlite_backend, pg_backend,
+            lambda c, d, key=key: json_has_key(c, key, d),
+        )
+        assert result["sqlite"] == expected
 
 
 @requires_postgres

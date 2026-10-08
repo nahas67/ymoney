@@ -1,34 +1,40 @@
-/* Command Center — the operator's "what is YMONEY doing right now".
+/* Command Center — the operations console.
  *
- * Six questions, one screen:
- *   what is running · what needs attention · what is performing
- *   what is costing money · what is blocked · what should happen next
+ * This is NOT a card-grid dashboard. It answers the operator's questions in
+ * order of urgency:
  *
- * Three rules this screen is built around, and they are the reason it is not a
- * grid of `useQuery` calls:
+ *   1. What needs me?            attention queue (paid ambiguity FIRST)
+ *   2. What is YMONEY doing now? status rail + active workflows / jobs
+ *   3. Blocked? Changed?         readiness, dead jobs, failed items, reviews
+ *   4. Publishing?               upcoming schedule + recent output
+ *   5. Costing?                  spend vs budget + paid incidents
+ *   6. Performing?               measured post metrics + experiments
+ *   7. What did agents learn?    derived memory lessons + routing chains
  *
- * 1. NO INVENTED KPIs. Every number here is counted from a field an endpoint
- *    actually returns. When a panel 404s, times out or is missing a field, the
- *    tile says UNAVAILABLE — never 0. A dashboard that renders 0 for "we don't
- *    know" is how a dead provider looks like a quiet afternoon.
+ * Layout: a dense ops frame — status rail on the left, attention queue first,
+ * then a tabbed drill-down whose modules disclose progressively (collapsible
+ * sections, attention-relevant ones open first).
+ *
+ * Three honesty rules, carried over from the previous revision:
+ *
+ * 1. NO INVENTED KPIs. Every number is counted from a field an endpoint
+ *    actually returns. A dead panel reads UNAVAILABLE — never 0. Null money
+ *    renders as "unknown", never $0.0000.
  *
  * 2. ONE FAILED PANEL MUST NOT BLANK THE PAGE. `useCombinedQueries` fans out
- *    every read, keeps whatever arrived, and reports *which* panel failed in a
- *    dedicated panel. The operator sees the outage and the surviving data at
- *    the same time.
+ *    every read; whatever arrived renders, and the failed panels are named.
  *
- * 3. SUBMISSION_UNKNOWN IS ITS OWN CATEGORY. `toneForStatus` maps it to the
- *    `unknown` tone (purple) and this screen never overrides that to `warning`:
- *    the provider MAY have accepted and billed the request. It is reported
- *    verbatim, with the backend's own `recommended_action` and `retry_safe`, and
- *    this screen renders NO retry affordance at all — a blind resubmit is how one
+ * 3. SUBMISSION_UNKNOWN IS ITS OWN CATEGORY. Unknown tone, never warning or
+ *    failed, no retry affordance anywhere: a blind resubmit is how one
  *    ambiguous charge becomes two.
  *
  * Endpoint shapes are typed from the backend routers (the OpenAPI document has
- * empty response schemas, so the routers are the source of truth).
+ * empty response schemas, so the routers are the source of truth). The two
+ * panels beyond the original twelve (`/experiments`, `/knowledge/memories`)
+ * reuse the exact shapes their own screens already type.
  */
 
-import { useMemo } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Badge,
@@ -43,6 +49,8 @@ import {
   Skeleton,
   StatTile,
   StatusBadge,
+  Tabs,
+  cx,
   humanize,
   toneForStatus,
   type Column,
@@ -129,11 +137,10 @@ type JobRow = {
 };
 type JobList = { items: JobRow[] };
 
-/* HONESTY (Work 16.5.7 §8): `spent_last_24h_usd` is nullable. It is null for an
- * empty window and for a window holding an UNKNOWN_EXPOSURE row -- money
- * possibly spent that nobody can price is not $0.00. `within_budget` and
- * `remaining_usd` are BUDGET GATES and stay non-null on purpose: an unresolved
- * exposure consumes headroom rather than creating it. */
+/* HONESTY: `spent_last_24h_usd` is nullable. Null covers an empty window and a
+ * window holding an UNKNOWN_EXPOSURE row — money possibly spent that nobody
+ * can price is not $0.00. `within_budget` and `remaining_usd` are BUDGET GATES
+ * and stay non-null: an unresolved exposure consumes headroom. */
 type CostSummary = {
   last_24h_by_category: Record<string, number>;
   spent_last_24h_usd: number | null;
@@ -262,9 +269,8 @@ type PublishedPost = {
   remote_url: string | null;
   published_at: string | null;
   is_mock: boolean;
-  /* HONESTY (Work 16.5.7 §8): every field is nullable. The backend used to
-   * report `views: 0` for a post no provider ever reported on, which rendered as
-   * a real "0 views" in this table. null means no PostMetric snapshot exists. */
+  /* Every metric field is nullable. Null means no PostMetric snapshot exists —
+   * a post with no snapshot is "no metric", never "0 views". */
   metrics: {
     views: number | null;
     likes: number | null;
@@ -273,6 +279,44 @@ type PublishedPost = {
   };
 };
 type PostList = { items: PublishedPost[] };
+
+/* `api/v1/experiments.py::_dto`, verbatim subset this console needs. The full
+ * shape lives in features/experiments/Experiments.tsx. */
+type ExperimentRow = {
+  id: string;
+  kind: string;
+  hypothesis: string;
+  platform: string;
+  primary_metric: string;
+  minimum_sample: number;
+  status: string;
+  confidence: string;
+  result: {
+    total_samples?: number;
+    winner?: string | null;
+    minimum_sample?: number;
+    analyzed_at?: string;
+  };
+  created_at: string;
+};
+type ExperimentList = { total: number; items: ExperimentRow[] };
+
+/* `engine/knowledge/memory.py::_to_dict`, verbatim subset. Full shape lives in
+ * features/memory/Memory.tsx. */
+type MemoryRow = {
+  id: string;
+  type: string;
+  topic: string;
+  content: string;
+  confidence: number;
+  freshness: string;
+  status: string;
+  effective_status: string;
+  source_ids: string[];
+  evidence_ids: unknown[];
+  created_at: string | null;
+};
+type MemoryList = { items: MemoryRow[] };
 
 type Panels = {
   campaigns: CampaignList;
@@ -287,6 +331,8 @@ type Panels = {
   incidents: Incidents;
   reviews: ReviewList;
   posts: PostList;
+  experiments: ExperimentList;
+  memories: MemoryList;
 };
 
 const PANEL_LABEL: Record<keyof Panels, string> = {
@@ -302,6 +348,8 @@ const PANEL_LABEL: Record<keyof Panels, string> = {
   incidents: "paid incidents",
   reviews: "pending reviews",
   posts: "publications",
+  experiments: "experiment results",
+  memories: "agent learnings",
 };
 
 /** Job states that mean work is in flight. `JobStatus` in models/base.py. */
@@ -312,6 +360,17 @@ const OPEN_REVIEW_STATES = ["DRAFT", "IN_REVIEW", "CHANGES_REQUESTED"];
 const CLOSED_CAMPAIGN_STATES = ["COMPLETED", "ARCHIVED", "CANCELLED"];
 /** Content states that mean the pipeline gave up on this item. */
 const FAILED_CONTENT_STATUSES = ["FAILED"];
+/** Memory types an engine DERIVED from measured outcomes — interpretations,
+ * never evidence. The vocabulary is `engine/knowledge/memory.py::TYPES`; the
+ * split is documented in features/memory/Memory.tsx. */
+const DERIVED_MEMORY_TYPES = [
+  "CONTENT_RESULT",
+  "CREATIVE_LESSON",
+  "AUDIENCE_INSIGHT",
+  "COMMUNITY_INSIGHT",
+  "PLATFORM_LEARNING",
+  "EXPERIMENT_RESULT",
+];
 
 /* ==========================================================================
  * Adapters
@@ -319,12 +378,8 @@ const FAILED_CONTENT_STATUSES = ["FAILED"];
 
 /**
  * Turn one `useCombinedQueries` entry into the `QueryState` that
- * `QueryBoundary` expects, so a panel gets the same loading / error / empty
- * treatment as any single-query screen.
- *
- * `setData` is intentionally inert: the combined cache is owned by
- * `useCombinedQueries`, which re-reads every panel together. Handing a panel a
- * second, private write path would let it drift from its siblings.
+ * `QueryBoundary` expects. `setData` is intentionally inert: the combined
+ * cache is owned by `useCombinedQueries`.
  */
 function panelState<T>(
   value: T | null,
@@ -335,15 +390,6 @@ function panelState<T>(
   return {
     data: value,
     error: error ?? null,
-    /*
-     * No status, honestly. This layer aggregates panels that report a
-     * pre-stringified `errors.<panel>` message, so the HTTP status was never in
-     * scope here. `null` routes the refusal check to its wording classifier,
-     * which is written against the backend's measured denial vocabulary
-     * (`scripts/denial_vocabulary.py`). Plumbing a status through this merge would
-     * be a larger refactor than the fix it buys: the classifier already covers
-     * every string the backend actually emits.
-     */
     errorStatus: null,
     loading: !settled && !error,
     settled,
@@ -408,12 +454,125 @@ function pct(value: number | null | undefined): string {
 }
 
 /* ==========================================================================
+ * Ops chrome — rail, collapsible sections, scoped styles
+ * ======================================================================= */
+
+/**
+ * One collapsible operations module. The heading is a real button
+ * (keyboard-operable disclosure), the body animates open over the
+ * 140–220ms motion tokens, and closes instantly by unmounting so no
+ * focusable content hides inside a collapsed region.
+ */
+function OpsSection({
+  id,
+  title,
+  meta,
+  count,
+  defaultOpen = true,
+  actions,
+  children,
+}: {
+  id: string;
+  title: string;
+  meta?: string;
+  count?: number | null;
+  defaultOpen?: boolean;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const bodyId = `ops-sec-${id}`;
+  const titleId = `ops-sec-${id}-title`;
+  return (
+    <section className="ops-sec" aria-labelledby={titleId}>
+      <div className="ops-sec-head">
+        <button
+          type="button"
+          className="ops-sec-toggle"
+          aria-expanded={open}
+          aria-controls={bodyId}
+          onClick={() => setOpen((o) => !o)}
+        >
+          <span className={cx("ops-sec-chev", open && "ops-sec-chev--open")} aria-hidden="true">
+            ▸
+          </span>
+          <h3 className="ops-sec-title" id={titleId}>
+            {title}
+          </h3>
+          {count !== undefined && count !== null && (
+            <span className="ops-sec-count" aria-label={`${count} rows`}>
+              {count}
+            </span>
+          )}
+          {meta && <span className="ops-sec-meta">{meta}</span>}
+        </button>
+        {actions && <div className="ops-sec-actions">{actions}</div>}
+      </div>
+      {open && (
+        <div className="ops-sec-body" id={bodyId} role="region" aria-label={title}>
+          <div className="ops-sec-inner">{children}</div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** One status-rail entry: a measured figure plus a text verdict, never color-only. */
+function RailBlock({
+  kicker,
+  display,
+  verdict,
+  tone,
+  hint,
+  onGo,
+  unavailable,
+}: {
+  kicker: string;
+  display: ReactNode;
+  verdict: string;
+  tone: Tone;
+  hint?: string;
+  onGo: () => void;
+  unavailable?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={cx("ops-rail-block", `ym-tone-${tone}`)}
+      onClick={onGo}
+      title={hint ?? verdict}
+    >
+      <span className="ops-rail-kicker">{kicker}</span>
+      <span className={cx("ops-rail-value", unavailable && "ops-rail-value--unavailable")}>
+        {unavailable ? "UNAVAILABLE" : display}
+      </span>
+      <span className="ops-rail-verdict">
+        <span className="ops-rail-dot" aria-hidden="true" />
+        {verdict}
+      </span>
+    </button>
+  );
+}
+
+
+/* ==========================================================================
  * Screen
  * ======================================================================= */
+
+type TabId = "work" | "publish" | "money" | "intel" | "sys";
+
+const TAB_LABEL: Record<TabId, string> = {
+  work: "Workflows",
+  publish: "Publish",
+  money: "Costs & risk",
+  intel: "Intelligence",
+  sys: "System",
+};
 
 export function CommandCenter() {
   const { workspaceId, workspace } = useSession();
   const navigate = useNavigate();
+  const [tab, setTab] = useState<TabId>("work");
 
   const panels = useCombinedQueries<Panels>({
     campaigns: () => wsApi.get("/campaigns") as Promise<CampaignList>,
@@ -428,6 +587,8 @@ export function CommandCenter() {
     incidents: () => wsApi.get("/provider-maturity/incidents?limit=50") as Promise<Incidents>,
     reviews: () => wsApi.get("/reviews") as Promise<ReviewList>,
     posts: () => wsApi.get("/publishing/posts?limit=25") as Promise<PostList>,
+    experiments: () => wsApi.get("/experiments") as Promise<ExperimentList>,
+    memories: () => wsApi.get("/knowledge/memories?limit=200") as Promise<MemoryList>,
   });
 
   const { data, settled, errors, reload } = panels;
@@ -472,72 +633,162 @@ export function CommandCenter() {
   const posts = data.posts?.items ?? null;
   const livePosts = posts?.filter((p) => !p.is_mock && p.published_at) ?? null;
   const mockPosts = posts?.filter((p) => p.is_mock) ?? null;
-  /* HONESTY (§8): was `completion_rate !== null || views > 0`, which counted a
-   * post as "measured" only if it reported completion or had a nonzero view
-   * count. A post whose snapshot genuinely says 0 views was therefore excluded
-   * from the measured count -- the same measured-zero confusion as above, in the
-   * aggregate. `views !== null` is the fact. */
+  /* `views !== null` is the fact: null means no PostMetric snapshot exists. A
+   * post whose snapshot genuinely says 0 views counts as measured. */
   const measuredPosts = livePosts?.filter((p) => p.metrics.views !== null) ?? null;
 
-  const plannerOps = data.planner?.opportunities ?? null;
-  const inboxOps = data.inbox?.items ?? null;
+  /* Performance signals are DERIVED from measured snapshots only. Every
+   * aggregate below skips null legs, so an unmeasured post contributes
+   * nothing — not even a zero. */
+  const perf = useMemo(() => {
+    if (measuredPosts === null) return null;
+    const views = measuredPosts.map((p) => p.metrics.views).filter((v): v is number => v !== null);
+    const likes = measuredPosts.map((p) => p.metrics.likes).filter((v): v is number => v !== null);
+    const comments = measuredPosts.map((p) => p.metrics.comments).filter((v): v is number => v !== null);
+    const completions = measuredPosts
+      .map((p) => p.metrics.completion_rate)
+      .filter((v): v is number => v !== null);
+    return {
+      measured: measuredPosts.length,
+      total: livePosts?.length ?? null,
+      views: views.length > 0 ? views.reduce((a, b) => a + b, 0) : null,
+      likes: likes.length > 0 ? likes.reduce((a, b) => a + b, 0) : null,
+      comments: comments.length > 0 ? comments.reduce((a, b) => a + b, 0) : null,
+      avgCompletion: completions.length > 0 ? completions.reduce((a, b) => a + b, 0) / completions.length : null,
+    };
+  }, [measuredPosts, livePosts]);
+
+  /* Campaign pulse: per-campaign workload derived from the content rows'
+   * campaign_id. When the content panel failed there is no pulse — the
+   * section says UNAVAILABLE instead of inventing zeros. */
+  const pulse = useMemo(() => {
+    if (activeCampaigns === null) return null;
+    if (content === null) return "unavailable" as const;
+    return activeCampaigns.map((c) => {
+      const items = content.filter((i) => i.campaign_id === c.id);
+      return {
+        campaign: c,
+        items: items.length,
+        failed: items.filter((i) => FAILED_CONTENT_STATUSES.includes(i.status.toUpperCase())).length,
+        rendering: items.filter((i) => {
+          const vs = i.video?.status?.toUpperCase();
+          return vs === "RENDERING" || vs === "PENDING" || vs === "QUEUED" || vs === "PROCESSING";
+        }).length,
+      };
+    });
+  }, [activeCampaigns, content]);
+
   const chains = data.chains?.chains ?? null;
 
-  /* ---- alerts: a union of real conditions, ranked by tone --------------- */
+  const experiments = data.experiments?.items ?? null;
+  const runningExperiments = experiments?.filter((e) => e.status.toUpperCase() === "RUNNING") ?? null;
 
-  type Alert = { key: string; tone: Tone; what: string; detail: string };
+  /* What agents learned: engine-derived interpretations only, statuses
+   * verbatim, newest first by created_at when reported. */
+  const learnings = useMemo(() => {
+    const items = data.memories?.items ?? null;
+    if (items === null) return null;
+    return items
+      .filter((m) => DERIVED_MEMORY_TYPES.includes(m.type.toUpperCase()))
+      .slice()
+      .sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")));
+  }, [data.memories]);
+
+  /* ---- attention queue: paid ambiguity FIRST, then blocked, failed, stale */
+  type Alert = {
+    key: string;
+    rank: number;
+    severity: string;
+    tone: Tone;
+    what: string;
+    detail: string;
+    action: string;
+  };
   const alerts: Alert[] = [];
+  for (const inc of unknownSubmissions ?? []) {
+    alerts.push({
+      key: `inc-unknown-${inc.incident_id}`,
+      rank: 0,
+      severity: "Paid ambiguity",
+      tone: toneForStatus(inc.state),
+      what: `Reconcile before acting: ${inc.provider} · ${inc.operation}`,
+      detail: inc.detail || inc.note || "Ambiguous paid state reported by the paid executor.",
+      action: "Next: reconcile with the provider. No retry is offered here — resubmitting may double-bill.",
+    });
+  }
+  for (const inc of (reconcileIncidents ?? []).filter(
+    (i) => !(unknownSubmissions ?? []).some((u) => u.incident_id === i.incident_id),
+  )) {
+    alerts.push({
+      key: `inc-${inc.incident_id}`,
+      rank: 0,
+      severity: "Paid ambiguity",
+      tone: toneForStatus(inc.state),
+      what: `Reconcile before acting: ${inc.provider} · ${inc.operation}`,
+      detail: inc.detail || inc.note || "Reconciliation state reported by the paid executor.",
+      action: "Next: reconcile with the provider. No retry is offered here.",
+    });
+  }
   for (const id of readiness?.blocking_failures ?? []) {
     const check = readiness?.checks.find((c) => c.id === id);
     alerts.push({
       key: `readiness-${id}`,
+      rank: 1,
+      severity: "Blocked",
       tone: "danger",
       what: `Blocking dependency down: ${humanize(id)}`,
       detail: check?.remediation || check?.detail || "No remediation reported.",
-    });
-  }
-  for (const inc of reconcileIncidents ?? []) {
-    alerts.push({
-      key: `inc-${inc.incident_id}`,
-      tone: toneForStatus(inc.state),
-      what: `Reconcile before acting: ${inc.provider} · ${inc.operation}`,
-      detail: inc.detail || inc.note || "Reconciliation state reported by the paid executor.",
+      action: "Next: see the System tab for the probe detail and remediation.",
     });
   }
   for (const job of deadJobs ?? []) {
     alerts.push({
       key: `job-${job.id}`,
+      rank: 2,
+      severity: "Failed",
       tone: "danger",
       what: `Job dead: ${humanize(job.type)}`,
       detail: job.last_error || "No error recorded on the job row.",
+      action: "Next: inspect in Operations. Do not blind-resubmit paid legs.",
     });
   }
   for (const item of failedContent ?? []) {
     alerts.push({
       key: `content-${item.id}`,
+      rank: 2,
+      severity: "Failed",
       tone: "danger",
       what: `Pipeline failed: ${item.topic}`,
       detail: item.error || "No error recorded on the content item.",
+      action: "Next: open the project to see the failed stage.",
     });
   }
   for (const entry of failedSchedule ?? []) {
     alerts.push({
       key: `sched-${entry.id}`,
+      rank: 2,
+      severity: "Failed",
       tone: "danger",
       what: `Scheduled publication failed: ${humanize(entry.platform)}`,
-      detail: "Calendar entry is FAILED. Re-dispatch from Calendar, not from here.",
+      detail: "Calendar entry is FAILED.",
+      action: "Next: re-dispatch from Calendar, not from here.",
     });
   }
   for (const rev of (openReviews ?? []).filter((r) => r.stale)) {
     alerts.push({
       key: `review-${rev.id}`,
+      rank: 3,
+      severity: "Stale",
       tone: "warning",
       what: `Approval invalidated by a new version: ${rev.title || rev.id.slice(0, 8)}`,
       detail: "The bound version is stale; the target changed after this review opened.",
+      action: "Next: re-open the review against the current version.",
     });
   }
+  alerts.sort((a, b) => a.rank - b.rank);
 
   const openProject = (contentId: string) => navigate(`/projects/${contentId}`);
+  const go = (t: TabId) => setTab(t);
 
   if (!workspaceId) {
     return (
@@ -676,11 +927,8 @@ export function CommandCenter() {
       key: "views",
       header: "Views",
       align: "right",
-      /* HONESTY (§8): the old guard was `completion_rate === null && views === 0`
-       * -- it read a per-post 0 as "no metric", so a post that genuinely recorded
-       * ZERO views was also labelled unmeasured, and one that recorded zero views
-       * AND a completion rate printed a bare "0" with no signal that anything was
-       * missing. `views === null` is now the backend's own statement. */
+      /* `views === null` is the backend's own statement of "no metric". A
+       * genuine zero-view snapshot prints as 0 — measured zero, not missing. */
       cell: (p) => (p.metrics.views === null ? <span className="ym-muted">no metric</span> : p.metrics.views),
     },
     {
@@ -764,6 +1012,80 @@ export function CommandCenter() {
     },
   ];
 
+  const experimentColumns: Column<ExperimentRow>[] = [
+    { key: "hypothesis", header: "Experiment", cell: (e) => e.hypothesis || `${humanize(e.kind)} · ${e.id.slice(0, 8)}` },
+    { key: "status", header: "Status", cell: (e) => <StatusBadge status={e.status} /> },
+    { key: "metric", header: "Primary metric", cell: (e) => humanize(e.primary_metric), hideBelow: "md" },
+    {
+      key: "samples",
+      header: "Samples",
+      align: "right",
+      cell: (e) =>
+        e.result.total_samples === undefined ? (
+          <span className="ym-muted" title={`Below-gate: minimum_sample is ${e.minimum_sample}`}>
+            —
+          </span>
+        ) : (
+          e.result.total_samples
+        ),
+    },
+    {
+      key: "winner",
+      header: "Winner",
+      /* Only a COMPLETED experiment with a backend-named winner names one.
+       * Anything else is "—": this console never invents a lesson. */
+      cell: (e) =>
+        e.status.toUpperCase() === "COMPLETED" && e.result.winner ? (
+          e.result.winner
+        ) : (
+          <span className="ym-muted">—</span>
+        ),
+    },
+    {
+      key: "confidence",
+      header: "Confidence",
+      cell: (e) => (e.confidence ? e.confidence : <span className="ym-muted">—</span>),
+      hideBelow: "lg",
+    },
+  ];
+
+  const memoryColumns: Column<MemoryRow>[] = [
+    {
+      key: "lesson",
+      header: "Lesson",
+      cell: (m) => (
+        <span title={m.content}>
+          {m.topic || "Untitled"} — {(m.content ?? "").slice(0, 140)}
+          {(m.content ?? "").length > 140 ? "…" : ""}
+        </span>
+      ),
+    },
+    {
+      key: "type",
+      header: "Kind",
+      cell: (m) => <Badge tone="info" title="Engine-derived interpretation, not evidence">{humanize(m.type)}</Badge>,
+      hideBelow: "md",
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (m) => <StatusBadge status={m.effective_status || m.status} />,
+    },
+    {
+      key: "evidence",
+      header: "Evidence",
+      align: "right",
+      cell: (m) => (m.source_ids ?? []).length + (m.evidence_ids ?? []).length,
+    },
+    {
+      key: "confidence",
+      header: "Confidence",
+      align: "right",
+      cell: (m) => pct(m.confidence),
+      hideBelow: "lg",
+    },
+  ];
+
   const campaignState = panelState(data.campaigns, errors.campaigns, settled, reload);
   const scheduleState = panelState(data.schedule, errors.schedule, settled, reload);
   const jobState = panelState(data.jobs, errors.jobs, settled, reload);
@@ -776,6 +1098,36 @@ export function CommandCenter() {
   const inboxState = panelState(data.inbox, errors.inbox, settled, reload);
   const chainsState = panelState(data.chains, errors.chains, settled, reload);
   const contentState = panelState(data.content, errors.content, settled, reload);
+  const experimentsState = panelState(data.experiments, errors.experiments, settled, reload);
+  const memoriesState = panelState(data.memories, errors.memories, settled, reload);
+
+  const activeWorkCount = countOrNull(activeJobs);
+  const renderCount = countOrNull(rendering);
+  const workCount =
+    activeWorkCount === null || renderCount === null ? null : activeWorkCount + renderCount;
+
+  const tabs = [
+    { id: "work", label: "Workflows", count: workCount ?? undefined },
+    { id: "publish", label: "Publish", count: countOrNull(upcoming) ?? undefined },
+    { id: "money", label: "Costs & risk", count: countOrNull(unknownSubmissions) ?? undefined },
+    {
+      id: "intel",
+      label: "Intelligence",
+      count: countOrNull(runningExperiments) ?? undefined,
+    },
+    {
+      id: "sys",
+      label: "System",
+      count: readiness ? readiness.blocking_failures.length : undefined,
+    },
+  ];
+
+  const attnSummary =
+    settled && failed.length === 0
+      ? `${alerts.length} item${alerts.length === 1 ? "" : "s"} need${alerts.length === 1 ? "s" : ""} attention.`
+      : settled
+        ? `${alerts.length} item${alerts.length === 1 ? "" : "s"} need attention. ${failed.length} panel${failed.length === 1 ? "" : "s"} unavailable.`
+        : "Loading workspace state.";
 
   return (
     <>
@@ -815,425 +1167,695 @@ export function CommandCenter() {
         </Panel>
       )}
 
-      {/* ---- headline metrics ------------------------------------------- */}
-      <Panel title="At a glance" dense>
-        <Grid min={190} gap="sm">
-          <Metric
-            label="Active campaigns"
-            value={countOrNull(campaigns, isActiveCampaign as (row: never) => boolean)}
-            source={campaigns ? `GET /campaigns` : undefined}
+      <div className="ops-console">
+        {/* ---- status rail ------------------------------------------------ */}
+        <nav className="ops-rail" aria-label="Operations status">
+          <span className="ops-rail-label" aria-hidden="true">
+            Status
+          </span>
+          <RailBlock
+            kicker="System"
+            display={readiness ? humanize(readiness.status) : null}
+            unavailable={readiness === null}
+            verdict={
+              readiness === null
+                ? "Readiness unknown"
+                : readiness.blocking_failures.length > 0
+                  ? `${readiness.blocking_failures.length} blocking — down`
+                  : "All dependencies verified"
+            }
+            tone={
+              readiness === null
+                ? "neutral"
+                : readiness.blocking_failures.length > 0
+                  ? "danger"
+                  : "success"
+            }
+            hint="GET /system/readiness. Activates the System tab."
+            onGo={() => go("sys")}
           />
-          <Metric
-            label="Scheduled to run"
-            value={countOrNull(upcoming)}
-            source={schedule ? `GET /calendar` : undefined}
-          />
-          <Metric
-            label="Active jobs & renders"
-            value={countOrNull(activeJobs)}
-            source={jobs ? `GET /jobs` : undefined}
-          />
-          <Metric
-            label="Pending reviews"
-            value={countOrNull(openReviews)}
-            source={data.reviews ? `GET /reviews` : undefined}
-          />
-          <StatTile
-            label="SUBMISSION_UNKNOWN"
-            value={countOrNull(unknownSubmissions)}
-            unavailable={unknownSubmissions === null}
-            tone={toneForStatus("SUBMISSION_UNKNOWN")}
-            hint="May already be billed. Never shown as failed; no retry is offered."
-            source={incidents ? `GET /provider-maturity/incidents` : undefined}
-          />
-          <StatTile
-            label="Spend last 24h"
-            /* HONESTY (§8): the tile is UNAVAILABLE when the total is null --
-             * an empty ledger, or one holding an exposure nobody can price.
-             * `<Money usd={null}>` already renders "unknown", but marking the
-             * whole tile unavailable keeps it from reading as a figure. The gate
-             * below stays a real verdict: unknown spend eats headroom. */
+          <RailBlock
+            kicker="Spend 24h"
+            display={costs ? <Money usd={costs.spent_last_24h_usd} /> : null}
             unavailable={costs === null || costs.spent_last_24h_usd === null}
-            value={costs ? <Money usd={costs.spent_last_24h_usd} tone={costs.within_budget ? "success" : "danger"} /> : undefined}
-            hint={
-              costs
-                ? costs.spent_last_24h_usd === null
-                  ? `No total: ${costs.spent_last_24h_unknown_exposure_rows} cost row(s) record an unpriceable exposure. Remaining is bounded conservatively at ${costs.remaining_usd.toFixed(4)}.`
-                  : `${humanize(String(costs.within_budget ? "within budget" : "over budget"))} · remaining ${costs.remaining_usd.toFixed(4)}`
-                : undefined
+            verdict={
+              costs === null || costs.spent_last_24h_usd === null
+                ? "Spend unknown — headroom bounded"
+                : costs.within_budget
+                  ? `Within budget · ${costs.remaining_usd.toFixed(4)} left`
+                  : `Over budget · ${costs.remaining_usd.toFixed(4)} left`
             }
-            tone={costs === null || costs.spent_last_24h_usd === null ? "neutral" : costs.within_budget ? "success" : "danger"}
-            source={costs ? `GET /costs` : undefined}
-          />
-          <Metric
-            label="Blocking dependencies"
-            value={readiness ? readiness.blocking_failures.length : null}
-            tone={readiness && readiness.blocking_failures.length > 0 ? "danger" : "success"}
-            source={readiness ? `GET /system/readiness` : undefined}
-          />
-          <Metric
-            label="Needs reconciliation"
-            value={countOrNull(reconcileIncidents)}
-            tone="unknown"
-            source={incidents ? `GET /provider-maturity/incidents` : undefined}
-          />
-        </Grid>
-      </Panel>
-
-      {/* ---- what needs attention --------------------------------------- */}
-      <Panel
-        title="What needs attention"
-        subtitle="Blocking dependencies, dead jobs, failed items and money that must be reconciled."
-        dense
-      >
-        {alerts.length === 0 ? (
-          <EmptyState
-            title="Nothing is blocked"
-            description="No blocking dependency, dead job, failed content item or unreconciled paid incident."
-          />
-        ) : (
-          <div className="ym-notif-wrap">
-            {alerts.map((a) => (
-              <div key={a.key} className="ym-notif-item">
-                <Badge tone={a.tone} dot>
-                  {humanize(a.tone)}
-                </Badge>
-                <div>
-                  <div className="ym-notif-title">{a.what}</div>
-                  <div className="ym-notif-detail">{a.detail}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Panel>
-
-      <Grid min={340} gap="md">
-        {/* ---- active campaigns ---------------------------------------- */}
-        <Panel title="Active campaigns" dense>
-          <QueryBoundary query={campaignState} skeletonRows={4}>
-            {(d) => (
-              <DataTable
-                rows={d.items.filter(isActiveCampaign)}
-                columns={campaignColumns}
-                rowKey={(c) => c.id}
-                caption="Active campaigns"
-                empty="No active campaigns"
-                emptyHint="Every campaign is completed, archived or cancelled."
-                onRowClick={() => navigate("/campaigns")}
-              />
-            )}
-          </QueryBoundary>
-        </Panel>
-
-        {/* ---- scheduled content --------------------------------------- */}
-        <Panel title="Scheduled content" dense>
-          <QueryBoundary query={scheduleState} skeletonRows={4}>
-            {(d) => (
-              <DataTable
-                rows={d.items}
-                columns={scheduleColumns}
-                rowKey={(e) => e.id}
-                caption="Scheduled content"
-                empty="Nothing scheduled"
-                emptyHint="No PENDING calendar entries. DISPATCHING, QUEUED and FAILED entries are listed here too."
-                onRowClick={(e) => openProject(e.content_item_id)}
-              />
-            )}
-          </QueryBoundary>
-        </Panel>
-
-        {/* ---- active jobs / renders ------------------------------------ */}
-        <Panel title="Active jobs & renders" subtitle="Latest 100 jobs plus every content item whose video is still rendering." dense>
-          <QueryBoundary query={jobState} skeletonRows={4}>
-            {(d) => (
-              <DataTable
-                rows={d.items.filter(isActiveJob)}
-                columns={jobColumns}
-                rowKey={(j) => j.id}
-                caption="Active jobs"
-                empty="No job is queued, running, waiting or retrying"
-                emptyHint="This panel reads the latest 100 jobs only; older queued work would not appear here."
-              />
-            )}
-          </QueryBoundary>
-          <QueryBoundary query={contentState} skeletonRows={2}>
-            {(d) => (
-              <DataTable
-                rows={(rendering ?? []) as ContentRow[]}
-                columns={[
-                  { key: "topic", header: "Rendering", cell: (c) => c.topic },
-                  { key: "status", header: "Status", cell: (c) => <StatusBadge status={c.video?.status} /> },
-                  {
-                    key: "progress",
-                    header: "Progress",
-                    align: "right",
-                    cell: (c) => (typeof c.video?.progress === "number" ? `${c.video.progress}%` : "—"),
-                  },
-                  { key: "engine", header: "Engine", cell: (c) => c.video?.engine || "—", hideBelow: "md" },
-                ]}
-                rowKey={(c) => c.id}
-                caption="Renders in flight"
-                empty="No render is in flight"
-                onRowClick={(c) => openProject(c.id)}
-                maxHeight={220}
-              />
-            )}
-          </QueryBoundary>
-        </Panel>
-
-        {/* ---- paid incidents (SUBMISSION_UNKNOWN) ---------------------- */}
-        <Panel
-          title="Paid incidents"
-          subtitle="States travel verbatim from the paid executor. Nothing here is safe to resubmit unless retry_safe is true."
-          dense
-        >
-          <QueryBoundary query={incidentsState} skeletonRows={4}>
-            {(d) => (
-              <>
-                <Grid min={150} gap="sm">
-                  <StatTile
-                    label="SUBMISSION_UNKNOWN"
-                    value={d.items.filter((i) => i.state.toUpperCase().includes("SUBMISSION_UNKNOWN")).length}
-                    tone={toneForStatus("SUBMISSION_UNKNOWN")}
-                    hint="Billed-but-unusable or 2xx-without-a-body"
-                  />
-                  <StatTile
-                    label="Unknown exposure"
-                    value={d.unknown_exposure_count}
-                    tone={toneForStatus("UNKNOWN_EXPOSURE")}
-                    hint="Accepted calls nobody can price"
-                  />
-                  <StatTile
-                    label="Retry proven safe"
-                    value={d.items.filter((i) => i.retry_safe).length}
-                    tone="info"
-                    hint="Provably undelivered submits only"
-                  />
-                </Grid>
-                <DataTable
-                  rows={d.items}
-                  columns={incidentColumns}
-                  rowKey={(i) => i.incident_id}
-                  caption="Paid incidents"
-                  empty="No paid incident is open"
-                  emptyHint="No video submission and no cost entry is carrying an ambiguous state."
-                />
-              </>
-            )}
-          </QueryBoundary>
-        </Panel>
-
-        {/* ---- spend ---------------------------------------------------- */}
-        <Panel title="Spend" subtitle="Last 24 hours against the daily budget." dense>
-          <QueryBoundary query={costsState} skeletonRows={3}>
-            {(d) => (
-              <>
-                <Grid min={150} gap="sm">
-                  <StatTile
-                    label="Spent 24h"
-                    /* HONESTY (§8): null ⇒ UNAVAILABLE. `remaining_usd` and
-                     * `within_budget` stay real: they are the budget GATE, and an
-                     * unpriceable exposure must consume headroom, not create it.
-                     *
-                     * Not $0.0000 for an empty window: that reads "$0.00 spent",
-                     * which is a claim, so the reason travels in the hint. */
-                    unavailable={d.spent_last_24h_usd === null}
-                    value={<Money usd={d.spent_last_24h_usd} tone={d.within_budget ? "success" : "danger"} />}
-                    tone={d.spent_last_24h_usd === null ? "neutral" : d.within_budget ? "success" : "danger"}
-                    hint={
-                      d.spent_last_24h_usd === null
-                        ? `No total: ${d.spent_last_24h_unknown_exposure_rows} cost row(s) record an exposure nobody can price.`
-                        : undefined
-                    }
-                    source="GET /costs"
-                  />
-                  <StatTile
-                    label="Daily budget"
-                    value={<Money usd={d.daily_budget_usd} />}
-                    source="GET /costs"
-                  />
-                  <StatTile
-                    label="Remaining"
-                    value={<Money usd={d.remaining_usd} tone={d.within_budget ? "success" : "danger"} />}
-                    tone={d.within_budget ? "success" : "danger"}
-                    hint="Bounded conservatively: an unpriceable exposure is treated as spend, never as room."
-                  />
-                  <StatTile label="Per video budget" value={<Money usd={d.per_video_budget_usd} />} source="GET /costs" />
-                </Grid>
-                <DataTable
-                  rows={Object.entries(d.last_24h_by_category).map(([category, usd]) => ({ category, usd }))}
-                  columns={[
-                    { key: "category", header: "Category", cell: (r) => humanize(r.category) },
-                    { key: "usd", header: "Spent 24h", align: "right", cell: (r) => <Money usd={r.usd} /> },
-                  ]}
-                  rowKey={(r) => r.category}
-                  caption="Spend by category"
-                  empty="No cost entry in the last 24 hours"
-                  emptyHint="The ledger has no row for this window, which is different from a zero-cost day."
-                />
-              </>
-            )}
-          </QueryBoundary>
-        </Panel>
-
-        {/* ---- pending reviews ------------------------------------------ */}
-        <Panel title="Pending reviews" dense>
-          <QueryBoundary query={reviewsState} skeletonRows={3}>
-            {(d) => (
-              <DataTable
-                rows={d.items.filter(isOpenReview)}
-                columns={reviewColumns}
-                rowKey={(r) => r.id}
-                caption="Pending reviews"
-                empty="No review is waiting on a human"
-                emptyHint="DRAFT, IN_REVIEW and CHANGES_REQUESTED are the states that need somebody."
-                onRowClick={() => navigate("/projects")}
-              />
-            )}
-          </QueryBoundary>
-        </Panel>
-
-        {/* ---- recent publications -------------------------------------- */}
-        <Panel title="Recent publications" subtitle="MOCK and LIVE never share a badge." dense>
-          <QueryBoundary query={postsState} skeletonRows={4}>
-            {(d) => (
-              <>
-                <Grid min={150} gap="sm">
-                  <Metric label="Live publications" value={countOrNull(livePosts)} source="GET /publishing/posts" />
-                  <Metric label="Mock publications" value={countOrNull(mockPosts)} tone="mock" source="GET /publishing/posts" />
-                  <Metric
-                    label="With a metric snapshot"
-                    value={countOrNull(measuredPosts)}
-                    hint="Others report no metric row yet"
-                    source="GET /publishing/posts"
-                  />
-                </Grid>
-                <DataTable
-                  rows={d.items}
-                  columns={postColumns}
-                  rowKey={(p) => p.id}
-                  caption="Recent publications"
-                  empty="Nothing published yet"
-                  emptyHint="A publication appears here once a publishing job wrote a post row."
-                />
-              </>
-            )}
-          </QueryBoundary>
-        </Panel>
-
-        {/* ---- planner opportunities ------------------------------------ */}
-        <Panel
-          title="Planner opportunities"
-          subtitle={data.planner?.note}
-          dense
-        >
-          <QueryBoundary query={plannerState} skeletonRows={4}>
-            {(d) => (
-              <DataTable
-                rows={d.opportunities}
-                columns={plannerColumns}
-                rowKey={(o) => o.id}
-                caption="Planner opportunities"
-                empty="No scored opportunity"
-                emptyHint="The planner has not scored anything for this workspace yet."
-              />
-            )}
-          </QueryBoundary>
-        </Panel>
-
-        {/* ---- inbox opportunities -------------------------------------- */}
-        <Panel title="Inbox opportunities" subtitle="Lead, partnership and request signals with their evidence count." dense>
-          <QueryBoundary query={inboxState} skeletonRows={4}>
-            {(d) => (
-              <DataTable
-                rows={d.items}
-                columns={inboxColumns}
-                rowKey={(o) => o.id}
-                caption="Inbox opportunities"
-                empty="No community signal"
-                emptyHint="The inbox has no lead, partnership or request opportunity."
-                onRowClick={() => navigate("/inbox")}
-              />
-            )}
-          </QueryBoundary>
-        </Panel>
-
-        {/* ---- provider readiness --------------------------------------- */}
-        <Panel
-          title="Provider health"
-          subtitle={readiness?.message}
-          dense
-        >
-          <QueryBoundary query={readinessState} skeletonRows={4}>
-            {(d) => (
-              <DataTable
-                rows={d.checks}
-                columns={readinessColumns}
-                rowKey={(c) => c.id}
-                caption="Readiness probes"
-                empty="No readiness probe reported"
-                emptyHint="The readiness service returned no checks."
-              />
-            )}
-          </QueryBoundary>
-        </Panel>
-
-        {/* ---- queue health --------------------------------------------- */}
-        <Panel title="Queue health" subtitle="Status histogram over the latest 100 jobs." dense>
-          <QueryBoundary query={jobState} skeletonRows={3}>
-            {() =>
-              queueCounts === null ? (
-                <Metric label="Jobs" value={null} />
-              ) : Object.keys(queueCounts).length === 0 ? (
-                <EmptyState title="No job recorded" description="This workspace has no job row at all." />
-              ) : (
-                <DataTable
-                  rows={Object.entries(queueCounts).map(([status, count]) => ({ status, count }))}
-                  columns={[
-                    { key: "status", header: "Status", cell: (r) => <StatusBadge status={r.status} /> },
-                    { key: "count", header: "Jobs", align: "right", cell: (r) => r.count },
-                  ]}
-                  rowKey={(r) => r.status}
-                  caption="Job status histogram"
-                  empty="No job recorded"
-                />
-              )
+            tone={
+              costs === null || costs.spent_last_24h_usd === null
+                ? "neutral"
+                : costs.within_budget
+                  ? "success"
+                  : "danger"
             }
-          </QueryBoundary>
-        </Panel>
+            hint="GET /costs. Activates the Costs & risk tab."
+            onGo={() => go("money")}
+          />
+          <RailBlock
+            kicker="Active work"
+            display={workCount}
+            unavailable={workCount === null}
+            verdict={
+              workCount === null ? "Queue unknown" : workCount === 0 ? "Queue idle" : `${workCount} in flight`
+            }
+            tone={workCount === null ? "neutral" : workCount === 0 ? "success" : "info"}
+            hint="GET /jobs + GET /content render states. Activates the Workflows tab."
+            onGo={() => go("work")}
+          />
+          <RailBlock
+            kicker="Paid risk"
+            display={countOrNull(unknownSubmissions)}
+            unavailable={unknownSubmissions === null}
+            verdict={
+              unknownSubmissions === null
+                ? "Exposure unknown"
+                : unknownSubmissions.length > 0
+                  ? `${unknownSubmissions.length} ambiguous — reconcile`
+                  : "No ambiguous submission"
+            }
+            tone={
+              unknownSubmissions === null
+                ? "neutral"
+                : unknownSubmissions.length > 0
+                  ? "unknown"
+                  : "success"
+            }
+            hint="GET /provider-maturity/incidents. Activates the Costs & risk tab."
+            onGo={() => go("money")}
+          />
+          <RailBlock
+            kicker="Publishing"
+            display={
+              upcoming === null || livePosts === null ? null : `${upcoming.length} queued · ${livePosts.length} live`
+            }
+            unavailable={upcoming === null || livePosts === null}
+            verdict={
+              upcoming === null || livePosts === null
+                ? "Schedule unknown"
+                : upcoming.length === 0
+                  ? "Nothing queued"
+                  : `Next: ${utc(upcoming.map((e) => e.run_at).sort()[0])}`
+            }
+            tone={upcoming === null || livePosts === null ? "neutral" : upcoming.length === 0 ? "neutral" : "info"}
+            hint="GET /calendar + GET /publishing/posts. Activates the Publish tab."
+            onGo={() => go("publish")}
+          />
+        </nav>
 
-        {/* ---- routing chains ------------------------------------------- */}
-        <Panel title="Provider chains" subtitle={data.chains?.note} dense>
-          <QueryBoundary query={chainsState} skeletonRows={4}>
-            {(d) => (
-              <DataTable
-                rows={d.chains}
-                columns={chainColumns}
-                rowKey={(c) => `${c.task_type}-${c.at}`}
-                caption="Routed executions"
-                empty="No routed execution recorded"
-                emptyHint="The chain log is in-process and bounded; an empty log is not a clean bill of health."
-              />
-            )}
-          </QueryBoundary>
-        </Panel>
-      </Grid>
-
-      {failed.length === 0 && settled && (
-        <Panel dense>
-          <p className="ym-hint">
-            Every panel loaded. Figures come from the workspace endpoints named under each tile — nothing here is
-            estimated, and a missing provider reads UNAVAILABLE rather than zero.
+        {/* ---- main column -------------------------------------------------- */}
+        <div className="ops-main">
+          <p role="status" aria-live="polite" className="ym-sr-only">
+            {attnSummary}
           </p>
-        </Panel>
-      )}
 
-      {!settled && (
-        <Panel dense>
-          <Skeleton rows={2} />
-        </Panel>
-      )}
+          {/* Attention queue — always first, paid ambiguity ranked first. */}
+          <section className="ops-attn" aria-labelledby="ops-attn-title">
+            <div className="ops-attn-head">
+              <h2 className="ops-attn-title" id="ops-attn-title">
+                What needs attention
+              </h2>
+              <p className="ops-attn-sub">
+                {settled && (
+                  <>
+                    {alerts.length} item{alerts.length === 1 ? "" : "s"} ranked: paid ambiguity
+                    first, then blocked, failed, stale.{" "}
+                  </>
+                )}
+                SUBMISSION_UNKNOWN is never shown as failed and never offers a retry.
+              </p>
+            </div>
+            {!settled ? (
+              <div className="ops-empty">
+                <Skeleton rows={3} />
+              </div>
+            ) : alerts.length === 0 ? (
+              <div className="ops-empty">
+                <EmptyState
+                  title="Nothing is blocked"
+                  description="No blocking dependency, dead job, failed content item or unreconciled paid incident."
+                />
+              </div>
+            ) : (
+              <ol className="ops-attn-list">
+                {alerts.map((a, i) => (
+                  <li key={a.key} className={cx("ops-attn-item", `ym-tone-${a.tone}`)}>
+                    <span className="ops-attn-rank" aria-hidden="true">
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    <div>
+                      <Badge tone={a.tone} dot>
+                        {a.severity}
+                      </Badge>
+                      <div className="ops-attn-what">{a.what}</div>
+                      <div className="ops-attn-detail">{a.detail}</div>
+                      <div className="ops-attn-action">{a.action}</div>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+
+          {/* Tabbed drill-down */}
+          <div className="ops-tabwrap">
+            <div className="ops-tabbar">
+              <Tabs tabs={tabs} active={tab} onChange={(id) => setTab(id as TabId)} />
+            </div>
+            <div className="ops-tabpanel" role="tabpanel" aria-label={`${TAB_LABEL[tab]} detail`}>
+              {tab === "work" && (
+                <>
+                  <OpsSection
+                    id="campaigns"
+                    title="Active campaigns"
+                    meta="GET /campaigns"
+                    count={countOrNull(activeCampaigns)}
+                  >
+                    <QueryBoundary query={campaignState} skeletonRows={4}>
+                      {(d) => (
+                        <DataTable
+                          rows={d.items.filter(isActiveCampaign)}
+                          columns={campaignColumns}
+                          rowKey={(c) => c.id}
+                          caption="Active campaigns"
+                          empty="No active campaigns"
+                          emptyHint="Every campaign is completed, archived or cancelled."
+                          onRowClick={() => navigate("/campaigns")}
+                        />
+                      )}
+                    </QueryBoundary>
+                  </OpsSection>
+
+                  <OpsSection
+                    id="pulse"
+                    title="Campaign pulse"
+                    meta="DERIVED from GET /content campaign_id"
+                    count={Array.isArray(pulse) ? pulse.length : null}
+                  >
+                    {pulse === null ? (
+                      <Metric label="Campaign workload" value={null} source="GET /campaigns + GET /content" />
+                    ) : pulse === "unavailable" ? (
+                      <EmptyState
+                        title="UNAVAILABLE"
+                        description="The content library did not load, so per-campaign workload cannot be derived. No zeros are shown."
+                      />
+                    ) : (
+                      <DataTable
+                        rows={pulse}
+                        columns={[
+                          { key: "name", header: "Campaign", cell: (r) => r.campaign.name },
+                          { key: "status", header: "Status", cell: (r) => <StatusBadge status={r.campaign.status} /> },
+                          { key: "items", header: "Items", align: "right", cell: (r) => r.items },
+                          {
+                            key: "failed",
+                            header: "Failed",
+                            align: "right",
+                            cell: (r) => (r.failed > 0 ? <Badge tone="danger">{r.failed}</Badge> : r.failed),
+                          },
+                          { key: "rendering", header: "Rendering", align: "right", cell: (r) => r.rendering },
+                        ]}
+                        rowKey={(r) => r.campaign.id}
+                        caption="Per-campaign workload derived from content rows"
+                        empty="No active campaigns"
+                        onRowClick={(r) => navigate(`/campaigns/${r.campaign.id}`)}
+                      />
+                    )}
+                  </OpsSection>
+
+                  <OpsSection
+                    id="jobs"
+                    title="Active jobs & renders"
+                    meta="Latest 100 jobs · GET /jobs"
+                    count={workCount}
+                  >
+                    <QueryBoundary query={jobState} skeletonRows={4}>
+                      {(d) => (
+                        <DataTable
+                          rows={d.items.filter(isActiveJob)}
+                          columns={jobColumns}
+                          rowKey={(j) => j.id}
+                          caption="Active jobs"
+                          empty="No job is queued, running, waiting or retrying"
+                          emptyHint="This panel reads the latest 100 jobs only; older queued work would not appear here."
+                        />
+                      )}
+                    </QueryBoundary>
+                    <QueryBoundary query={contentState} skeletonRows={2}>
+                      {() => (
+                        <DataTable
+                          rows={(rendering ?? []) as ContentRow[]}
+                          columns={[
+                            { key: "topic", header: "Rendering", cell: (c) => c.topic },
+                            { key: "status", header: "Status", cell: (c) => <StatusBadge status={c.video?.status} /> },
+                            {
+                              key: "progress",
+                              header: "Progress",
+                              align: "right",
+                              cell: (c) => (typeof c.video?.progress === "number" ? `${c.video.progress}%` : "—"),
+                            },
+                            { key: "engine", header: "Engine", cell: (c) => c.video?.engine || "—", hideBelow: "md" },
+                          ]}
+                          rowKey={(c) => c.id}
+                          caption="Renders in flight"
+                          empty="No render is in flight"
+                          onRowClick={(c) => openProject(c.id)}
+                          maxHeight={220}
+                        />
+                      )}
+                    </QueryBoundary>
+                  </OpsSection>
+
+                  <OpsSection
+                    id="queue"
+                    title="Queue health"
+                    meta="Status histogram over the latest 100 jobs"
+                    defaultOpen={false}
+                  >
+                    <QueryBoundary query={jobState} skeletonRows={3}>
+                      {() =>
+                        queueCounts === null ? (
+                          <Metric label="Jobs" value={null} />
+                        ) : Object.keys(queueCounts).length === 0 ? (
+                          <EmptyState title="No job recorded" description="This workspace has no job row at all." />
+                        ) : (
+                          <DataTable
+                            rows={Object.entries(queueCounts).map(([status, count]) => ({ status, count }))}
+                            columns={[
+                              { key: "status", header: "Status", cell: (r) => <StatusBadge status={r.status} /> },
+                              { key: "count", header: "Jobs", align: "right", cell: (r) => r.count },
+                            ]}
+                            rowKey={(r) => r.status}
+                            caption="Job status histogram"
+                            empty="No job recorded"
+                          />
+                        )
+                      }
+                    </QueryBoundary>
+                  </OpsSection>
+
+                  <OpsSection
+                    id="reviews"
+                    title="Pending reviews"
+                    meta="DRAFT · IN_REVIEW · CHANGES_REQUESTED"
+                    count={countOrNull(openReviews)}
+                  >
+                    <QueryBoundary query={reviewsState} skeletonRows={3}>
+                      {(d) => (
+                        <DataTable
+                          rows={d.items.filter(isOpenReview)}
+                          columns={reviewColumns}
+                          rowKey={(r) => r.id}
+                          caption="Pending reviews"
+                          empty="No review is waiting on a human"
+                          emptyHint="DRAFT, IN_REVIEW and CHANGES_REQUESTED are the states that need somebody."
+                          onRowClick={() => navigate("/projects")}
+                        />
+                      )}
+                    </QueryBoundary>
+                  </OpsSection>
+                </>
+              )}
+
+              {tab === "publish" && (
+                <>
+                  <OpsSection
+                    id="upcoming"
+                    title="Upcoming publications"
+                    meta="PENDING entries · GET /calendar"
+                    count={countOrNull(upcoming)}
+                  >
+                    <QueryBoundary query={scheduleState} skeletonRows={4}>
+                      {(d) => (
+                        <DataTable
+                          rows={d.items}
+                          columns={scheduleColumns}
+                          rowKey={(e) => e.id}
+                          caption="Scheduled content"
+                          empty="Nothing scheduled"
+                          emptyHint="No PENDING calendar entries. DISPATCHING, QUEUED and FAILED entries are listed here too."
+                          onRowClick={(e) => openProject(e.content_item_id)}
+                        />
+                      )}
+                    </QueryBoundary>
+                  </OpsSection>
+
+                  <OpsSection
+                    id="output"
+                    title="Recent output"
+                    meta="MOCK and LIVE never share a badge"
+                    count={posts ? posts.length : null}
+                  >
+                    <QueryBoundary query={postsState} skeletonRows={4}>
+                      {() => (
+                        <>
+                          <Grid min={150} gap="sm">
+                            <Metric label="Live publications" value={countOrNull(livePosts)} source="GET /publishing/posts" />
+                            <Metric label="Mock publications" value={countOrNull(mockPosts)} tone="mock" source="GET /publishing/posts" />
+                            <Metric
+                              label="With a metric snapshot"
+                              value={countOrNull(measuredPosts)}
+                              hint="Others report no metric row yet"
+                              source="GET /publishing/posts"
+                            />
+                          </Grid>
+                          <DataTable
+                            rows={data.posts?.items ?? []}
+                            columns={postColumns}
+                            rowKey={(p) => p.id}
+                            caption="Recent publications"
+                            empty="Nothing published yet"
+                            emptyHint="A publication appears here once a publishing job wrote a post row."
+                            maxHeight={320}
+                          />
+                        </>
+                      )}
+                    </QueryBoundary>
+                  </OpsSection>
+                </>
+              )}
+
+              {tab === "money" && (
+                <>
+                  <OpsSection
+                    id="spend"
+                    title="Spend — budget status"
+                    meta="Last 24h against the daily budget · GET /costs"
+                  >
+                    <QueryBoundary query={costsState} skeletonRows={3}>
+                      {(d) => (
+                        <>
+                          <Grid min={150} gap="sm">
+                            <StatTile
+                              label="Spent 24h"
+                              /* Null ⇒ UNAVAILABLE. `remaining_usd` and
+                               * `within_budget` stay real: they are the budget
+                               * GATE, and an unpriceable exposure must consume
+                               * headroom, not create it. */
+                              unavailable={d.spent_last_24h_usd === null}
+                              value={<Money usd={d.spent_last_24h_usd} tone={d.within_budget ? "success" : "danger"} />}
+                              tone={d.spent_last_24h_usd === null ? "neutral" : d.within_budget ? "success" : "danger"}
+                              hint={
+                                d.spent_last_24h_usd === null
+                                  ? `No total: ${d.spent_last_24h_unknown_exposure_rows} cost row(s) record an exposure nobody can price.`
+                                  : undefined
+                              }
+                              source="GET /costs"
+                            />
+                            <StatTile
+                              label="Daily budget"
+                              value={<Money usd={d.daily_budget_usd} />}
+                              source="GET /costs"
+                            />
+                            <StatTile
+                              label="Remaining"
+                              value={<Money usd={d.remaining_usd} tone={d.within_budget ? "success" : "danger"} />}
+                              tone={d.within_budget ? "success" : "danger"}
+                              hint="Bounded conservatively: an unpriceable exposure is treated as spend, never as room."
+                            />
+                            <StatTile label="Per video budget" value={<Money usd={d.per_video_budget_usd} />} source="GET /costs" />
+                          </Grid>
+                          <DataTable
+                            rows={Object.entries(d.last_24h_by_category).map(([category, usd]) => ({ category, usd }))}
+                            columns={[
+                              { key: "category", header: "Category", cell: (r) => humanize(r.category) },
+                              { key: "usd", header: "Spent 24h", align: "right", cell: (r) => <Money usd={r.usd} /> },
+                            ]}
+                            rowKey={(r) => r.category}
+                            caption="Spend by category"
+                            empty="No cost entry in the last 24 hours"
+                            emptyHint="The ledger has no row for this window, which is different from a zero-cost day."
+                          />
+                        </>
+                      )}
+                    </QueryBoundary>
+                  </OpsSection>
+
+                  <OpsSection
+                    id="incidents"
+                    title="Paid incidents"
+                    meta="States travel verbatim · no resubmit unless retry_safe"
+                    count={incidents ? incidents.length : null}
+                  >
+                    <QueryBoundary query={incidentsState} skeletonRows={4}>
+                      {(d) => (
+                        <>
+                          <Grid min={150} gap="sm">
+                            <StatTile
+                              label="SUBMISSION_UNKNOWN"
+                              value={d.items.filter((i) => i.state.toUpperCase().includes("SUBMISSION_UNKNOWN")).length}
+                              tone={toneForStatus("SUBMISSION_UNKNOWN")}
+                              hint="Billed-but-unusable or 2xx-without-a-body"
+                            />
+                            <StatTile
+                              label="Unknown exposure"
+                              value={d.unknown_exposure_count}
+                              tone={toneForStatus("UNKNOWN_EXPOSURE")}
+                              hint="Accepted calls nobody can price"
+                            />
+                            <StatTile
+                              label="Retry proven safe"
+                              value={d.items.filter((i) => i.retry_safe).length}
+                              tone="info"
+                              hint="Provably undelivered submits only"
+                            />
+                          </Grid>
+                          <DataTable
+                            rows={d.items}
+                            columns={incidentColumns}
+                            rowKey={(i) => i.incident_id}
+                            caption="Paid incidents"
+                            empty="No paid incident is open"
+                            emptyHint="No video submission and no cost entry is carrying an ambiguous state."
+                          />
+                        </>
+                      )}
+                    </QueryBoundary>
+                  </OpsSection>
+                </>
+              )}
+
+              {tab === "intel" && (
+                <>
+                  <OpsSection
+                    id="perf"
+                    title="Performance signals"
+                    meta="DERIVED from measured snapshots only — unmeasured posts contribute nothing"
+                    count={perf ? perf.measured : null}
+                  >
+                    <QueryBoundary query={postsState} skeletonRows={3}>
+                      {() =>
+                        perf === null || perf.total === null ? (
+                          <Metric label="Measured publications" value={null} source="GET /publishing/posts" />
+                        ) : perf.measured === 0 ? (
+                          <EmptyState
+                            title="No measured publication"
+                            description="No live publication has a metric snapshot yet. Coverage is unknown, not zero."
+                          />
+                        ) : (
+                          <>
+                            <Grid min={150} gap="sm">
+                              <Metric
+                                label="Measured views"
+                                value={perf.views}
+                                hint={`Summed over ${perf.measured} measured publication${perf.measured === 1 ? "" : "s"} of ${perf.total} live`}
+                                source="DERIVED · GET /publishing/posts"
+                              />
+                              <Metric
+                                label="Measured likes"
+                                value={perf.likes}
+                                source="DERIVED · GET /publishing/posts"
+                              />
+                              <Metric
+                                label="Measured comments"
+                                value={perf.comments}
+                                source="DERIVED · GET /publishing/posts"
+                              />
+                              <StatTile
+                                label="Mean completion"
+                                unavailable={perf.avgCompletion === null}
+                                value={perf.avgCompletion === null ? undefined : pct(perf.avgCompletion)}
+                                hint="Mean over snapshots that report a completion rate"
+                                source="DERIVED · GET /publishing/posts"
+                              />
+                            </Grid>
+                            <DataTable
+                              rows={(measuredPosts ?? [])
+                                .slice()
+                                .sort((a, b) => (b.metrics.views ?? 0) - (a.metrics.views ?? 0))}
+                              columns={postColumns}
+                              rowKey={(p) => p.id}
+                              caption="Measured publications, best views first"
+                              empty="No measured publication"
+                              maxHeight={280}
+                            />
+                          </>
+                        )
+                      }
+                    </QueryBoundary>
+                  </OpsSection>
+
+                  <OpsSection
+                    id="experiments"
+                    title="Experiment results"
+                    meta="No lesson below the sample gate · GET /experiments"
+                    count={experiments ? experiments.length : null}
+                  >
+                    <QueryBoundary query={experimentsState} skeletonRows={3}>
+                      {(d) => (
+                        <DataTable
+                          rows={d.items}
+                          columns={experimentColumns}
+                          rowKey={(e) => e.id}
+                          caption="Experiment results"
+                          empty="No experiment recorded"
+                          emptyHint="An experiment appears here once POST /experiments wrote a draft row."
+                          onRowClick={() => navigate("/experiments")}
+                        />
+                      )}
+                    </QueryBoundary>
+                  </OpsSection>
+
+                  <OpsSection
+                    id="learnings"
+                    title="What agents learned"
+                    meta="Engine-derived interpretations, statuses verbatim"
+                    count={learnings ? learnings.length : null}
+                  >
+                    <QueryBoundary query={memoriesState} skeletonRows={3}>
+                      {(d) => {
+                        const rows = (learnings ?? []).slice(0, 8);
+                        return rows.length === 0 ? (
+                          <EmptyState
+                            title="No derived lesson stored"
+                            description="No CREATIVE_LESSON, EXPERIMENT_RESULT, PLATFORM_LEARNING, AUDIENCE_INSIGHT, COMMUNITY_INSIGHT or CONTENT_RESULT memory is stored for this workspace."
+                          />
+                        ) : (
+                          <>
+                            <DataTable
+                              rows={rows}
+                              columns={memoryColumns}
+                              rowKey={(m) => m.id}
+                              caption="Agent learnings"
+                              empty="No derived lesson stored"
+                              onRowClick={() => navigate("/memory")}
+                              maxHeight={320}
+                            />
+                            {(learnings ?? []).length > 8 && (
+                              <p className="ym-hint">
+                                Showing 8 of {(learnings ?? []).length} derived lessons. The rest live under Memory.
+                              </p>
+                            )}
+                            {d.items.length > (learnings ?? []).length && (
+                              <p className="ym-hint">
+                                {d.items.length - (learnings ?? []).length} further memories are evidence or
+                                unclassified rows, not agent lessons — they are listed under Memory, not here.
+                              </p>
+                            )}
+                          </>
+                        );
+                      }}
+                    </QueryBoundary>
+                  </OpsSection>
+
+                  <OpsSection
+                    id="chains"
+                    title="Agent decisions — provider chains"
+                    meta={data.chains?.note}
+                    count={chains ? chains.length : null}
+                    defaultOpen={false}
+                  >
+                    <QueryBoundary query={chainsState} skeletonRows={4}>
+                      {(d) => (
+                        <DataTable
+                          rows={d.chains}
+                          columns={chainColumns}
+                          rowKey={(c) => `${c.task_type}-${c.at}`}
+                          caption="Routed executions"
+                          empty="No routed execution recorded"
+                          emptyHint="The chain log is in-process and bounded; an empty log is not a clean bill of health."
+                        />
+                      )}
+                    </QueryBoundary>
+                  </OpsSection>
+
+                  <OpsSection
+                    id="nextwork"
+                    title="Suggested next work"
+                    meta="Planner basis + inbox signals, never virality claims"
+                    defaultOpen={false}
+                  >
+                    <QueryBoundary query={plannerState} skeletonRows={3}>
+                      {(d) => (
+                        <DataTable
+                          rows={d.opportunities}
+                          columns={plannerColumns}
+                          rowKey={(o) => o.id}
+                          caption="Planner opportunities"
+                          empty="No scored opportunity"
+                          emptyHint="The planner has not scored anything for this workspace yet."
+                        />
+                      )}
+                    </QueryBoundary>
+                    <QueryBoundary query={inboxState} skeletonRows={3}>
+                      {(d) => (
+                        <DataTable
+                          rows={d.items}
+                          columns={inboxColumns}
+                          rowKey={(o) => o.id}
+                          caption="Inbox opportunities"
+                          empty="No community signal"
+                          emptyHint="The inbox has no lead, partnership or request opportunity."
+                          onRowClick={() => navigate("/inbox")}
+                        />
+                      )}
+                    </QueryBoundary>
+                  </OpsSection>
+                </>
+              )}
+
+              {tab === "sys" && (
+                <OpsSection
+                  id="readiness"
+                  title="System readiness"
+                  meta={readiness?.message ?? "GET /system/readiness"}
+                  count={failedChecks ? failedChecks.length : null}
+                >
+                  <QueryBoundary query={readinessState} skeletonRows={4}>
+                    {(d) => (
+                      <DataTable
+                        rows={d.checks}
+                        columns={readinessColumns}
+                        rowKey={(c) => c.id}
+                        caption="Readiness probes"
+                        empty="No readiness probe reported"
+                        emptyHint="The readiness service returned no checks."
+                      />
+                    )}
+                  </QueryBoundary>
+                </OpsSection>
+              )}
+            </div>
+          </div>
+
+          {failed.length === 0 && settled && (
+            <Panel dense>
+              <p className="ym-hint">
+                Every panel loaded. Figures come from the workspace endpoints named under each tile — nothing here is
+                estimated, and a missing provider reads UNAVAILABLE rather than zero.
+              </p>
+            </Panel>
+          )}
+
+          {!settled && (
+            <Panel dense>
+              <Skeleton rows={2} />
+            </Panel>
+          )}
+        </div>
+      </div>
     </>
   );
 }

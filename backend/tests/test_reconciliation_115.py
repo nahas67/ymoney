@@ -340,8 +340,64 @@ def test_video_checker_uses_the_storage_boundary_and_matches_storage_keys(
         "a path outside workspace storage must not verify")
 
 
+def test_video_checker_does_not_read_a_file_the_storage_boundary_refused(
+    db_session, workspace_with_user, tmp_path, monkeypatch
+):
+    """A refused path must stay refused even when the file really exists.
+
+    ``managed_path`` is THE storage boundary: it returns None for a path outside
+    the workspace directory so a tampered row cannot make a caller read another
+    workspace's bytes. If the verifier re-adopts that same path with a bare
+    ``Path(...).exists()`` fallback, the refusal is undone and the boundary
+    becomes advisory. The earlier sibling test could only prove this with
+    ``/etc/passwd``, which exists on the Linux runner and not on a Windows
+    developer machine, so it passed locally and failed in CI; this one uses a
+    file the test itself created, which exists on every platform.
+    """
+    from app.engine.intelligence import verifier
+    from app.services import storage as storage_service
+
+    ws_id = workspace_with_user["workspace"]
+    monkeypatch.chdir(tmp_path)
+
+    outside = tmp_path / "not-our-storage" / "video.mp4"
+    outside.parent.mkdir(parents=True, exist_ok=True)
+    outside.write_bytes(b"not workspace owned bytes")
+
+    monkeypatch.setattr(storage_service, "STORAGE_ROOT", tmp_path / "managed")
+    assert storage_service.managed_path(ws_id, str(outside)) is None, (
+        "precondition: the storage boundary must refuse this path")
+
+    class _Video:
+        id = "vid-1"
+        workspace_id = ws_id
+        status = "READY"
+        file_path = str(outside)
+
+    class _Session:
+        def get(self, model, ident):
+            return _Video() if model.__name__ == "Video" else None
+
+        def query(self, *a, **k):
+            return self
+
+        def filter(self, *a, **k):
+            return self
+
+        def first(self):
+            return None
+
+        def all(self):
+            return []
+
+    contract = verifier.CompletionContract(kind="video", subject_id="vid-1")
+    _execution, _verdict, checks = verifier.check_video(_Session(), ws_id, contract)
+    names = {c["name"]: c for c in checks}
+    assert names["file_real_nonzero"]["passed"] is False, (
+        "a file outside workspace storage must never verify, even when it exists")
+
+
 def test_asset_lookup_accepts_workspace_relative_storage_keys():
-    """D-F5: storage_key is data/videos/<ws>/<name>, never a bare basename."""
     source = (REPO_BACKEND / "app" / "engine" / "intelligence" / "verifier.py").read_text(
         encoding="utf-8")
     assert 'MediaAsset.storage_key == path' in source, (

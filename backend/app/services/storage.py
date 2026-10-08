@@ -8,12 +8,43 @@ same interface without touching agents or engines.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from loguru import logger
+
+#: A Windows drive component -- ``C:`` -- anywhere in a stored path.
+#:
+#: It is refused on every platform. On Windows such a path is absolute, so
+#: resolving it escapes the workspace; on POSIX the very same string is an
+#: ordinary relative directory, so a guard written against the host's own
+#: ``pathlib`` accepts it there. The same stored row would then be readable on
+#: one platform and refused on the other, which is a portability bug with a
+#: security shape. A drive component is never a legitimate workspace-relative
+#: name, so the check is unconditional rather than platform-dependent.
+_DRIVE_COMPONENT = re.compile(r"^[A-Za-z]:$")
+
+
+def has_drive_component(value: str, *, allow_leading: bool = False) -> bool:
+    """True when a path component of ``value`` is a Windows drive letter.
+
+    Both separators are honoured: a stored row may carry ``C:\\x`` or ``C:/x``,
+    and normalising only one of them would leave the other as an ordinary
+    directory name.
+
+    ``allow_leading`` exists for callers that legitimately accept an ABSOLUTE
+    path, where ``C:/data/file`` is the ordinary Windows spelling of a real file
+    and the containment check is what must judge it. Those callers still refuse
+    an *embedded* drive (``masks/C:/x``), which no honest absolute path contains.
+    Callers that require a workspace-RELATIVE key leave it False: there, a drive
+    anywhere -- including first -- means the value is not relative at all.
+    """
+    parts = PurePosixPath(str(value or "").replace("\\", "/")).parts
+    candidates = parts[1:] if allow_leading and parts else parts
+    return any(_DRIVE_COMPONENT.match(part) for part in candidates)
 
 
 def _resolve_storage_root() -> Path:
@@ -62,6 +93,8 @@ def managed_path(workspace_id: str, stored_path: str) -> Path | None:
     """
     if not workspace_id or not stored_path or stored_path.startswith("mock:"):
         return None
+    if has_drive_component(stored_path, allow_leading=True):
+        return None
     storage_root = STORAGE_ROOT.resolve()
     workspace_root = (STORAGE_ROOT / workspace_id).resolve()
     if not _inside(storage_root, workspace_root):
@@ -84,6 +117,8 @@ def validate_storage_key(workspace_id: str, key: str):
 
     if not workspace_id or not (key or "").strip():
         return None
+    if has_drive_component(key):
+        return None
     normalized = PurePosixPath((key or "").replace("\\", "/"))
     if normalized.is_absolute() or ".." in normalized.parts:
         return None
@@ -102,7 +137,10 @@ def mock_render_spec_path(reference: str) -> Path | None:
     """Resolve a mock artifact reference without permitting path traversal."""
     if not reference.startswith("mock:"):
         return None
-    relative = Path(reference.split(":", 1)[1])
+    tail = reference.split(":", 1)[1]
+    if has_drive_component(tail):
+        return None
+    relative = Path(tail)
     root = MOCK_ROOT.resolve()
     if relative.is_absolute() or ".." in relative.parts or relative.name != "final-1.mp4":
         return None

@@ -96,9 +96,12 @@ def check_video(session, workspace_id: str, contract: CompletionContract) -> tup
             via_boundary = real_path is not None
         except Exception:
             real_path = None
-        if real_path is None:
-            candidate = Path(path)
-            real_path = candidate if candidate.exists() else None
+        # No raw-path fallback. ``managed_path`` is the storage boundary: it
+        # refuses a path outside STORAGE_ROOT/<workspace> precisely so a tampered
+        # row cannot make this checker read another workspace's bytes. Re-adopting
+        # the same path with a bare ``Path(...).exists()`` made that refusal
+        # advisory -- any file that happened to exist on the host, such as
+        # /etc/passwd on Linux, was verified anyway. A refused path stays refused.
     exists = bool(real_path is not None and real_path.exists())
     size = real_path.stat().st_size if exists else 0
     checks.append(CheckResult("record_registered", True,

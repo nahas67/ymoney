@@ -35,10 +35,25 @@ def _content(db_session, ws_id, **kw):
     return item
 
 
-def _video(db_session, ws_id, tmp_path, status="READY"):
+def _video(db_session, ws_id, tmp_path, status="READY", monkeypatch=None):
+    """A rendered video stored the way the product stores one.
+
+    The file lives INSIDE ``STORAGE_ROOT/<workspace>``, because
+    ``services.storage.managed_path`` is the storage boundary and refuses
+    anything outside it -- the checker's ``file_real_nonzero`` verdict depends on
+    resolving through that boundary. Writing the fixture to a bare ``tmp_path``
+    instead only passed while the checker re-adopted refused paths with a
+    ``Path(...).exists()`` fallback, which is what made an out-of-boundary path
+    such as ``/etc/passwd`` verify on the Linux runner. A legitimate render is
+    inside the boundary, so the fixture now is too.
+    """
     from pathlib import Path
 
+    import app.services.storage as storage
     from app.models import ContentItem, MediaAsset, Video, VideoVariant
+
+    if monkeypatch is not None:
+        monkeypatch.setattr(storage, "STORAGE_ROOT", tmp_path / "videos")
 
     item = ContentItem(workspace_id=ws_id, topic="v")
     db_session.add(item)
@@ -46,16 +61,21 @@ def _video(db_session, ws_id, tmp_path, status="READY"):
     variant = VideoVariant(content_item_id=item.id, label="v1", script="hello world script")
     db_session.add(variant)
     db_session.flush()
-    f = tmp_path / f"vid-{os.urandom(3).hex()}.mp4"
+    name = f"vid-{os.urandom(3).hex()}.mp4"
+    f = storage.STORAGE_ROOT / ws_id / name
+    f.parent.mkdir(parents=True, exist_ok=True)
     f.write_bytes(b"\x00\x01\x02" * 1000)
     video = Video(variant_id=variant.id, workspace_id=ws_id, engine="mock",
                   status=status, file_path=str(f))
     db_session.add(video)
     db_session.flush()
     db_session.add(MediaAsset(workspace_id=ws_id, type="video", origin="render",
-                              provider="mock", storage_key=Path(str(f)).name,
+                              provider="mock", storage_key=name,
                               mime_type="video/mp4", file_size=3000))
     db_session.commit()
+    # Sanity: the fixture must be reachable THROUGH the boundary, or the checker
+    # is right to refuse it and the test would be asserting the wrong thing.
+    assert storage.managed_path(ws_id, str(f)) is not None
     return video
 
 
@@ -77,7 +97,7 @@ def test_video_verified_when_file_probe_qc_ok(db_session, workspace_with_user, t
 
     ws = workspace_with_user["workspace"]
     _probe(monkeypatch)
-    video = _video(db_session, ws, tmp_path)
+    video = _video(db_session, ws, tmp_path, monkeypatch=monkeypatch)
     db_session.add(QualityCheck(video_id=video.id, overall=80.0, passed=True))
     db_session.commit()
     row = verify(db_session, ws, CompletionContract(
@@ -93,7 +113,7 @@ def test_video_not_verified_on_resolution_mismatch(db_session, workspace_with_us
 
     ws = workspace_with_user["workspace"]
     _probe(monkeypatch)
-    video = _video(db_session, ws, tmp_path)
+    video = _video(db_session, ws, tmp_path, monkeypatch=monkeypatch)
     row = verify(db_session, ws, CompletionContract(
         kind="video", subject_id=video.id, expectations={"resolution": "1920x1080"}))
     assert row.verification_status == "NOT_VERIFIED"
@@ -104,18 +124,18 @@ def test_execution_status_separate_from_verification(db_session, workspace_with_
 
     ws = workspace_with_user["workspace"]
     _probe(monkeypatch)
-    video = _video(db_session, ws, tmp_path, status="FAILED")
+    video = _video(db_session, ws, tmp_path, status="FAILED", monkeypatch=monkeypatch)
     row = verify(db_session, ws, CompletionContract(kind="video", subject_id=video.id))
     assert row.execution_status == "FAILED"
     assert row.verification_status in ("VERIFIED", "PARTIALLY_VERIFIED")  # file itself proves out
 
 
-def test_video_cross_workspace_blocked(db_session, workspace_with_user, tmp_path):
+def test_video_cross_workspace_blocked(db_session, workspace_with_user, tmp_path, monkeypatch):
     from app.engine.intelligence.verifier import CompletionContract, verify
     from app.models import Workspace
 
     ws = workspace_with_user["workspace"]
-    video = _video(db_session, ws, tmp_path)
+    video = _video(db_session, ws, tmp_path, monkeypatch=monkeypatch)
     other = Workspace(name="Other WS", slug=f"ws-other-{os.urandom(4).hex()}")
     db_session.add(other)
     db_session.commit()
@@ -144,11 +164,11 @@ def _post(db_session, ws_id, video_id, is_mock=False):
     return post
 
 
-def test_publication_live_verified(db_session, workspace_with_user, tmp_path):
+def test_publication_live_verified(db_session, workspace_with_user, tmp_path, monkeypatch):
     from app.engine.intelligence.verifier import CompletionContract, verify
 
     ws = workspace_with_user["workspace"]
-    video = _video(db_session, ws, tmp_path)
+    video = _video(db_session, ws, tmp_path, monkeypatch=monkeypatch)
     post = _post(db_session, ws, video.id)
     row = verify(db_session, ws, CompletionContract(
         kind="publication", subject_id=post.id,
@@ -157,11 +177,11 @@ def test_publication_live_verified(db_session, workspace_with_user, tmp_path):
     assert row.verification_status == "VERIFIED"
 
 
-def test_publication_mock_never_verifies_live(db_session, workspace_with_user, tmp_path):
+def test_publication_mock_never_verifies_live(db_session, workspace_with_user, tmp_path, monkeypatch):
     from app.engine.intelligence.verifier import CompletionContract, verify
 
     ws = workspace_with_user["workspace"]
-    video = _video(db_session, ws, tmp_path)
+    video = _video(db_session, ws, tmp_path, monkeypatch=monkeypatch)
     post = _post(db_session, ws, video.id, is_mock=True)
     live_row = verify(db_session, ws, CompletionContract(
         kind="publication", subject_id=post.id, expectations={"live": True}))

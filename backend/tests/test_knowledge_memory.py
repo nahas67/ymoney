@@ -571,6 +571,19 @@ def test_effective_status_lifecycle_beats_age(db_session, workspace_with_user):
 
 
 def test_list_filters_order_and_limit_clamp(db_session, workspace_with_user):
+    """Filters, the documented order, and the limit clamp.
+
+    ``list`` orders by ``created_at DESC, id ASC``. Two rows written back to back
+    can share a wall-clock microsecond, and the tie-break is then the random
+    UUID primary key -- so an ordering assertion that leans on insertion order
+    alone passes or fails depending on how fast the machine ran the inserts.
+    That is a flaky test, not a flaky query, so the timestamps are pinned here
+    and the ORDER itself is what gets asserted.
+    """
+    from datetime import timedelta
+
+    from app.engine.knowledge.memory import utcnow
+
     ws = workspace_with_user["workspace"]
     unverified = GlobalMemory.store(
         db_session, ws, type="SOURCE", content="Alpha webhook pricing guide",
@@ -588,6 +601,16 @@ def test_list_filters_order_and_limit_clamp(db_session, workspace_with_user):
         db_session, ws, type="SOURCE", content="conversion 100% up",
         topic="stats", evidence_ids=["e1"],
     )
+
+    # Pin the two "pricing" rows a second apart so created_at DESC has a value to
+    # order by. Insertion order is the only thing that made this deterministic
+    # before, and it is not what list() promises.
+    later = utcnow() + timedelta(seconds=1)
+    for row_id, created in ((active["id"], later),
+                            (unverified["id"], later - timedelta(seconds=1))):
+        row = db_session.get(KnowledgeMemory, row_id)
+        row.created_at = created
+    db_session.flush()
 
     # case-insensitive substring over content + topic
     assert [r["id"] for r in GlobalMemory.list(db_session, ws, q="ALPHA")] == [

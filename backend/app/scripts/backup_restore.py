@@ -70,6 +70,7 @@ import contextlib
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -1472,6 +1473,28 @@ def is_sqlite(dsn: str) -> bool:
     return urlsplit(str(dsn or "")).scheme.startswith("sqlite")
 
 
+def sqlite_file_path(dsn: str) -> str:
+    """The FILE a SQLite DSN names, on any platform.
+
+    ``urlsplit("sqlite:////var/db/app.sqlite3").path`` is ``//var/db/app.sqlite3``:
+    one slash belongs to the URL authority, the rest is the absolute POSIX path.
+    Stripping *every* leading slash (``lstrip("/")``) turns a rooted database into
+    one relative to the cwd, so the tool reports "no SQLite database at" for a
+    file that exists -- the operator CLI failing only on Linux.
+
+    Exactly the URL's own separator is removed, and only when what follows is
+    not already the root of a path. That keeps the Windows spelling
+    ``sqlite:///C:/data/app.sqlite3`` resolving to ``C:/data/app.sqlite3`` while
+    leaving a rooted POSIX path rooted.
+    """
+    path = urlsplit(str(dsn or "")).path
+    if path.startswith("//"):
+        return path[1:]
+    if re.match(r"^/[A-Za-z]:[\\/]", path):
+        return path[1:]
+    return path
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     out_dir = Path(args.out or settings_default_backup_dir())
@@ -1479,7 +1502,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "backup":
             if is_sqlite(args.dsn):
-                manifest = backup_sqlite(urlsplit(args.dsn).path.lstrip("/")
+                manifest = backup_sqlite(sqlite_file_path(args.dsn)
                                          or args.dsn, out_dir)
             else:
                 manifest = backup(args.dsn, out_dir, container=args.container or None)

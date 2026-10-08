@@ -31,7 +31,9 @@ DESIGN RULES, EACH TRACEABLE TO A REQUIREMENT
 from __future__ import annotations
 
 import json
+import keyword
 import re
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -102,8 +104,7 @@ class _Inferencer:
         return name or "Observed"
 
     def _unique(self, base: str) -> str:
-        self._counter += 1
-        return f"{base}{self._counter}"
+        return base
 
     # -- public ------------------------------------------------------------
     def infer_response(
@@ -118,7 +119,10 @@ class _Inferencer:
             return None
 
         root = bodies[0]
-        base = self._model_name(spec_path)
+        # Method and endpoint identity must not alias. Nested names include their
+        # complete parent path; no field called `items` shares a global model.
+        digest = hashlib.sha256(f"{method.upper()} {spec_path}".encode()).hexdigest()[:8]
+        base = f"{method.capitalize()}{self._model_name(spec_path)}{digest}"
         if isinstance(root, list):
             # A bare array response: describe the ITEM, then wrap it, so the
             # published schema is an array of real items rather than array[any].
@@ -144,11 +148,7 @@ class _Inferencer:
         if name in self.models:
             return self.models[name]
 
-        keys: list[str] = []
-        for body in dicts:
-            for key in body:
-                if key not in keys:
-                    keys.append(key)
+        keys = sorted({key for body in dicts for key in body})
 
         # An object that was EMPTY in every observed state yields a model with no
         # fields, which with `extra="allow"` validates as `Any` -- exactly the
@@ -168,21 +168,19 @@ class _Inferencer:
             # state carried it. Giving every field a default would declare the
             # contract empty of requirements, which §3 forbids.
             is_required = all(key in b for b in dicts)
-            annotation = self._annotation(key, values)
+            annotation = self._annotation(key, values, f"{name}{_nested_name(key)}")
             safe = re.sub(r"[^0-9a-zA-Z_]", "_", key)
-            if safe and safe[0].isdigit():
+            if not safe or safe[0].isdigit() or safe.startswith("_") or keyword.iskeyword(safe):
                 safe = f"f_{safe}"
+            alias = f", alias={key!r}" if safe != key else ""
             if is_required:
                 n_required += 1
-                # Make it nullable-aware: if any observed state held null it can
-                # never be a required non-null field.
-                if annotation.endswith(" | None"):
-                    annotation = annotation[: -len(" | None")]
-                    fields.append(f"    {safe}: {annotation} | None = None")
-                else:
-                    fields.append(f"    {safe}: {annotation}")
+                # Required means the KEY exists, not that its value is non-null.
+                fields.append(f"    {safe}: {annotation}" + (f" = Field(...{alias})" if alias else ""))
             else:
-                fields.append(f"    {safe}: {annotation} = None")
+                if annotation != "None" and not annotation.endswith(" | None"):
+                    annotation += " | None"
+                fields.append(f"    {safe}: {annotation} = " + (f"Field(None{alias})" if alias else "None"))
 
         note = (
             f"\n    # {n_required} of {len(fields)} fields were present in every "
@@ -196,7 +194,7 @@ class _Inferencer:
         )
         return cls
 
-    def _annotation(self, field: str, values: list[Any]) -> str:
+    def _annotation(self, field: str, values: list[Any], name: str = "Value") -> str:
         present = [v for v in values if v is not None]
         nullable = len(present) < len(values)
 
@@ -225,7 +223,7 @@ class _Inferencer:
             kinds.add(_json_kind(v))
 
         if not kinds:
-            return "Any | None"
+            return "None"
         if kinds == {"str"}:
             return "str | None" if nullable else "str"
         if kinds == {"bool"}:
@@ -236,15 +234,22 @@ class _Inferencer:
                 return "float | None" if nullable else "float"
             return "int | None" if nullable else "int"
         if kinds == {"null"}:
-            return "Any | None"
+            return "None"
 
         if kinds == {"object"}:
+            objects = [v for v in present if isinstance(v, dict)]
+            keys = {k for v in objects for k in v}
+            # UUID/date-keyed dictionaries are records, not DTO properties.
+            # Emitting their keys freezes generated workspace ids into OpenAPI.
+            if keys and all(re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F-]{27}|\d{4}-\d{2}-\d{2}(?:T.*)?|\d+", k) for k in keys):
+                annotation = self._annotation(field, [v for obj in objects for v in obj.values()], name + "Value")
+                return f"dict[str, {annotation}]" + (" | None" if nullable else "")
             nested = self._emit_model(
-                _nested_name(field), [v for v in present if isinstance(v, dict)]
+                name, objects
             )
             if nested:
                 return f"{nested} | None" if nullable else nested
-            return "dict | None"
+            return "dict[str, JsonValue] | None" if nullable else "dict[str, JsonValue]"
 
         if kinds == {"array"}:
             # All items share a shape? Describe the item. Otherwise a heterogeneous
@@ -254,12 +259,16 @@ class _Inferencer:
             }
             if item_kinds == {"object"}:
                 rows = [i for arr in present if isinstance(arr, list) for i in arr if isinstance(i, dict)]
-                nested = self._emit_model(_nested_name(field) + "Row", rows) if rows else None
+                nested = self._emit_model(name + "Row", rows) if rows else None
                 if nested:
                     return f"list[{nested}] | None" if nullable else f"list[{nested}]"
-            return "list | None" if nullable else "list"
+            rows = [i for arr in present for i in arr]
+            item = self._annotation(field, rows, name + "Item") if rows else "JsonValue"
+            return f"list[{item}]" + (" | None" if nullable else "")
 
-        return "Any | None"
+        # Mixed JSON kinds have a real union, not an unconstrained Any schema.
+        branches = [self._annotation(field, [v for v in present if _json_kind(v) == kind], name + kind.capitalize()) for kind in sorted(kinds)]
+        return " | ".join(branches + (["None"] if nullable else []))
 
 
 def _json_kind(value: Any) -> str:
@@ -322,9 +331,9 @@ These models document the shape. They do not authorise anything.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, Literal
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 
 class _ObservedBase(BaseModel):

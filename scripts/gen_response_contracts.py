@@ -27,6 +27,12 @@ WHAT IS DELIBERATELY NOT DONE
 from __future__ import annotations
 
 import json
+import tempfile
+import socket
+import ipaddress
+import argparse
+import subprocess
+from unittest.mock import patch
 import sys
 from pathlib import Path
 
@@ -42,7 +48,7 @@ MAP_PATH = REPO / "backend" / "app" / "schemas" / "contract_map.json"
 REPORT = REPO / "docs" / "UI_CONTRACT_GENERATION.json"
 
 
-def main() -> int:
+def generate() -> int:
     print("=" * 78)
     print("RESPONSE CONTRACT GENERATION (Work 16.5.4 §1)")
     print("=" * 78)
@@ -161,7 +167,7 @@ def main() -> int:
         try:
             existing = json.loads(MAP_PATH.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            existing = {}
+            raise RuntimeError("contract_map.json is invalid JSON; refusing to discard it")
     candidate = {k: v for k, v in existing.items() if k not in table}
     # A retained entry whose model class was NOT emitted this run is DROPPED, not
     # kept.
@@ -192,16 +198,17 @@ def main() -> int:
     # negative numbers of remaining work, which is exactly the kind of number
     # that gets quoted as a result.
     inv_keys = {f"{c['method']} {c['specPath']}" for c in calls}
-    gap_closed = len(gap_keys & set(table))
-    gap_open = sorted(gap_keys - set(table))
+    # Final-state accounting is independent of yesterday's audit. Historical
+    # gapClosed/queue numbers made a second identical run change the report.
+    gap_closed = len(inv_keys & set(table))
+    gap_open = sorted(inv_keys - set(table))
     print()
     print("=" * 78)
     print("RESULT")
     print("=" * 78)
     print(f"  inventory calls observed  {len(calls)}")
     print(f"  distinct endpoints        {len(inv_keys)}")
-    print(f"  gap endpoints at start    {len(gap_keys)}")
-    print(f"  gap endpoints closed      {gap_closed}")
+    print(f"  observed endpoint shapes  {gap_closed}")
     print(f"  GAP ENDPOINTS REMAINING   {len(gap_open)}")
     print(f"  contracts inferred now    {len(table)}")
     print(f"  contracts retained        {len(retained)}")
@@ -222,9 +229,7 @@ def main() -> int:
             {
                 "inventory": len(calls),
                 "distinctEndpoints": len(inv_keys),
-                "queue": len(queue),
                 "generatedNow": len(table),
-                "gapClosed": gap_closed,
                 "gapRemaining": len(gap_open),
                 "retained": len(retained),
                 "contractsInTotal": len(merged),
@@ -241,7 +246,95 @@ def main() -> int:
     print(f"\nwrote {GENERATED.relative_to(REPO)}")
     print(f"wrote {MAP_PATH.relative_to(REPO)}")
     print(f"wrote {REPORT.relative_to(REPO)}")
+    unexplained = [s for s in skipped if not s.get("providerGated")]
+    if unexplained:
+        print(f"FAIL: {len(unexplained)} unexplained observation gaps", file=sys.stderr)
+        return 1
     return 0
+
+
+ARTIFACTS = (
+    GENERATED, MAP_PATH, REPORT, REPO / "frontend/src/api/openapi.json",
+    REPO / "docs/UI_CONTRACT_AUDIT.json", REPO / "docs/UI_ROUTE_RELEASE_MATRIX.json",
+    REPO / "docs/ANALYTICS_HONESTY_AUDIT.json",
+)
+
+
+def pipeline(check: bool = False) -> int:
+    """Single OS-neutral CI command. Every subprocess must actually succeed."""
+    before = {path: path.read_bytes() if path.exists() else None for path in ARTIFACTS}
+    frontend = REPO / "frontend"
+    commands = [
+        ([sys.executable, "scripts/gen_openapi.py"], REPO),
+        (["node", "node_modules/vitest/vitest.mjs", "run", "src/test/openapi-contract.test.ts", "--maxWorkers=1", "--pool=forks", "--reporter=dot"], frontend),
+        ([sys.executable, "scripts/gen_response_contracts.py"], REPO),
+        ([sys.executable, "scripts/gen_openapi.py"], REPO),
+        (["node", "node_modules/vitest/vitest.mjs", "run", "src/test/openapi-contract.test.ts", "--maxWorkers=1", "--pool=forks", "--reporter=dot"], frontend),
+        ([sys.executable, "scripts/audit_analytics_honesty.py"], REPO),
+        ([sys.executable, "scripts/gen_route_release_matrix.py"], REPO),
+    ]
+    for command, cwd in commands:
+        print(f"RUN: {' '.join(command)}", flush=True)
+        result = subprocess.run(command, cwd=cwd, check=False)
+        if result.returncode:
+            return result.returncode
+    if check:
+        drift = [str(path.relative_to(REPO)) for path in ARTIFACTS if path.read_bytes() != before[path]]
+        if drift:
+            print("FAIL: generated artifact drift: " + ", ".join(drift), file=sys.stderr)
+            return 1
+        print("PASS: all seven generated artifacts are byte-identical")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--pipeline", action="store_true", help="regenerate all seven release artifacts, fail on any command")
+    parser.add_argument("--check", action="store_true", help="with --pipeline, fail if any generated artifact changes")
+    args = parser.parse_args()
+    if args.pipeline:
+        return pipeline(args.check)
+    if args.check:
+        parser.error("--check requires --pipeline")
+    # Never observe against a developer database, .env credentials or workers.
+    # The ordinary command is the safe CI command on both Linux and Windows.
+    with tempfile.TemporaryDirectory(prefix="ymoney-contract-") as directory:
+        from app.core import config
+
+        config.settings = config.Settings.model_construct(
+            database_url=f"sqlite:///{Path(directory).joinpath('observe.db').as_posix()}",
+            storage_root=str(Path(directory) / "storage"),
+            secret_key="contract-observer-isolated-not-production",
+            tts_provider="edge",
+        )
+        config.get_settings = lambda: config.settings
+        from app.db import engine, session_scope
+        from app.migrations.runner import run_migrations
+        import app.models  # noqa: F401
+
+        with session_scope() as db:
+            run_migrations(db)
+
+        original_connect = socket.socket.connect
+        original_connect_ex = socket.socket.connect_ex
+
+        def local_only(original):
+            def connect(sock, address):
+                # Windows asyncio builds its own loopback socketpair. Permit
+                # that machinery, never a remote provider transport.
+                if isinstance(address, tuple) and ipaddress.ip_address(address[0]).is_loopback:
+                    return original(sock, address)
+                return refuse_network()
+            return connect
+
+        def refuse_network(*args, **kwargs):
+            raise OSError("contract observation forbids network transport")
+
+        try:
+            with patch.object(socket.socket, "connect", local_only(original_connect)), patch.object(socket.socket, "connect_ex", local_only(original_connect_ex)):
+                return generate()
+        finally:
+            engine.dispose()
 
 
 if __name__ == "__main__":

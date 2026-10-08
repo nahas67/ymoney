@@ -16,6 +16,10 @@ dist/
 # Env & secrets
 .env
 .env.local
+.env.*
+!.env.example
+!.env.sample
+!.env.template
 *.key
 
 # Data
@@ -54,3 +58,12 @@ MoneyPrinterTurbo/.git.disabled/
 
 # TypeScript incremental build cache (regenerated on every build)
 frontend/tsconfig.tsbuildinfo
+
+# Playwright run artefacts (screenshots/traces on failure)
+frontend/test-results/
+frontend/playwright-report/
+
+# Browser authentication is runtime-only, including developer storage snapshots.
+**/.auth/
+**/storage-state*.json
+**/playwright-storage-state*.json

@@ -5,75 +5,225 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22.20.0"
+  UV_VERSION: "0.11.21"
+  PYTHON_VERSION: "3.12.13"
+  PYTHONUTF8: "1"
+
 jobs:
   backend:
-    name: Backend (tests)
+    name: Backend tests (${{ matrix.lane }}, Python 3.12 + ffmpeg)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [fast, slow]
     defaults:
       run:
         working-directory: backend
+        shell: bash
     steps:
       - uses: actions/checkout@v4
-
       - uses: astral-sh/setup-uv@v5
-
-      - name: Install dependencies
-        run: uv sync
-
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install and verify real media binaries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          ffmpeg -version
+          ffprobe -version
+      - name: Fresh locked Python install
+        run: |
+          mkdir -p ../release-evidence/backend-${{ matrix.lane }}
+          uv sync --locked --python "$PYTHON_VERSION" 2>&1 | tee ../release-evidence/backend-${{ matrix.lane }}/install.log
+          uv run --locked python --version
       - name: Compile check
-        run: uv run python -m compileall -q app tests
+        run: uv run --locked python -m compileall -q app tests ../scripts
+      - name: Complete offline test lane (full logs and JUnit)
+        run: uv run --locked python ../scripts/run_backend_gate.py ${{ matrix.lane }} --output ../release-evidence/backend-${{ matrix.lane }}
+      - name: Bind backend evidence to the exact CI SHA
+        if: always()
+        run: python3 ../scripts/write_release_receipt.py --evidence ../release-evidence/backend-${{ matrix.lane }} --job "Backend tests (${{ matrix.lane }})" --status "${{ job.status }}" --sha "$GITHUB_SHA" --require-junit
+      - name: Preserve evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-${{ matrix.lane }}-${{ github.sha }}
+          path: release-evidence/backend-${{ matrix.lane }}/
+          if-no-files-found: error
+          retention-days: 14
 
-      - name: Test suite
-        # pytest-timeout (pyproject.toml) turns a hung test into a visible
-        # failure instead of stalling the job.
-        run: uv run pytest tests -q
-
-      - name: Slow integration tests
-        # Render-heavy coverage marked slow (top --durations); same gate as above.
-        run: uv run pytest tests -q -m slow
-
-      - name: Lint (ruff) — informational until backlog item F5 cleanup
-        # The repo carries a known ~500-finding style baseline. This step is a
-        # non-blocking signal today; flip `continue-on-error: false` once the
-        # F5 cleanup lands.
-        continue-on-error: true
-        run: uv run ruff check app tests --output-format concise
-
-  backend-slow:
-    name: Backend (slow integration tests)
+  backend-postgres:
+    name: PostgreSQL (fresh migrations, startup, replay, real parity tests)
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: backend
+        shell: bash
     steps:
       - uses: actions/checkout@v4
-
       - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Fresh locked Python install
+        run: |
+          mkdir -p ../release-evidence/postgres
+          uv sync --locked --python "$PYTHON_VERSION" 2>&1 | tee ../release-evidence/postgres/install.log
+      - name: Disposable PostgreSQL gate (random transient password; no supplied DSN)
+        # Existing PG tests read YMONEY_TEST_POSTGRES, NOT DATABASE_URL; the
+        # global conftest forces SQLite. This gate runs a separate real-PG app
+        # proof plus the PG-specific suites, and rejects ANY skipped PG test.
+        run: uv run --locked python ../scripts/run_release_postgres.py --output ../release-evidence/postgres
+      - name: Bind PostgreSQL evidence to the exact CI SHA
+        if: always()
+        run: python3 ../scripts/write_release_receipt.py --evidence ../release-evidence/postgres --job "PostgreSQL fresh migrations, startup, replay and parity" --status "${{ job.status }}" --sha "$GITHUB_SHA" --require-junit
+      - name: Preserve migration, schema, application and test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-${{ github.sha }}
+          path: release-evidence/postgres/
+          if-no-files-found: error
+          retention-days: 14
 
-      - name: Install dependencies
-        run: uv sync
-
-      - name: Slow integration tests
-        # Render-heavy coverage marked slow in pyproject/--durations.
-        run: uv run pytest tests -q -m slow
+  generated:
+    name: Generated contracts (determinism and drift)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Fresh locked Python install
+        run: |
+          mkdir -p ../release-evidence/generated
+          uv sync --locked --python "$PYTHON_VERSION" 2>&1 | tee ../release-evidence/generated/install.log
+      - name: Clean locked Node install (pipeline executes the contract suite)
+        working-directory: frontend
+        run: npm ci 2>&1 | tee ../release-evidence/generated/npm-ci.log
+      - name: Regenerate twice and reject drift
+        # Generator-lane owned interface. Missing script or nonzero exit fails
+        # loudly; never silently accept stale committed generated contracts.
+        run: uv run --locked python ../scripts/verify_generated_artifacts.py 2>&1 | tee ../release-evidence/generated/gate.log
+      - name: Verify generated NEW UI release documents
+        run: uv run --locked python ../scripts/gen_new_ui_release_docs.py --check 2>&1 | tee ../release-evidence/generated/release-docs.log
+      - name: Bind generation evidence to the exact CI SHA
+        if: always()
+        run: python3 ../scripts/write_release_receipt.py --evidence ../release-evidence/generated --job "Generated contracts determinism and drift" --status "${{ job.status }}" --sha "$GITHUB_SHA"
+      - name: Preserve generation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-${{ github.sha }}
+          path: release-evidence/generated/
+          if-no-files-found: error
+          retention-days: 14
 
   frontend:
-    name: Frontend (build)
+    name: Frontend (clean install, typecheck, build, Vitest)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: frontend
+        shell: bash
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Clean locked Node install
+        run: |
+          mkdir -p ../release-evidence/frontend
+          node --version
+          npm ci 2>&1 | tee ../release-evidence/frontend/install.log
+      - name: Typecheck
+        run: npx tsc -b --force 2>&1 | tee ../release-evidence/frontend/typecheck.log
+      - name: Production build
+        run: npx vite build 2>&1 | tee ../release-evidence/frontend/build.log
+      - name: Complete Vitest suite with JUnit
+        run: npm test -- --reporter=default --reporter=junit --outputFile=../release-evidence/frontend/vitest.xml 2>&1 | tee ../release-evidence/frontend/vitest.log
+      - name: Bind frontend evidence to the exact CI SHA
+        if: always()
+        run: python3 ../scripts/write_release_receipt.py --evidence ../release-evidence/frontend --job "Frontend clean install, typecheck, build and Vitest" --status "${{ job.status }}" --sha "$GITHUB_SHA" --require-junit
+      - name: Preserve complete frontend evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-${{ github.sha }}
+          path: release-evidence/frontend/
+          if-no-files-found: error
+          retention-days: 14
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Type-check + production build
-        run: npm run build
+  e2e:
+    name: Browser (full Playwright, real Chrome, isolated real backend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: frontend
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install real media binaries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+      - name: Fresh locked Python install
+        working-directory: backend
+        run: |
+          mkdir -p ../release-evidence/e2e
+          uv sync --locked --python "$PYTHON_VERSION" 2>&1 | tee ../release-evidence/e2e/python-install.log
+      - name: Clean locked Node install
+        run: npm ci 2>&1 | tee ../release-evidence/e2e/node-install.log
+      - name: Install real Chrome (not Chromium)
+        run: npx playwright install --with-deps chrome 2>&1 | tee ../release-evidence/e2e/chrome-install.log
+      - name: Build production preview
+        run: npm run build 2>&1 | tee ../release-evidence/e2e/build.log
+      - name: Full Chrome suite, real app startup and preview, zero skipped tests
+        working-directory: backend
+        # Evidence override preserves the portable isolated launcher.
+        # Backend has a temp DB, random auth key and no .env/provider secrets.
+        run: uv run --locked python ../scripts/run_release_e2e.py --output ../release-evidence/e2e
+      - name: Bind full Chrome evidence to the exact CI SHA
+        if: always()
+        run: python3 ../scripts/write_release_receipt.py --evidence ../release-evidence/e2e --job "Full Playwright real Chrome with isolated backend and preview" --status "${{ job.status }}" --sha "$GITHUB_SHA" --require-junit
+      - name: Preserve full errors, totals, screenshots and JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chrome-${{ github.sha }}
+          path: release-evidence/e2e/
+          if-no-files-found: error
+          retention-days: 14

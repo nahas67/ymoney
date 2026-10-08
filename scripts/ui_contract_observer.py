@@ -422,7 +422,7 @@ def load_inventory() -> list[dict[str, str]]:
     previously-published contracts for endpoints this run could not observe.
     """
     data = json.loads(AUDIT.read_text(encoding="utf-8"))
-    return list(data["calls"])
+    return [c for c in data["calls"] if c["class"] in ("SCHEMA_COVERED", "UNDECLARED_JSON")]
 
 
 def spec_path_to_url(
@@ -462,6 +462,32 @@ def provider_fixtures(session: dict[str, Any]) -> Iterator[Any]:
     import ui_provider_fixtures as pxf
 
     with contextlib.ExitStack() as stack:
+        # Edge needs no key: stub only the catalogue transport, leaving the
+        # production factory, qualification, projection and serializer intact.
+        from unittest.mock import AsyncMock, patch
+
+        stack.enter_context(patch("edge_tts.list_voices", AsyncMock(return_value=[
+            {"ShortName": "en-US-AriaNeural", "Gender": "Female", "Locale": "en-US"},
+        ])))
+        # Stock catalogue metadata is free, but still needs a key. A synthetic
+        # key and a transport response exercise the real adapter and router;
+        # no downloaded bytes, no live credentials, no paid render.
+        import httpx
+        from app.core.config import settings
+
+        original_get = httpx.get
+
+        def catalogue_get(url, **kwargs):
+            if url == "https://api.pexels.com/videos/search":
+                return httpx.Response(200, request=httpx.Request("GET", url), json={"videos": [
+                    {"id": 1, "image": "https://example.invalid/preview.jpg", "duration": 4,
+                     "user": {"name": "Observed"}, "url": "https://example.invalid/video/1",
+                     "width": 720, "height": 1280},
+                ]})
+            return original_get(url, **kwargs)
+
+        stack.enter_context(patch.object(settings, "pexels_api_key", "observed-not-a-live-key"))
+        stack.enter_context(patch.object(httpx, "get", catalogue_get))
         stack.enter_context(pxf.social_provider())
         stack.enter_context(pxf.lipsync_provider())
         pxf.set_meta_app_id(session["workspace_id"])
@@ -487,6 +513,103 @@ def observe(
             client, session, calls, seeded, rb
         )
     return observations
+
+
+def _prepare_autopilot_state(workspace_id: str, method: str, spec_path: str) -> None:
+    """Establish the loop state one autopilot transition needs, just in time.
+
+    The loop is a singleton per workspace and each transition guards on a
+    specific state. Observing the chain in inventory order satisfies at most
+    two of the five: pause 409s without a RUNNING run, resume 409s without a
+    PAUSED one, and start/run-one-cycle 500 on a run an earlier observation
+    created. All three are CORRECT refusals -- and all three leave the 200
+    shape unobserved.
+
+    So before each chain endpoint, put the loop in the state it requires:
+
+    - pause  <- a RUNNING run exists (insert a dedicated one; never touch the
+      rows other observations created, so their shapes are undisturbed);
+    - resume <- a PAUSED run exists;
+    - stop   <- any non-STOPPED run exists;
+    - start / run-one-cycle <- NO non-STOPPED run exists (settle the rest to
+      STOPPED first; a settled run is history, not an active loop).
+
+    `record_event` rows written by the transitions are ordinary audit trail,
+    not fixture pollution. Everything here runs against the throwaway
+    observation workspace.
+    """
+    prefix = "/api/v1/workspaces/{workspace_id}/autopilot/"
+    if not spec_path.startswith(prefix) or method.upper() != "POST":
+        return
+    action = spec_path[len(prefix):]
+    if action not in ("start", "pause", "resume", "stop", "run-one-cycle"):
+        return
+
+    from sqlalchemy import select  # noqa: E402
+
+    from app.db import SessionLocal  # noqa: E402
+    from app.models.ops import AutopilotRun  # noqa: E402
+
+    db = SessionLocal()
+    try:
+        if action in ("start", "run-one-cycle"):
+            for row in db.scalars(
+                select(AutopilotRun).where(
+                    AutopilotRun.workspace_id == workspace_id,
+                    AutopilotRun.state != "STOPPED",
+                )
+            ).all():
+                row.state = "STOPPED"
+            db.commit()
+            return
+        if action == "pause":
+            want = "RUNNING"
+        elif action == "resume":
+            want = "PAUSED"
+        else:  # stop: any non-stopped run will do
+            want = None
+        if want is not None:
+            exists = db.scalar(
+                select(AutopilotRun).where(
+                    AutopilotRun.workspace_id == workspace_id,
+                    AutopilotRun.state == want,
+                )
+            )
+            if exists is None:
+                import uuid as _uuid
+
+                db.add(
+                    AutopilotRun(
+                        id=str(_uuid.uuid4()),
+                        workspace_id=workspace_id,
+                        mode="CONTINUOUS",
+                        state=want,
+                        cycles_target=0,
+                    )
+                )
+                db.commit()
+        else:
+            exists = db.scalar(
+                select(AutopilotRun).where(
+                    AutopilotRun.workspace_id == workspace_id,
+                    AutopilotRun.state != "STOPPED",
+                )
+            )
+            if exists is None:
+                import uuid as _uuid
+
+                db.add(
+                    AutopilotRun(
+                        id=str(_uuid.uuid4()),
+                        workspace_id=workspace_id,
+                        mode="CONTINUOUS",
+                        state="RUNNING",
+                        cycles_target=0,
+                    )
+                )
+                db.commit()
+    finally:
+        db.close()
 
 
 def _observe_all(
@@ -518,6 +641,15 @@ def _observe_all(
         if endpoint in seen_endpoints:
             continue
         seen_endpoints.add(endpoint)
+        # The autopilot loop is a SINGLETON state machine: one active run per
+        # workspace, and each transition needs a specific state (pause ←
+        # RUNNING, resume ← PAUSED, start/run-one-cycle ← no active run).
+        # Inventory order cannot satisfy all five, so each step establishes
+        # its own precondition immediately before it is observed. Without
+        # this, pause/resume 409 and run-one-cycle 500s on a run the
+        # observation itself started -- correct refusals, but unobservable
+        # 200 shapes.
+        _prepare_autopilot_state(session["workspace_id"], method, spec_path)
         url = spec_path_to_url(spec_path, session["workspace_id"], seeded, method)
         # The same domain overrides the seeding pass uses. Consulting them here
         # too is what stops a spec-derived body -- structurally valid but not

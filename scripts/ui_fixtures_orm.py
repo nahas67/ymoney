@@ -28,6 +28,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
+from sqlalchemy import select
+
 from app.db import SessionLocal
 from app.models import (
     AvatarProfileRow,
@@ -39,18 +41,28 @@ from app.models import (
     EditorialPlan,
     EditorialPlanItem,
     Experiment,
+    ExportJob,
+    ExportProfile,
     LipSyncJob,
     LocalizedContent,
     LocalizationQCReport,
+    LongFormProject,
     MediaAsset,
+    Notification,
     Opportunity,
+    Project,
     PublishedPost,
     ScheduleEntry,
     SocialAccount,
     SocialInteraction,
+    SourceConnector,
+    TelegramLink,
+    TrendSource,
     UgcProjectRow,
     Video,
     VideoVariant,
+    WebhookSubscription,
+    WorkspaceMember,
 )
 
 
@@ -786,6 +798,208 @@ def _run_seeds(session: dict[str, Any]) -> dict[str, str]:
         ),
     )
     created["lipsync_job"] = lipsync_id
+
+    # -- contract-observation fixtures --------------------------------------
+    # These rows exist so the response-contract observer can watch endpoints
+    # whose preconditions would otherwise 404. Each is DEDICATED to one
+    # endpoint (see ROUTE_FIXTURE_OVERRIDES): sharing one row between two
+    # endpoints with conflicting preconditions manufactures a failure that
+    # looks like a missing provider.
+
+    # `POST /webhooks/{sub_id}/test` enqueues a dispatch job for an ACTIVE
+    # subscription. The enqueue is request-time only -- no outbound HTTP --
+    # so this is safe to observe. `secret_enc` is never decrypted here; the
+    # value is a placeholder and the observation workspace is throwaway.
+    webhook_test_id = _id()
+    put(
+        "webhook_test",
+        lambda: WebhookSubscription(
+            id=webhook_test_id,
+            workspace_id=wid,
+            url="https://example.invalid/hook",
+            secret_enc="observed",
+            events_json=["webhook.test"],
+            active=True,
+        ),
+    )
+    created["webhook_test"] = webhook_test_id
+
+    # `POST /knowledge/sources/{id}/sync` enqueues a SOURCE_SYNC job; nothing
+    # is fetched at request time. `rss` needs no OAuth at enqueue time.
+    # `disconnect` on the SAME row would disable it and break sync
+    # order-independently, so each gets its own row.
+    connector_sync_id = _id()
+    put(
+        "connector_sync",
+        lambda: SourceConnector(
+            id=connector_sync_id,
+            workspace_id=wid,
+            kind="rss",
+            name="An observed sync connector",
+            status="READY",
+            enabled=True,
+        ),
+    )
+    created["connector_sync"] = connector_sync_id
+
+    connector_disable_id = _id()
+    put(
+        "connector_disable",
+        lambda: SourceConnector(
+            id=connector_disable_id,
+            workspace_id=wid,
+            kind="rss",
+            name="An observed disconnect connector",
+            status="READY",
+            enabled=True,
+        ),
+    )
+    created["connector_disable"] = connector_disable_id
+
+    # `DELETE /trend-sources/{id}` removes the row. One row, observed once.
+    trend_source_id = _id()
+    put(
+        "trend_source",
+        lambda: TrendSource(
+            id=trend_source_id,
+            workspace_id=wid,
+            kind="mock",
+            name="An observed trend source",
+            enabled=True,
+        ),
+    )
+    created["trend_source"] = trend_source_id
+
+    # -- second-round observation fixtures -----------------------------------
+    # Same dedicated-row rule as above. Each of these endpoints 404s/409s/422s
+    # without a precondition row that no other endpoint can share.
+
+    # `POST /notifications/{id}/read` filters by (workspace, user): a foreign
+    # id is "not mine" and 404s. The row must belong to the observing user,
+    # who is the workspace's registering owner. The id is resolved once here
+    # because the export-cancel row below needs an owner too (`created_by` is
+    # non-nullable with no default).
+    owner_link = db.scalar(
+        select(WorkspaceMember).where(WorkspaceMember.workspace_id == wid)
+    )
+    owner_id = str(owner_link.user_id) if owner_link is not None else ""
+    if owner_link is not None:
+        notif_id = _id()
+        put(
+            "notification",
+            lambda: Notification(
+                id=notif_id,
+                workspace_id=wid,
+                user_id=owner_id,
+                kind="info",
+                payload_json={"observed": True},
+            ),
+        )
+        created["notification"] = notif_id
+
+    # `POST /exports` validates profile → format probe → compatibility, in
+    # that order, and writes nothing until all three pass. The profile is a
+    # workspace row cloning a builtin preset's own validated config, so the
+    # compatibility gate cannot fail on fixture grounds. MP4 probes available
+    # in this environment (see `GET /exports/formats`).
+    from app.engine.exporter.profiles import preset_config
+
+    export_profile_id = _id()
+    put(
+        "export_profile",
+        lambda: ExportProfile(
+            id=export_profile_id,
+            workspace_id=wid,
+            name="An observed export profile",
+            preset="SHORTS_1080x1920",
+            config_json=dict(preset_config("SHORTS_1080x1920")),
+            is_builtin=False,
+        ),
+    )
+    created["export_profile"] = export_profile_id
+
+    # `POST /exports/{id}/cancel` needs a QUEUED export. Seeded directly: the
+    # queue path itself is observed separately (see the body override), and
+    # cancelling a self-seeded row exercises the same state machine.
+    # `created_by` is non-nullable with no default, so the owner resolved
+    # above is reused -- omitting it fails the insert and the harness hands
+    # the cancel observation a random id.
+    export_queued_id = _id()
+    put(
+        "export_queued",
+        lambda: ExportJob(
+            id=export_queued_id,
+            workspace_id=wid,
+            profile_id=export_profile_id,
+            format="MP4",
+            target_type="timeline",
+            target_id=session.get("seeded", {}).get("timeline") or _id(),
+            state="QUEUED",
+            created_by=(owner_id or _id()),
+        ),
+    )
+    created["export_queued"] = export_queued_id
+
+    # Telegram links: `toggle` flips, `DELETE` removes. One shared row breaks
+    # whichever runs second, so each gets its own.
+    link_toggle_id = _id()
+    put(
+        "link_toggle",
+        lambda: TelegramLink(
+            id=link_toggle_id,
+            workspace_id=wid,
+            chat_id="observed-toggle",
+            chat_title="An observed toggle link",
+            active=True,
+        ),
+    )
+    created["link_toggle"] = link_toggle_id
+
+    link_delete_id = _id()
+    put(
+        "link_delete",
+        lambda: TelegramLink(
+            id=link_delete_id,
+            workspace_id=wid,
+            chat_id="observed-delete",
+            chat_title="An observed delete link",
+            active=True,
+        ),
+    )
+    created["link_delete"] = link_delete_id
+
+    # `POST /long-form/projects/{id}/advance` only needs the project to
+    # exist (`_get` → 404 otherwise); it enqueues a stage job. The same row
+    # backs the `{id}`-scoped READS (detail / estimate / progress).
+    longform_id = _id()
+    put(
+        "longform_project",
+        lambda: LongFormProject(
+            id=longform_id,
+            workspace_id=wid,
+            topic="An observed long-form project",
+            stage="IDEA",
+            status="DRAFT",
+        ),
+    )
+    created["longform_project"] = longform_id
+
+    # `GET /projects/{id}`. `Project` has no non-pipeline create route usable
+    # without queuing work, so the row is written directly; `created_by` is
+    # non-nullable, so the workspace owner resolved above is reused.
+    project_id = _id()
+    put(
+        "project",
+        lambda: Project(
+            id=project_id,
+            workspace_id=wid,
+            name="An observed project",
+            description="An observed project for contract observation.",
+            status="ACTIVE",
+            created_by=(owner_id or _id()),
+        ),
+    )
+    created["project"] = project_id
 
     db.close()
     return created

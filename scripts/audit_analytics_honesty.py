@@ -177,41 +177,41 @@ FIELDS: tuple[Audited, ...] = (
     A("/analytics/overview", "totals.views", UNAVAILABLE,
       "Seeded from None and promoted by the first PostMetric snapshot. Was a 0 "
       "accumulator, so an all-unmeasured workspace read 0 views.",
-      "backend/app/api/v1/misc.py:352", schema="Totals5"),
+      "backend/app/api/v1/misc.py:352", schema="GetApiV1WorkspacesWorkspaceAnalyticsOverview02e895a9Totals"),
     A("/analytics/overview", "totals.likes", UNAVAILABLE,
       "Same accumulator as totals.views.",
-      "backend/app/api/v1/misc.py:352", schema="Totals5"),
+      "backend/app/api/v1/misc.py:352", schema="GetApiV1WorkspacesWorkspaceAnalyticsOverview02e895a9Totals"),
     A("/analytics/overview", "totals.comments", UNAVAILABLE,
       "Same accumulator as totals.views.",
-      "backend/app/api/v1/misc.py:352", schema="Totals5"),
+      "backend/app/api/v1/misc.py:352", schema="GetApiV1WorkspacesWorkspaceAnalyticsOverview02e895a9Totals"),
     A("/analytics/overview", "totals.shares", UNAVAILABLE,
       "Same accumulator as totals.views.",
-      "backend/app/api/v1/misc.py:352", schema="Totals5"),
+      "backend/app/api/v1/misc.py:352", schema="GetApiV1WorkspacesWorkspaceAnalyticsOverview02e895a9Totals"),
     A("/analytics/overview", "totals.followers_gained", UNAVAILABLE,
       "Same accumulator as totals.views. Only providers reporting a follower "
       "delta contribute; the rest contribute nothing rather than a zero.",
-      "backend/app/api/v1/misc.py:352", schema="Totals5"),
+      "backend/app/api/v1/misc.py:352", schema="GetApiV1WorkspacesWorkspaceAnalyticsOverview02e895a9Totals"),
     A("/analytics/overview", "posts_published", MEASURED,
       "COUNT of published_posts rows. Zero published posts is a fact, not a gap.",
       "backend/app/api/v1/misc.py:393", nullable=False,
-      schema="ApiV1WorkspacesWorkspaceAnalyticsOverview4"),
+      schema="GetApiV1WorkspacesWorkspaceAnalyticsOverview02e895a9"),
     A("/analytics/overview", "content_items", MEASURED,
       "COUNT of content_items rows. A COUNT over an empty table is a real "
       "measured zero -- 'no rows' and 'no measurement' are different claims and "
       "only one of them is what a COUNT answers.",
       "backend/app/api/v1/misc.py:394", nullable=False,
-      schema="ApiV1WorkspacesWorkspaceAnalyticsOverview4"),
+      schema="GetApiV1WorkspacesWorkspaceAnalyticsOverview02e895a9"),
     A("/analytics/overview", "cost_total_usd", UNAVAILABLE,
       "Sum of PRICED ledger rows. None for an empty ledger (unknown-but-zero-"
       "observed) and None when any row is an UNKNOWN_EXPOSURE.",
       "backend/app/api/v1/misc.py:397", money=True, ledger=True,
       formula="sum(amount_usd) over priced rows; None if any row is unknown",
-      schema="ApiV1WorkspacesWorkspaceAnalyticsOverview4"),
+      schema="GetApiV1WorkspacesWorkspaceAnalyticsOverview02e895a9"),
     A("/analytics/overview", "cost_total_unknown_exposure_rows", MEASURED,
       "COUNT of ledger rows carrying the UNKNOWN_EXPOSURE marker. Exists so the "
       "UI can say WHY the total is missing instead of rendering a bare dash.",
       "backend/app/api/v1/misc.py:398", nullable=False,
-      schema="ApiV1WorkspacesWorkspaceAnalyticsOverview4"),
+      schema="GetApiV1WorkspacesWorkspaceAnalyticsOverview02e895a9"),
 
     # ---- GET /publishing/posts ---------------------------------------------
     A("/publishing/posts", "items[].metrics.views", UNAVAILABLE,
@@ -236,28 +236,28 @@ FIELDS: tuple[Audited, ...] = (
       "Sum over measured posts in the bucket. A bucket is registered before "
       "any post in it is known to be measured, so it was 0 for an all-"
       "unmeasured bucket.",
-      "backend/app/api/v1/misc.py:542", schema="ByTopicRow10",
+      "backend/app/api/v1/misc.py:542", schema="GetApiV1WorkspacesWorkspaceAnalyticsBreakdowns4fc5f26aByTopicRow",
       schema_field="total_views"),
     A("/analytics/breakdowns", "by_topic[].avg_views", DERIVED,
       "total_views / posts. None when the bucket has no measured post: an "
       "average over an empty sample is not zero.",
-      "backend/app/api/v1/misc.py:543", schema="ByTopicRow10",
+      "backend/app/api/v1/misc.py:543", schema="GetApiV1WorkspacesWorkspaceAnalyticsBreakdowns4fc5f26aByTopicRow",
       schema_field="avg_views",
       formula="round(total_views / posts) when posts > 0 and total_views is not None"),
     A("/analytics/breakdowns", "by_topic[].engagement_pct", DERIVED,
       "Mean engagement over the posts that HAVE a view count. The denominator "
       "is engagement_samples, not posts: a post with 0 views has no rate to "
       "average, and padding it as a 0.0 reported a low rate for a strong bucket.",
-      "backend/app/api/v1/misc.py:550", schema="ByTopicRow10",
+      "backend/app/api/v1/misc.py:550", schema="GetApiV1WorkspacesWorkspaceAnalyticsBreakdowns4fc5f26aByTopicRow",
       schema_field="engagement_pct",
       formula="100 * sum(engagement over posts with views>0) / engagement_samples"),
     A("/analytics/breakdowns", "by_hook_style[].avg_views", DERIVED,
       "As by_topic[].avg_views.",
-      "backend/app/api/v1/misc.py:543", schema="ByHookStyleRow11",
+      "backend/app/api/v1/misc.py:543", schema="GetApiV1WorkspacesWorkspaceAnalyticsBreakdowns4fc5f26aByHookStyleRow",
       schema_field="avg_views"),
     A("/analytics/breakdowns", "by_duration[].avg_views", DERIVED,
       "As by_topic[].avg_views.",
-      "backend/app/api/v1/misc.py:543", schema="ByDurationRow12",
+      "backend/app/api/v1/misc.py:543", schema="GetApiV1WorkspacesWorkspaceAnalyticsBreakdowns4fc5f26aByDurationRow",
       schema_field="avg_views"),
 
     # ---- GET /costs (misc.py::cost_summary) --------------------------------
@@ -431,15 +431,17 @@ FIELDS: tuple[Audited, ...] = (
     # ---- GET /ops/overview (ops.py::_costs_section) -------------------------
     A("/ops/overview", "costs.spent_last_24h_usd", UNAVAILABLE,
       "Duplicated GET /costs, so it duplicated the fabrication: a grouped SUM "
-      "re-summed as `float(amount or 0.0)`. The Command Center reads THIS "
-      "section, so fixing /costs alone would have left the dashboard lying.",
+      "re-summed as `float(amount or 0.0)`. The NEW UI Command Center reads "
+      "GET /costs instead, so this legacy endpoint's stale field does not drive "
+      "the dashboard. The backend metric remains inaccurate and out of scope.",
       "backend/app/api/v1/ops.py:278", money=True, ledger=True,
       formula="sum(amount_usd) over priced rows; None if any row is unknown",
       schema=None,
-      unresolved="NOT FIXED — OUT OF SCOPE (`api/v1/ops.py`). The Command Center "
-                 "reads this section rather than GET /costs, so the dashboard's "
-                 "spend tile still reads $0.0000 for an empty window. Fix: route "
-                 "this through `money_total` exactly as `misc.py` does."),
+       unresolved="NOT FIXED — OUT OF SCOPE (`api/v1/ops.py`). The backend field "
+                  "remains fabricated for an empty window. The NEW UI Command "
+                  "Center reads `/costs` instead, so this legacy field does not "
+                  "drive the dashboard spend tile. Fix: route this endpoint "
+                  "through `money_total` exactly as `misc.py` does."),
     A("/ops/overview", "costs.within_budget", MEASURED,
       "A BUDGET GATE, not a measurement.",
       "backend/app/api/v1/ops.py:292", nullable=False, gate=True,

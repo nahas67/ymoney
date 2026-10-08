@@ -24,6 +24,7 @@ Failure modes (all exit non-zero, all named on stdout)
   4. a required dimension is absent or null           (incomplete)
   5. a dimension still holds the string "pending"     (unmeasured)
   6. the registry itself declares a duplicate path    (registry fault)
+  7. a route's measured contract has zero endpoints   (vacuous coverage)
 
 Determinism
 -----------
@@ -244,6 +245,8 @@ def validate(matrix_routes: list[dict[str, Any]], registry: list[dict[str, Any]]
                     failures.append(f"{path}: `contract` is pending")
                 elif not isinstance(value.get("endpoints"), int):
                     failures.append(f"{path}: `contract.endpoints` is missing or not a count")
+                elif value["endpoints"] <= 0:
+                    failures.append(f"{path}: `contract.endpoints` must be positive, got {value['endpoints']}")
                 continue
             if not is_valid_value(value):
                 if value is None:

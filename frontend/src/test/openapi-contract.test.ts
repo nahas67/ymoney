@@ -21,7 +21,8 @@
 
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync, existsSync, writeFileSync } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+import { join, dirname, resolve, relative } from "node:path";
+import ts from "typescript";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -311,6 +312,29 @@ function readBalanced(src: string, open: number): string {
   return src.slice(open + 1);
 }
 
+/**
+ * Does the published document serve this raw path template as a GET?
+ *
+ * Used only by the third extraction pass, which cannot see the verb at the call
+ * site. Resolving the template to real spec paths and asking the DOCUMENT keeps
+ * that pass from inventing routing faults for POST-only mutations.
+ */
+function servedAsGet(raw: string): boolean {
+  const probe = add2Probe(raw);
+  return (specPathCandidates(probe).some((p) => Boolean(spec.paths[p]?.get)) ?? false);
+}
+
+/** Minimal ApiCall-shaped object so `specPathCandidates` can normalise a raw path. */
+function add2Probe(raw: string): ApiCall {
+  return {
+    file: "<template-probe>",
+    line: 0,
+    method: "get",
+    template: normaliseTemplate(raw),
+    global: false,
+  };
+}
+
 function add(
   out: ApiCall[],
   seen: Set<string>,
@@ -319,9 +343,8 @@ function add(
   method: (typeof HTTP_METHODS)[number],
   raw: string,
   global: boolean,
-) {
-  const template = normaliseTemplate(raw);
-  if (template.length < 2) return;
+) {  const template = normaliseTemplate(raw);
+  if (!template) return;
   const key = `${file}|${line}|${method}|${global}|${template}`;
   if (seen.has(key)) return;
   seen.add(key);
@@ -336,6 +359,99 @@ function add(
  * and a per-line scanner silently misses exactly those.
  */
 export function extractApiCalls(source: string, file: string): ApiCall[] {
+  return extractCallSites(source, file);
+}
+
+/** Resolve literals only when they flow into an actual HTTP call. The AST is
+ * independent of OpenAPI: a removed GET must remain visible as unresolved. */
+function extractCallSites(source: string, file: string): ApiCall[] {
+  const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const out: ApiCall[] = [];
+  const seen = new Set<string>();
+  const declarations: ts.VariableDeclaration[] = [];
+  const collect = (node: ts.Node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) declarations.push(node);
+    ts.forEachChild(node, collect);
+  };
+  collect(tree);
+  function literals(node: ts.Expression | undefined, trail = new Set<ts.Node>()): string[] {
+    if (!node || trail.has(node)) return [];
+    const next = new Set(trail).add(node);
+    if (ts.isStringLiteralLike(node)) return [node.text];
+    if (ts.isTemplateExpression(node)) {
+      let raw = node.head.text;
+      for (const span of node.templateSpans) {
+        const values = literals(span.expression, next);
+        const queryOnly = values.length > 0 && values.every((v) => !v || /^[?&]/.test(v));
+        raw += queryOnly ? (values.find(Boolean) || "") : `\${${span.expression.getText(tree)}}`;
+        raw += span.literal.text;
+      }
+      return [raw];
+    }
+    if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isNonNullExpression(node))
+      return literals(node.expression, next);
+    if (ts.isConditionalExpression(node)) return [...literals(node.whenTrue, next), ...literals(node.whenFalse, next)];
+    if (ts.isIdentifier(node)) {
+      // Nearest enclosing lexical declaration, never a same-name variable in a
+      // sibling component. Do not infer a GET merely because a string exists.
+      for (let scope: ts.Node | undefined = node.parent; scope; scope = scope.parent) {
+        if (!ts.isBlock(scope) && !ts.isSourceFile(scope)) continue;
+        const declaration = declarations.find((d) => d.parent.parent.parent === scope &&
+          ts.isIdentifier(d.name) && d.name.text === node.text);
+        if (declaration) return literals(declaration.initializer, next);
+      }
+    }
+    return [];
+  }
+  function record(node: ts.Node, expression: ts.Expression | undefined, method: ApiCall["method"], global: boolean) {
+    const line = tree.getLineAndCharacterOfPosition(node.getStart(tree)).line + 1;
+    for (let raw of literals(expression)) {
+      if (!raw.startsWith("/") && raw !== "") continue;
+      if (raw.startsWith("/api/v1/workspaces/${")) {
+        raw = raw.replace(/^\/api\/v1\/workspaces\/\$\{[^}]+\}/, "");
+        global = false;
+      } else if (raw.startsWith("/api/v1")) {
+        raw = raw.slice("/api/v1".length);
+        global = true;
+      }
+      // Empty conditional branches are disabled queries, not the workspace
+      // root. A literal empty argument really does request the root.
+      if (!raw && expression && !ts.isStringLiteralLike(expression)) continue;
+      add(out, seen, file.replace(/\\/g, "/"), line, method, raw || "/", global);
+    }
+  }
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node)) {
+      const callee = node.expression;
+      if (ts.isPropertyAccessExpression(callee) && callee.expression.getText(tree) === "wsApi") {
+        const verb = callee.name.text === "del" ? "delete" : callee.name.text;
+        if (HTTP_METHODS.includes(verb as ApiCall["method"])) record(node, node.arguments[0], verb as ApiCall["method"], false);
+      } else if (ts.isIdentifier(callee)) {
+        if (callee.text === "useWsQuery" || callee.text === "useQuery") record(node, node.arguments[0], "get", callee.text === "useQuery");
+        if (callee.text === "api") {
+          const verb = literals(node.arguments[0])[0]?.toLowerCase();
+          if (HTTP_METHODS.includes(verb as ApiCall["method"])) record(node, node.arguments[1], verb as ApiCall["method"], true);
+        }
+        if (callee.text === "fetch") {
+          const options = node.arguments[1];
+          const method = options && ts.isObjectLiteralExpression(options) ? options.properties.find((p) =>
+            ts.isPropertyAssignment(p) && p.name.getText(tree) === "method") : undefined;
+          const verb = method && ts.isPropertyAssignment(method) ? literals(method.initializer)[0]?.toLowerCase() : "get";
+          if (HTTP_METHODS.includes(verb as ApiCall["method"])) record(node, node.arguments[0], verb as ApiCall["method"], true);
+        }
+      }
+    }
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isPropertyAccessExpression(node.left) && node.left.name.text === "href") {
+      record(node, node.right, "get", true);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(tree);
+  return out;
+}
+
+function legacyExtractApiCalls(source: string, file: string): ApiCall[] {
   const out: ApiCall[] = [];
   const seen = new Set<string>();
   // Blank out line comments with spaces rather than deleting them. Removing the
@@ -394,6 +510,47 @@ export function extractApiCalls(source: string, file: string): ApiCall[] {
     );
   }
 
+  /* ---- THIRD PASS: paths built in a variable ---------------------------
+   *
+   * The two passes above read the argument list at the CALL SITE. Four real
+   * endpoints never reach them, because the path is computed first and handed
+   * over as a variable:
+   *
+   *   const endpoint = active ? `/performance/overview?campaign_id=${x}` : "";
+   *   useWsQuery<Rollup>(endpoint, { enabled: Boolean(active) });
+   *
+   *   const detail = useWsQuery<Row>(id ? `/campaigns/${id}` : "/campaigns");
+   *
+   * The consequence was not a missing warning -- it was a FALSE GREEN. Those
+   * four endpoints published an EMPTY 2xx schema, and because the scanner never
+   * saw them they were absent from the inventory, so `UNDECLARED_JSON: 0` was
+   * true AND incomplete. An audit that cannot see a call site cannot report it.
+   *
+   * So this pass scans the whole file for ROUTE-SHAPED template literals and
+   * registers each as a GET. Over-approximating the verb is deliberate and safe:
+   * the alternative is an endpoint invisible to the audit, and a wrong verb can
+   * only mis-attribute a verb that the classifier then checks against the real
+   * document. Under-reporting cannot be caught by anything.
+   *
+   * Guarded by `looksLikeRoute`: it must start with a single "/" and contain a
+   * further segment, so document links, image paths and CSS urls are ignored.
+   */
+  const tmplRe = /`(\/[^`\n]{2,200})`/g;
+  while ((m = tmplRe.exec(stripComments)) !== null) {
+    const raw = m[1];
+    if (!/^\/[A-Za-z][^?#]*\//.test(raw)) continue;
+    /* ONLY claim a path the document actually serves as GET.
+     *
+     * Registering every template as a GET produced 42 false `METHOD_NOT_SERVED`
+     * routing faults: a mutation like `/campaigns/${id}/derive` is POST-only, and
+     * pass 1 already sees those because the literal sits at the call site. What
+     * this pass exists to recover is the READ whose verb is a safe assumption,
+     * because a GET is the only verb that returns data to render.
+     */
+    if (!servedAsGet(raw)) continue;
+    add(out, seen, file, lineOf(m.index), "get", raw, false);
+  }
+
   return out;
 }
 
@@ -403,8 +560,8 @@ const FEATURE_FILES = [
 ].filter((f) => !/\.test\.(ts|tsx)$/.test(f));
 
 export const ALL_CALLS: ApiCall[] = FEATURE_FILES.flatMap((f) =>
-  extractApiCalls(readFileSync(f, "utf-8"), f.replace(`${SRC}\\`, "")),
-).sort((a, b) => (a.file + a.line).localeCompare(b.file + b.line));
+  extractApiCalls(readFileSync(f, "utf-8"), relative(SRC, f).replace(/\\/g, "/")),
+).sort((a, b) => a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line);
 
 /**
  * Every spec path a call could be hitting.
@@ -416,10 +573,11 @@ export const ALL_CALLS: ApiCall[] = FEATURE_FILES.flatMap((f) =>
  */
 export function specPathCandidates(call: ApiCall): string[] {
   const prefix = call.global ? "/api/v1" : `/api/v1${WS_PREFIX}`;
-  const full = `${prefix}${call.template}`;
+  const full = `${prefix}${call.template === "/" ? "" : call.template}`;
   if (SPEC_PATHS.has(full)) return [full];
   const re = templateToMatcher(full);
-  return Object.keys(spec.paths).filter((p) => re.test(p));
+  return Object.keys(spec.paths).filter((p) => re.test(p)).sort((a, b) =>
+    (b.match(/\{/g)?.length ?? 0) - (a.match(/\{/g)?.length ?? 0) || (a < b ? -1 : a > b ? 1 : 0));
 }
 
 /** Every call that resolved onto at least one served route. */
@@ -444,6 +602,22 @@ const AMBIGUOUS = RESOLVED.filter((r) => r.ambiguous);
  * ====================================================================== */
 
 describe("contract scanner is not inert", () => {
+  it("tracks variable and conditional GETs without scanning unrelated templates", () => {
+    const calls = extractApiCalls('const endpoint = active ? `/performance/overview?campaign_id=${id}` : ""; useWsQuery(endpoint); const unrelated = `/campaigns/${id}`; wsApi.post(`/campaigns/${id}/derive`);', "features\\x.tsx");
+    expect(calls.map((c) => [c.method, c.template])).toEqual([
+      ["get", "/performance/overview"], ["post", "/campaigns/{param}/derive"],
+    ]);
+    expect(calls.every((c) => c.file === "features/x.tsx")).toBe(true);
+  });
+
+  it("keeps removed routes visible and ignores comments and URL text", () => {
+    const calls = extractApiCalls('// useWsQuery("/fake");\nconst site = "https://example.com"; useWsQuery(`/removed/${id}`); /* wsApi.get("/fake") */', "x.tsx");
+    expect(calls.map((c) => c.template)).toEqual(["/removed/{param}"]);
+  });
+
+  it("does not resolve a same-name variable from a sibling lexical scope", () => {
+    expect(extractApiCalls('function A(){const path="/jobs";} function B(){useWsQuery(path);}', "x.tsx")).toEqual([]);
+  });
   it("finds a substantial number of calls", () => {
     expect(ALL_CALLS.length).toBeGreaterThan(20);
   });

@@ -42,8 +42,21 @@ test.describe("§8 route release sweep: every route renders", () => {
 
       // A blank screen is a failure, not an empty state. Every route must render
       // SOMETHING beyond the chrome.
-      const mainText = (await page.locator("main").innerText()).trim();
-      expect(mainText.length, `${route.path} rendered an empty <main>`).toBeGreaterThan(0);
+      //
+      // POLLED, not read once. Every route is a `lazy()` chunk (the rebuild
+      // split the 990KB synchronous bundle per screen), so on first paint
+      // `<main>` holds the Suspense fallback -- and `Skeleton` is deliberately a
+      // set of empty divs, so its textContent is legitimately "". Reading
+      // innerText once raced the chunk load and failed EVERY route.
+      //
+      // The invariant is unchanged and still fails loudly: a route that really
+      // renders blank stays empty for the whole poll window.
+      await expect
+        .poll(async () => (await page.locator("main").innerText()).trim().length, {
+          timeout: 15_000,
+          message: `${route.path} rendered an empty <main>`,
+        })
+        .toBeGreaterThan(0);
     });
   }
 
@@ -68,10 +81,16 @@ test.describe("§8 route release sweep: every route renders", () => {
 });
 
 test.describe("§9 responsive: no accidental horizontal overflow", () => {
+  // Every width the work order names. 1280 is a real laptop breakpoint (the
+  // sidebar collapses here, so it was previously untested) and 390 is the
+  // modern phone default, which is wider than the 360 minimum and therefore a
+  // distinct layout case rather than a duplicate of it.
   const widths = [
     { label: "wide desktop", width: 1440 },
+    { label: "laptop", width: 1280 },
     { label: "standard desktop", width: 1024 },
     { label: "tablet", width: 768 },
+    { label: "phone", width: 390 },
     { label: "narrow", width: API_ONLY_WIDTH },
   ];
 
@@ -126,6 +145,16 @@ test.describe("§10 accessibility on every route", () => {
       await page.goto(route.path, { waitUntil: "domcontentloaded" });
       await expect(page.locator("main")).toBeVisible();
 
+      // Wait for the ROUTE to mount, not just the shell. `main` is visible
+      // while a `lazy()` chunk is still loading, so counting `<h1>` there
+      // measures the Suspense fallback (zero headings) and reports every route
+      // as inaccessible. Same invariant, one settle step.
+      await expect
+        .poll(async () => (await page.locator("main").innerText()).trim().length, {
+          timeout: 15_000,
+        })
+        .toBeGreaterThan(0);
+
       const h1s = await page.locator("h1").count();
       if (h1s !== 1) offenders.push(`${route.path} has ${h1s} <h1>`);
 
@@ -143,33 +172,54 @@ test.describe("§10 accessibility on every route", () => {
   });
 
   test("interactive controls have accessible names", async ({ page }) => {
+    // This sweep does a full navigation through each route against the live
+    // disposable backend; keep its larger budget local instead of stretching
+    // timeouts for the entire browser suite.
+    test.setTimeout(90_000);
     await authenticate(page, account);
 
     const unnamed: string[] = [];
     for (const route of NON_HIDDEN_ROUTES) {
       await page.goto(route.path, { waitUntil: "domcontentloaded" });
-      const count = await page.locator("button, a[href], input, select, textarea").count();
-      for (let i = 0; i < count; i += 1) {
-        const el = page.locator("button, a[href], input, select, textarea").nth(i);
-        if (!(await el.isVisible())) continue;
-        const name = (
-          (await el.getAttribute("aria-label")) ??
-          (await el.innerText().catch(() => "")) ??
-          ""
-        ).trim();
-        const labelled = await el.evaluate((node) => {
-          const el2 = node as HTMLElement;
-          if (el2.getAttribute("aria-label")) return true;
-          if (el2.getAttribute("aria-labelledby")) return true;
-          if (el2.getAttribute("title")) return true;
-          if (el2.id && document.querySelector(`label[for="${el2.id}"]`)) return true;
-          if (el2.closest("label")) return true;
-          return (el2.textContent ?? "").trim().length > 0;
+      // Each route is a lazy chunk. Wait for its content before inspecting the
+      // controls so a Suspense fallback cannot make the scan pass vacuously.
+      await expect(page.locator("main h1")).toHaveCount(1, { timeout: 15_000 });
+
+      // Inspect a route's controls in one browser-side pass rather than issuing
+      // several Playwright round-trips per element across every route.
+      const unnamedOnRoute = await page
+        .locator("button, a[href], input, select, textarea")
+        .evaluateAll((elements) => {
+          const missing: string[] = [];
+          for (const node of elements) {
+            const control = node as HTMLElement;
+            const style = getComputedStyle(control);
+            const rect = control.getBoundingClientRect();
+            // Match Playwright's visible-control definition: non-empty box and
+            // not visibility:hidden (opacity alone does not make it invisible).
+            if (
+              !control.checkVisibility() ||
+              style.visibility !== "visible" ||
+              rect.width <= 0 ||
+              rect.height <= 0
+            ) continue;
+
+            const name = (
+              control.getAttribute("aria-label") ?? control.innerText ?? ""
+            ).trim();
+            const labelled = Boolean(
+              control.getAttribute("aria-label") ||
+              control.getAttribute("aria-labelledby") ||
+              control.getAttribute("title") ||
+              (control.id && document.querySelector(`label[for="${control.id}"]`)) ||
+              control.closest("label") ||
+              (control.textContent ?? "").trim().length > 0,
+            );
+            if (!labelled && name.length === 0) missing.push(control.outerHTML.slice(0, 90));
+          }
+          return missing;
         });
-        if (!labelled && name.length === 0) {
-          unnamed.push(`${route.path} :: ${(await el.evaluate((n) => n.outerHTML)).slice(0, 90)}`);
-        }
-      }
+      unnamed.push(...unnamedOnRoute.map((html) => `${route.path} :: ${html}`));
     }
     expect(unnamed, "controls with no accessible name").toEqual([]);
   });

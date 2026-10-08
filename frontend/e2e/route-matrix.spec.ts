@@ -260,8 +260,10 @@ function resolveSpecPath(candidate: string): string | null {
 /** The registry path -> the feature component that renders it. */
 function componentFor(routePath: string): { name: string; file: string } | null {
   const imports = new Map<string, string>();
-  for (const m of APP_TSX.matchAll(/import\s+([A-Za-z0-9_]+)\s+from\s+"([^"]+)"/g)) {
-    imports.set(m[1]!, m[2]!);
+  const componentImport =
+    /import\s+([A-Za-z0-9_]+)\s+from\s+"([^"]+)"|const\s+([A-Za-z0-9_]+)\s*=\s*lazy\(\s*\(\s*\)\s*=>\s*import\(\s*"([^"]+)"\s*\)\s*\)/g;
+  for (const m of APP_TSX.matchAll(componentImport)) {
+    imports.set(m[1] ?? m[3]!, m[2] ?? m[4]!);
   }
   const entry = new RegExp(`"${escapeRe(routePath)}"\\s*:\\s*<([A-Za-z0-9_]+)`).exec(APP_TSX);
   if (!entry) return null;
@@ -375,6 +377,20 @@ function derive(routePath: string): { paths: string[]; contract: ContractFact; n
   };
   derived.set(routePath, out);
   return out;
+}
+
+/* A release matrix with discovered components but no API endpoints is not
+ * measured coverage: it makes populated/error/403 probes vacuous. Fail during
+ * Playwright collection, before any route can be recorded with that omission. */
+const discoveryGaps = ROUTES.flatMap((route) => {
+  const component = componentFor(route.path);
+  const result = derive(route.path);
+  return component && result.contract.endpoints > 0
+    ? []
+    : [`${route.path}: component=${component?.name ?? "missing"}, endpoints=${result.contract.endpoints}`];
+});
+if (discoveryGaps.length > 0) {
+  throw new Error(`Route matrix discovery is incomplete:\n${discoveryGaps.join("\n")}`);
 }
 
 /* =========================================================================

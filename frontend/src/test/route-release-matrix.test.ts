@@ -99,9 +99,13 @@ describe("§7 the matrix covers exactly the registry, with nothing extra", () =>
     // Deliberately a literal, not `ROUTES.length`.  A guard that reads the
     // registry for its own expectation cannot fail when a route is added, which
     // is the one thing it exists to catch.
-    expect(REGISTRY_PATHS.length).toBe(22);
-    expect(matrix.routeCount).toBe(22);
-    expect(rows.length).toBe(22);
+    //
+    // 23 = 22 + `/automation` (from-scratch rebuild: the Autopilot loop's
+    // control surface, previously zero UI). Bump this literal again — by hand,
+    // with a comment naming the route — every time the IA grows.
+    expect(REGISTRY_PATHS.length).toBe(23);
+    expect(matrix.routeCount).toBe(23);
+    expect(rows.length).toBe(23);
   });
 
   it("has an entry for every registry path", () => {
@@ -129,6 +133,11 @@ describe("§7 the matrix covers exactly the registry, with nothing extra", () =>
       expect(row!.hidden, `${route.path} hidden`).toBe(route.hidden === true);
       expect(row!.component, `${route.path} has no component recorded`).toBeTruthy();
     }
+  });
+
+  it("records a discovered component for every route", () => {
+    const missing = rows.filter((row) => typeof row.component !== "string" || row.component.trim() === "");
+    expect(missing.map((row) => row.path), "routes with no discovered screen component").toEqual([]);
   });
 });
 
@@ -210,13 +219,14 @@ describe("§7 the endpoints behind the routes are declared responses", () => {
     ).toBe(0);
   });
 
-  it("records an endpoint count for every route, so zero cannot pass as clean", () => {
+  it("has endpoint coverage for every route, so zero cannot pass as measured", () => {
     const offenders = rows
       .filter((r) => {
         const contract = r.contract as { endpoints?: number; declared?: number } | undefined;
-        return typeof contract?.endpoints !== "number" || typeof contract?.declared !== "number";
+        return typeof contract?.endpoints !== "number" || contract.endpoints <= 0 ||
+          typeof contract?.declared !== "number";
       })
       .map((r) => r.path);
-    expect(offenders, "routes whose GET endpoints could not be derived or counted").toEqual([]);
+    expect(offenders, "routes whose GET endpoint probes are missing or vacuous").toEqual([]);
   });
 });

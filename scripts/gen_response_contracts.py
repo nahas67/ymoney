@@ -122,7 +122,14 @@ def generate() -> int:
             # Name the missing configuration when there is one. "no parseable
             # JSON body" is true but useless on its own -- it reads like a harness
             # fault when the real cause is an absent provider.
+            #
+            # The observer records the refusal body (`error`: the first 200 chars
+            # of the error response) alongside the empty states. Printing it is
+            # what distinguishes "the route refused for a reason" from "the
+            # harness never reached the route": without it a 422 on one machine
+            # and a 200 on another is undebuggable from the log alone.
             gated = obs.PROVIDER_GATED.get((spec_path, method.lower()))
+            refusal = str(ss.get("error") or se.get("error") or "").strip()
             skipped.append(
                 {
                     "method": method,
@@ -133,6 +140,7 @@ def generate() -> int:
                         if gated
                         else "no parseable JSON body observed in either state"
                     ),
+                    "refusal": refusal[:200],
                     "providerGated": bool(gated),
                 }
             )
@@ -223,6 +231,8 @@ def generate() -> int:
             print(f"    {s['method']:6} {s['specPath']}")
             print(f"           [{tag}] status={s['status']}")
             print(f"           {s['reason']}")
+            if s.get("refusal"):
+                print(f"           refusal: {s['refusal']}")
 
     REPORT.write_text(
         json.dumps(

@@ -133,7 +133,13 @@ def _assert_complete_project(client, ws_id, headers, pid, min_seconds: float):
     return dur
 
 
+@pytest.mark.timeout(1500)
 def test_e2e_three_minute_explainer(tmp_path, monkeypatch, offline_stack):
+    """Renders ~120s+ of real video: the work scales with the output duration,
+    so the 240s global timeout cannot fit the slowest supported runner (the
+    Linux CI worker needed more than 240s where local hardware needs ~100s).
+    The per-test mark keeps hang protection (25 minutes) without mistaking a
+    slow render for a stuck one."""
     client = _client(tmp_path, monkeypatch)
     ws_id, headers = _register(client)
     _seed_local_media(ws_id)
@@ -160,7 +166,11 @@ def test_e2e_three_minute_explainer(tmp_path, monkeypatch, offline_stack):
     print(f"\n3-min E2E: rendered {dur:.0f}s")
 
 
+@pytest.mark.timeout(1500)
 def test_e2e_five_minute_documentary(tmp_path, monkeypatch, offline_stack):
+    """Renders ~200s+ of real video: same timeout reasoning as the 3-minute
+    explainer above -- the work is the output duration, and the slowest
+    supported runner needs more than the 240s global budget."""
     client = _client(tmp_path, monkeypatch)
     ws_id, headers = _register(client)
     _seed_local_media(ws_id)

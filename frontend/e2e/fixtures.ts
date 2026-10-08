@@ -316,7 +316,23 @@ export async function attachToWorkspace(
   role: "viewer" | "member" | "admin" | "owner",
 ): Promise<void> {
   const script = join(REPO_ROOT, "scripts", "attach_workspace_member.py");
-  const python = join(REPO_ROOT, "backend", ".venv", "Scripts", "python.exe");
+  // Same interpreter the API server runs under. `playwright.config.ts` resolves
+  // it the same way, and `scripts/run_release_e2e.py` exports
+  // YMONEY_E2E_PYTHON so an isolated run uses its own venv rather than whatever
+  // happens to sit in `backend/.venv`.
+  //
+  // The venv layout is platform-specific: uv/pip put the interpreter in
+  // `.venv\Scripts\python.exe` on Windows and `.venv/bin/python` everywhere
+  // else. Hard-coding the Windows spelling meant this spawn ENOENT'd on the
+  // Linux runner -- the viewer-permission test failed there while passing
+  // locally, which is the same class of bug as the storage-boundary checks:
+  // one platform's path shape silently becoming another's.
+  const python = process.env.YMONEY_E2E_PYTHON ?? join(
+    REPO_ROOT,
+    "backend",
+    ".venv",
+    ...(process.platform === "win32" ? ["Scripts", "python.exe"] : ["bin", "python"]),
+  );
   const proc = spawnSync(python, [script, workspaceId, email, role], {
     encoding: "utf-8",
     // MUST match the API server's cwd, which `playwright.config.ts` pins to the

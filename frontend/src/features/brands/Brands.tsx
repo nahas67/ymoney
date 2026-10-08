@@ -48,7 +48,7 @@
  * cannot express it as one.
  */
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Badge,
   Button,
@@ -72,7 +72,7 @@ import {
   type Tone,
 } from "../../design-system/primitives";
 import { useMutation, useWsQuery } from "../../api/queries";
-import { getToken, wsApi } from "../../lib/api";
+import { fetchWorkspaceLogo, wsApi } from "../../lib/api";
 import { useSession } from "../../state/session";
 
 /* ==========================================================================
@@ -916,11 +916,7 @@ export function Brands() {
                     />
                     <div>
                       {kit.logo_path ? (
-                        <img
-                          src={logoFileUrl(workspaceId)}
-                          alt="Workspace logo"
-                          style={{ maxWidth: "100%", maxHeight: 120 }}
-                        />
+                        <WorkspaceLogo workspaceId={workspaceId} />
                       ) : (
                         <p className="ym-hint">No logo uploaded. POST /brand/logo accepts PNG/JPG/WEBP up to 2MB.</p>
                       )}
@@ -1376,10 +1372,46 @@ function RenameControl({
   );
 }
 
-/** The `<img>` src for the workspace logo: browser auth, never rendered as text. */
-function logoFileUrl(workspaceId: string): string {
-  const t = getToken();
-  return `/api/v1/workspaces/${workspaceId}/brand/logo/file${t ? `?token=${encodeURIComponent(t)}` : ""}`;
+function WorkspaceLogo({ workspaceId }: { workspaceId: string }) {
+  const [loaded, setLoaded] = useState<{
+    workspaceId: string;
+    url: string | null;
+    failed: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+    void Promise.resolve()
+      .then(() => fetchWorkspaceLogo(workspaceId))
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setLoaded({ workspaceId, url: objectUrl, failed: false });
+      })
+      .catch(() => {
+        if (active) setLoaded({ workspaceId, url: null, failed: true });
+      });
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [workspaceId]);
+
+  if (loaded?.workspaceId !== workspaceId) {
+    return <p className="ym-muted" role="status">Loading workspace logo…</p>;
+  }
+  if (loaded.failed || !loaded.url) {
+    return <p className="ym-error" role="status">Workspace logo unavailable.</p>;
+  }
+  return (
+    <img
+      src={loaded.url}
+      alt="Workspace logo"
+      style={{ maxWidth: "100%", maxHeight: 120 }}
+    />
+  );
 }
 
 export { PolicyTable, RecommendationList };

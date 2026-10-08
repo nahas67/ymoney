@@ -34,7 +34,7 @@
  * when handed an id directly.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Badge,
@@ -55,8 +55,76 @@ import {
   type Tone,
 } from "../../design-system/primitives";
 import { useCombinedQueries, type QueryState } from "../../api/queries";
-import { videoFileUrl, videoThumbUrl, wsApi } from "../../lib/api";
+import { fetchVideoFile, fetchVideoThumbnail, wsApi } from "../../lib/api";
 import { useSession } from "../../state/session";
+
+function useAuthenticatedBlobUrl(
+  resourceId: string,
+  fetchBlob: (id: string) => Promise<Blob>,
+): { url: string | null; failed: boolean } | null {
+  const [loaded, setLoaded] = useState<{
+    resourceId: string;
+    url: string | null;
+    failed: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+    void Promise.resolve()
+      .then(() => fetchBlob(resourceId))
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setLoaded({ resourceId, url: objectUrl, failed: false });
+      })
+      .catch(() => {
+        if (active) setLoaded({ resourceId, url: null, failed: true });
+      });
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [fetchBlob, resourceId]);
+
+  if (loaded?.resourceId !== resourceId) return null;
+  return { url: loaded.url, failed: loaded.failed };
+}
+
+function AuthenticatedVideoPlayer({ videoId }: { videoId: string }) {
+  const media = useAuthenticatedBlobUrl(videoId, fetchVideoFile);
+  if (!media?.url) {
+    return <p className={media?.failed ? "ym-error" : "ym-muted"} role="status">
+      {media?.failed ? "Render preview unavailable." : "Loading render preview…"}
+    </p>;
+  }
+  return (
+    <video
+      controls
+      preload="metadata"
+      style={{ width: "100%" }}
+      src={media.url}
+      data-testid="project-video"
+    />
+  );
+}
+
+function AuthenticatedVideoThumbnail({ videoId, topic }: { videoId: string; topic: string }) {
+  const media = useAuthenticatedBlobUrl(videoId, fetchVideoThumbnail);
+  if (!media?.url) {
+    return <p className={media?.failed ? "ym-error" : "ym-muted"} role="status">
+      {media?.failed ? "Render thumbnail unavailable." : "Loading render thumbnail…"}
+    </p>;
+  }
+  return (
+    <img
+      src={media.url}
+      alt={`Thumbnail for ${topic}`}
+      style={{ maxWidth: "100%", borderRadius: "var(--radius-default)" }}
+    />
+  );
+}
 
 /* ==========================================================================
  * Response shapes — app/api/v1/content.py
@@ -640,13 +708,7 @@ function OverviewTab({
         ) : null}
         <Modal open={scriptOpen} onClose={() => setScriptOpen(false)} title="Render preview" width={720}>
           {d?.video ? (
-            <video
-              controls
-              preload="metadata"
-              style={{ width: "100%" }}
-              src={videoFileUrl(d.video.id)}
-              data-testid="project-video"
-            />
+            <AuthenticatedVideoPlayer videoId={d.video.id} />
           ) : null}
         </Modal>
       </Panel>
@@ -983,11 +1045,7 @@ function AssetsTab({ detail, audit }: { detail: QueryState<ContentDetail>; audit
           {(item) =>
             item.video && item.video.file_path ? (
               <>
-                <img
-                  src={videoThumbUrl(item.video.id)}
-                  alt={`Thumbnail for ${item.topic}`}
-                  style={{ maxWidth: "100%", borderRadius: "var(--radius-default)" }}
-                />
+                <AuthenticatedVideoThumbnail videoId={item.video.id} topic={item.topic} />
                 <DataTable
                   rows={[
                     { field: "Engine", value: item.video.engine },

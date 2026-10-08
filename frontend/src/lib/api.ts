@@ -112,6 +112,19 @@ async function uploadFile<T = any>(path: string, file: File, extra?: Record<stri
   return (await res.json()) as T;
 }
 
+async function requestBlob(path: string, allowRefresh = true): Promise<Blob> {
+  const headers: Record<string, string> = {};
+  if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+  const res = await fetch(`${BASE}${path}`, { headers });
+  if (!res.ok) {
+    if (res.status === 401 && allowRefresh && (await tryRefreshSession())) {
+      return requestBlob(path, false);
+    }
+    throw new ApiError(res.status, res.statusText || "Media request failed");
+  }
+  return res.blob();
+}
+
 export const wsApi = {
   get: (p: string) => api("GET", `/workspaces/${workspaceId}${p}`),
   post: (p: string, body?: unknown) => api("POST", `/workspaces/${workspaceId}${p}`, body ?? {}),
@@ -145,6 +158,30 @@ export function aiCoverFileUrl(videoId: string, index: number): string {
 export function mediaFileUrl(assetId: string): string {
   const t = accessToken ? `?token=${encodeURIComponent(accessToken)}` : "";
   return `${BASE}/workspaces/${workspaceId}/assets/media/${assetId}/file${t}`;
+}
+
+/** Fetch asset media with header auth so credentials never enter a DOM URL. */
+export function fetchMediaFile(assetId: string): Promise<Blob> {
+  if (!workspaceId) throw new ApiError(401, "No active workspace");
+  return requestBlob(`/workspaces/${workspaceId}/assets/media/${encodeURIComponent(assetId)}/file`);
+}
+
+/** Fetch rendered video with header auth so credentials never enter a DOM URL. */
+export function fetchVideoFile(videoId: string): Promise<Blob> {
+  if (!workspaceId) throw new ApiError(401, "No active workspace");
+  return requestBlob(`/workspaces/${workspaceId}/videos/${encodeURIComponent(videoId)}/file`);
+}
+
+/** Fetch a rendered video thumbnail with header auth, not a bearer URL. */
+export function fetchVideoThumbnail(videoId: string): Promise<Blob> {
+  if (!workspaceId) throw new ApiError(401, "No active workspace");
+  return requestBlob(`/workspaces/${workspaceId}/videos/${encodeURIComponent(videoId)}/thumbnail`);
+}
+
+/** Fetch the workspace logo with header auth rather than a bearer URL. */
+export function fetchWorkspaceLogo(id: string): Promise<Blob> {
+  if (!id) throw new ApiError(401, "No active workspace");
+  return requestBlob(`/workspaces/${encodeURIComponent(id)}/brand/logo/file`);
 }
 
 export async function downloadAudit(contentId: string): Promise<void> {

@@ -9,10 +9,12 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 const wsGet = vi.fn();
+const fetchVideoFile = vi.fn();
+const fetchVideoThumbnail = vi.fn();
 
 vi.mock("../../lib/api", () => ({
   // queries.ts reads ApiError to decide whether a status is ignorable, so the
@@ -26,6 +28,8 @@ vi.mock("../../lib/api", () => ({
   },
   wsApi: { get: (path: string) => wsGet(path) },
   api: vi.fn(),
+  fetchVideoFile: (id: string) => fetchVideoFile(id),
+  fetchVideoThumbnail: (id: string) => fetchVideoThumbnail(id),
   videoFileUrl: (id: string) => `/video/${id}.mp4`,
   videoThumbUrl: (id: string) => `/thumb/${id}.jpg`,
 }));
@@ -135,7 +139,10 @@ function renderDetail(contentId: string = CONTENT_ID) {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   wsGet.mockReset();
+  fetchVideoFile.mockReset();
+  fetchVideoThumbnail.mockReset();
 });
 
 describe("ProjectDetail", () => {
@@ -256,5 +263,35 @@ describe("ProjectDetail", () => {
     );
     expect(screen.getByText("No project id")).toBeInTheDocument();
     expect(wsGet).not.toHaveBeenCalled();
+  });
+
+  it("uses header-authenticated blobs for render playback and thumbnail URLs", async () => {
+    route({ detail: { ...DETAIL, video: { ...DETAIL.video, file_path: "renders/output.mp4" } } });
+    fetchVideoFile.mockResolvedValue(new Blob(["video"]));
+    fetchVideoThumbnail.mockResolvedValue(new Blob(["thumbnail"]));
+    const created: string[] = [];
+    const revoked: string[] = [];
+    vi.stubGlobal("URL", class extends URL {
+      static createObjectURL = vi.fn(() => {
+        const url = `blob:project-${created.length + 1}`;
+        created.push(url);
+        return url;
+      });
+      static revokeObjectURL = vi.fn((url: string) => revoked.push(url));
+    });
+    const { unmount } = renderDetail();
+    await screen.findByText("Why your budget breaks in month three");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open preview" }));
+    await waitFor(() => expect(screen.getByTestId("project-video")).toHaveAttribute("src", "blob:project-1"));
+    expect(fetchVideoFile).toHaveBeenCalledWith("v-9");
+
+    fireEvent.click(screen.getByRole("tab", { name: /^Assets/ }));
+    await waitFor(() => expect(screen.getByAltText(/Thumbnail for Why your budget/)).toHaveAttribute("src", "blob:project-2"));
+    expect(fetchVideoThumbnail).toHaveBeenCalledWith("v-9");
+    expect(Array.from(document.querySelectorAll("video, img")).every((node) => !node.getAttribute("src")?.includes("?token="))).toBe(true);
+
+    unmount();
+    expect(revoked).toEqual(["blob:project-1", "blob:project-2"]);
   });
 });

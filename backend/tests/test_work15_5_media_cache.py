@@ -416,6 +416,26 @@ def test_an_all_invalid_result_is_not_written(tmp_path):
 
 @pytest.mark.parametrize("url", [
     "https://cdn.test/clip.mp4?token=abc123",
+    "https://cdn.test/clip.mp4?refresh_token=refresh-secret",
+    "https://cdn.test/clip.mp4#oauth_token=fragment-secret",
+    "https://cdn.test/clip.mp4#/preview%3Faccess_token=encoded-fragment-secret",
+    "https://cdn.test/clip.mp4?client_secret=client-secret-value",
+    "https://cdn.test/clip.mp4?clientSecret=client-secret-value",
+    "https://cdn.test/clip.mp4?accessToken=access-token-value",
+    "https://cdn.test/clip.mp4?oauthToken=oauth-token-value",
+    "https://cdn.test/clip.mp4?sessionId=session-id-value",
+    "https://cdn.test/clip.mp4?authToken=auth-token-value",
+    "https://cdn.test/clip.mp4?client%53ecret=encoded-client-secret",
+    "https://cdn.test/clip.mp4?access%54oken=encoded-access-token",
+    "https://cdn.test/clip.mp4?oauth%54oken=encoded-oauth-token",
+    "https://cdn.test/clip.mp4?session%49d=encoded-session-id",
+    "https://cdn.test/clip.mp4?auth%54oken=encoded-auth-token",
+    "https://cdn.test/clip.mp4?password=password-value",
+    "https://cdn.test/clip.mp4?secret=secret-value",
+    "https://cdn.test/clip.mp4?%74oken%=malformed-secret",
+    "https://cdn.test/clip.mp4?client%5Fsecret=encoded-client-secret",
+    "https://cdn.test/clip.mp4?%FFtoken=invalid-utf8-secret",
+    "https://cdn.test/clip.mp4#/%3F%FFtoken=invalid-fragment-secret",
     "https://cdn.test/clip.mp4?X-Amz-Signature=deadbeef&X-Amz-Expires=900",
     "https://cdn.test/clip.mp4?Policy=eyJ&Signature=s",
     "https://user:pass@cdn.test/clip.mp4",
@@ -447,6 +467,56 @@ def test_a_signed_url_result_is_not_cached_even_alongside_good_items(tmp_path):
     assert not list(tmp_path.iterdir())
 
 
+@pytest.mark.parametrize("url", [
+    "https://cdn.test/clip.mp4?client_secret=client-secret-value",
+    "https://cdn.test/clip.mp4?clientSecret=client-secret-value",
+    "https://cdn.test/clip.mp4?accessToken=access-token-value",
+    "https://cdn.test/clip.mp4?oauthToken=oauth-token-value",
+    "https://cdn.test/clip.mp4?sessionId=session-id-value",
+    "https://cdn.test/clip.mp4?authToken=auth-token-value",
+    "https://cdn.test/clip.mp4?client%53ecret=encoded-client-secret",
+    "https://cdn.test/clip.mp4?access%54oken=encoded-access-token",
+    "https://cdn.test/clip.mp4?oauth%54oken=encoded-oauth-token",
+    "https://cdn.test/clip.mp4?session%49d=encoded-session-id",
+    "https://cdn.test/clip.mp4?auth%54oken=encoded-auth-token",
+    "https://cdn.test/clip.mp4?password=password-value",
+    "https://cdn.test/clip.mp4?%74oken%=malformed-secret",
+    "https://cdn.test/clip.mp4?%FFtoken=invalid-utf8-secret",
+])
+def test_credential_shaped_or_malformed_url_keys_are_not_cached(tmp_path, url):
+    assert write_media_cache(tmp_path, PARAMS, [_item(url)]) is False
+    assert read_media_cache(tmp_path, PARAMS) is None
+    assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("url", [
+    "https://cdn.test/clip.mp4?clientSecret=legacy-secret",
+    "https://cdn.test/clip.mp4?client%53ecret=legacy-secret",
+])
+def test_read_discards_legacy_entries_with_camel_case_credentials(tmp_path, url):
+    """Older valid-format entries must not bypass the current write guard."""
+    path = tmp_path / f"{cache_key(PARAMS)}.json"
+    path.write_text(json.dumps({
+        "version": media_cache.CACHE_FORMAT_VERSION,
+        "items": [_item(url)],
+    }), encoding="utf-8")
+
+    assert read_media_cache(tmp_path, PARAMS) is None
+    assert not path.exists()
+
+
+def test_read_discards_legacy_entries_for_a_prohibited_provider(tmp_path):
+    coverr = dict(PARAMS, provider="coverr")
+    path = tmp_path / f"{cache_key(coverr)}.json"
+    path.write_text(json.dumps({
+        "version": media_cache.CACHE_FORMAT_VERSION,
+        "items": [_item()],
+    }), encoding="utf-8")
+
+    assert read_media_cache(tmp_path, coverr) is None
+    assert not path.exists()
+
+
 def test_coverr_is_never_cached_at_all(tmp_path):
     """The donor hard-disables Coverr for the same reason; it stays disabled."""
     coverr = dict(PARAMS, provider="coverr")
@@ -472,6 +542,51 @@ def test_a_tracking_query_is_stripped_from_a_cached_source_page(tmp_path):
     page = json.loads((tmp_path / f"{cache_key(PARAMS)}.json").read_text(
         encoding="utf-8"))["items"][0]["source_info"]["source_page"]
     assert page == "https://www.pexels.com/video/9/"
+
+
+def test_cache_write_rejects_credentials_in_arbitrary_source_info_urls(tmp_path):
+    item = _item(source_info={
+        "provider": "pexels",
+        "opaque_ref": "https://cdn.test/page?access_token=synthetic-secret",
+    })
+
+    assert write_media_cache(tmp_path, PARAMS, [item]) is False
+    assert not list(tmp_path.iterdir())
+
+
+def test_cache_read_discards_legacy_credentials_in_source_info_urls(tmp_path):
+    assert write_media_cache(tmp_path, PARAMS, [_item()]) is True
+    path = tmp_path / f"{cache_key(PARAMS)}.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["items"][0]["source_info"] = {
+        "opaque_ref": "https://cdn.test/page?access_token=synthetic-secret",
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert read_media_cache(tmp_path, PARAMS) is None
+    assert not path.exists()
+
+
+def test_cache_write_rejects_multiply_encoded_urls_in_source_info(tmp_path):
+    item = _item(source_info={
+        "opaque_ref": "https%253A%252F%252Fcdn.test%252Fpage%253Faccess_token%253Dsynthetic-secret",
+    })
+
+    assert write_media_cache(tmp_path, PARAMS, [item]) is False
+    assert not list(tmp_path.iterdir())
+
+
+def test_cache_read_discards_legacy_multiply_encoded_source_info_urls(tmp_path):
+    assert write_media_cache(tmp_path, PARAMS, [_item()]) is True
+    path = tmp_path / f"{cache_key(PARAMS)}.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["items"][0]["source_info"] = {
+        "opaque_ref": "https%253A%252F%252Fcdn.test%252Fpage%253Faccess_token%253Dsynthetic-secret",
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert read_media_cache(tmp_path, PARAMS) is None
+    assert not path.exists()
 
 
 def test_public_page_url_drops_the_query_and_refuses_userinfo():

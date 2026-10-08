@@ -54,7 +54,7 @@ function rel(p: string): string {
 }
 
 function lines(p: string): string[] {
-  return readFileSync(p, "utf-8").split("\n");
+  return readFileSync(p, "utf-8").split(/\r?\n/);
 }
 
 /** Every relative module specifier a file imports, statically or dynamically. */

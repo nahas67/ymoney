@@ -6,10 +6,15 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const wsGet = vi.fn();
 const wsPost = vi.fn();
+const fetchMediaFile = vi.fn();
+const sessionState: { capabilities: string[]; capabilitiesKnown?: boolean } = {
+  capabilities: [],
+  capabilitiesKnown: undefined,
+};
 
 vi.mock("../../lib/api", () => ({
   ApiError: class ApiError extends Error {
@@ -23,6 +28,7 @@ vi.mock("../../lib/api", () => ({
     get: (path: string) => wsGet(path),
     post: (path: string, body?: unknown) => wsPost(path, body),
   },
+  fetchMediaFile: (id: string) => fetchMediaFile(id),
   mediaFileUrl: (id: string) => `/api/v1/workspaces/ws-1/assets/media/${id}/file?token=TEST_JWT_VALUE`,
   videoFileUrl: (id: string) => `/api/v1/workspaces/ws-1/videos/${id}/file?token=TEST_JWT_VALUE`,
   videoThumbUrl: (id: string) => `/api/v1/workspaces/ws-1/videos/${id}/thumbnail`,
@@ -34,7 +40,8 @@ vi.mock("../../state/session", () => ({
     workspaceId: "ws-1",
     workspace: { id: "ws-1", name: "Test Workspace" },
     workspaces: [{ id: "ws-1", name: "Test Workspace" }],
-    capabilities: [],
+    capabilities: sessionState.capabilities,
+    capabilitiesKnown: sessionState.capabilitiesKnown,
   }),
 }));
 
@@ -42,8 +49,13 @@ import { Assets, redactProvenance, isSignedProvenance } from "./Assets";
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   wsGet.mockReset();
   wsPost.mockReset();
+  fetchMediaFile.mockReset();
+  sessionState.capabilities = [];
+  sessionState.capabilitiesKnown = undefined;
 });
 
 type Row = Record<string, unknown>;
@@ -85,6 +97,53 @@ function route(overrides: Record<string, unknown> = {}) {
       return Promise.resolve(overrides.renders ?? { items: [], capabilities: { upload: true, note: "" } });
     }
     if (path === "/avatars") return Promise.resolve(overrides.avatars ?? { total: 0, items: [] });
+    if (path === "/exports/formats") {
+      return Promise.resolve(
+        overrides.formats ?? {
+          items: [
+            { format: "SRT", available: true, reason: null, kind: "subtitle", media_type: "text/plain", suffix: ".srt" },
+            { format: "MP4", available: false, reason: "ffmpeg not installed", kind: "video", media_type: "video/mp4", suffix: ".mp4" },
+          ],
+        },
+      );
+    }
+    if (path === "/exports/profiles") {
+      return Promise.resolve(
+        overrides.profiles ?? {
+          items: [{ id: "p-1", workspace_id: "ws-1", name: "Default", preset: "SRT", config: {}, is_builtin: true, created_at: null, updated_at: null }],
+        },
+      );
+    }
+    if (path === "/exports") return Promise.resolve(overrides.exports ?? { items: [] });
+    if (path.startsWith("/exports/")) return Promise.resolve(overrides.exportDetail ?? exportRow());
+    if (path === "/voice-preview/providers") {
+      return Promise.resolve(
+        overrides.voiceProviders ?? {
+          items: [
+            { provider: "edge", label: "Edge", offerable: true, available: true, reason: "ok", message: "configured and ready to preview", qualification_labels: [], missing_credentials: [], simulation_only: false, live_verified: false, contract_tested: false },
+            { provider: "elevenlabs", label: "ElevenLabs", offerable: true, available: false, reason: "not_configured", message: "set ELEVENLABS_API_KEY under Settings", qualification_labels: [], missing_credentials: ["ELEVENLABS_API_KEY"], simulation_only: false, live_verified: false, contract_tested: false },
+          ],
+          offerable: ["edge"],
+          unavailable: [],
+          default_provider: "edge",
+          max_chars: 600,
+          max_per_window: 20,
+          window_seconds: 60,
+        },
+      );
+    }
+    if (path.startsWith("/voice-preview/providers/")) {
+      return Promise.resolve(
+        overrides.voices ?? {
+          provider: "edge",
+          language: "",
+          items: [{ id: "voice-a", gender: "feminine", locale: "en-US" }],
+          count: 1,
+          empty_reason: "",
+          cache: "none",
+        },
+      );
+    }
     if (path === "/music/policy") {
       return Promise.resolve(
         overrides.music ?? {
@@ -101,6 +160,24 @@ function route(overrides: Record<string, unknown> = {}) {
     }
     return Promise.resolve({});
   });
+}
+
+function exportRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "e-1",
+    format: "SRT",
+    profile: { name: "Default", preset: "SRT" },
+    target: { type: "timeline", id: "tl-1" },
+    state: "DONE",
+    progress: 100,
+    verification: { complete: true, checks: ["size"] },
+    artifact: { url: "/api/v1/workspaces/ws-1/exports/e-1/download", size: 2048, checksum: "abc123" },
+    error: null,
+    attempt: 1,
+    created_at: "2026-09-01T10:00:00Z",
+    finished_at: "2026-09-01T10:01:00Z",
+    ...overrides,
+  };
 }
 
 function renderAssets() {
@@ -207,6 +284,115 @@ describe("Assets — provenance redaction", () => {
     );
   });
 
+  it("redacts percent-encoded credential query keys without exposing their values", () => {
+    const url = "https://cdn.example.com/renders/clip.mp4?%74oken=1&w=640";
+    const red = redactProvenance(url);
+
+    expect(red).toEqual({
+      display: "https://cdn.example.com/renders/clip.mp4…redacted",
+      removedKeys: ["%74oken"],
+      redacted: true,
+    });
+    expect(isSignedProvenance(url)).toBe(true);
+  });
+
+  it("redacts credential-shaped keys and malformed encoded keys fail closed", () => {
+    for (const key of [
+      "client_secret", "secret", "password", "session_id", "my_client_secret",
+      "clientSecret", "accessToken", "oauthToken", "sessionId", "authToken", "%63lientSecret",
+    ]) {
+      const url = `https://cdn.example.com/a.mp4?${key}=private-value`;
+      const red = redactProvenance(url);
+      expect(isSignedProvenance(url)).toBe(true);
+      expect(red.display).toBe("https://cdn.example.com/a.mp4…redacted");
+      expect(red.display).not.toContain("private-value");
+    }
+
+    const malformedCases = [
+      "https://cdn.example.com/a.mp4?%74oken%=malformed-secret",
+      "https://cdn.example.com/a.mp4?%FFtoken=invalid-utf8-secret",
+      "https://cdn.example.com/a.mp4#/%3F%FFtoken=invalid-fragment-secret",
+    ];
+    for (const url of malformedCases) {
+      const red = redactProvenance(url);
+      expect(isSignedProvenance(url)).toBe(true);
+      expect(red.display).toBe("https://cdn.example.com/a.mp4…redacted");
+      expect(red.display).not.toMatch(/malformed-secret|invalid-utf8-secret|invalid-fragment-secret/);
+    }
+  });
+
+  it("matches form-decoded and whitespace-padded query keys", () => {
+    for (const key of ["+token", "%20token"]) {
+      const url = `https://cdn.example.com/renders/clip.mp4?${key}=1&w=640`;
+      const red = redactProvenance(url);
+
+      expect(isSignedProvenance(url)).toBe(true);
+      expect(red.redacted).toBe(true);
+      expect(red.display).toBe("https://cdn.example.com/renders/clip.mp4…redacted");
+      expect(red.display).not.toContain("=1");
+    }
+  });
+
+  it("redacts credential parameters in URL fragments", () => {
+    const url = "https://cdn.example.com/renders/clip.mp4#access_token=1&token_type=bearer";
+    const red = redactProvenance(url);
+
+    expect(isSignedProvenance(url)).toBe(true);
+    expect(red).toEqual({
+      display: "https://cdn.example.com/renders/clip.mp4…redacted",
+      removedKeys: ["access_token", "token_type"],
+      redacted: true,
+    });
+    expect(red.display).not.toContain("access_token");
+    expect(red.display).not.toContain("token_type");
+    expect(red.display).not.toContain("=1");
+  });
+
+  it("does not ignore a credential before a later query-like fragment suffix", () => {
+    const url = "https://cdn.example.com/a.mp4#access_token=1?route=preview";
+    const red = redactProvenance(url);
+
+    expect(isSignedProvenance(url)).toBe(true);
+    expect(red.display).toBe("https://cdn.example.com/a.mp4…redacted");
+    expect(red.display).not.toContain("access_token");
+    expect(red.display).not.toContain("=1");
+  });
+
+  it("detects encoded query separators in a fragment route", () => {
+    const url = "https://cdn.example.com/a.mp4#/preview%3Faccess_token=1";
+    const red = redactProvenance(url);
+
+    expect(isSignedProvenance(url)).toBe(true);
+    expect(red.display).toBe("https://cdn.example.com/a.mp4…redacted");
+    expect(red.display).not.toContain("access_token");
+    expect(red.display).not.toContain("=1");
+  });
+
+  it("redacts OAuth refresh and OAuth tokens in queries and fragments", () => {
+    const cases = [
+      { url: "https://cdn.example.com/a.mp4?refresh_token=1", key: "refresh_token" },
+      { url: "https://cdn.example.com/a.mp4#oauth_token=2", key: "oauth_token" },
+    ];
+
+    for (const { url, key } of cases) {
+      const red = redactProvenance(url);
+      expect(isSignedProvenance(url)).toBe(true);
+      expect(red.display).toBe("https://cdn.example.com/a.mp4…redacted");
+      expect(red.removedKeys).toContain(key);
+      expect(red.display).not.toContain("=1");
+      expect(red.display).not.toContain("=2");
+    }
+  });
+
+  it("removes userinfo through the final authority separator", () => {
+    const url = "https://user:1@attacker@cdn.example.com/a.mp4";
+    const red = redactProvenance(url);
+
+    expect(isSignedProvenance(url)).toBe(true);
+    expect(red.display).toBe("https://cdn.example.com/a.mp4…redacted");
+    expect(red.display).not.toContain("attacker");
+  });
+
   it("redactProvenance keeps a clean URL intact and strips userinfo", () => {
     expect(redactProvenance("https://cdn.example.com/a.mp4?w=640")).toEqual({
       display: "https://cdn.example.com/a.mp4?w=640",
@@ -245,6 +431,56 @@ describe("Assets — provenance redaction", () => {
     }
   });
 
+  it("keeps OAuth query and fragment credentials out of provenance DOM attributes", async () => {
+    route({
+      media: {
+        total: 2,
+        items: [
+          asset({ id: "oauth-query", storage_key: "https://cdn.example.com/a.mp4?refresh_token=1" }),
+          asset({ id: "oauth-fragment", storage_key: "https://cdn.example.com/b.mp4#oauth_token=2" }),
+        ],
+      },
+    });
+    const { container } = renderAssets();
+
+    await waitFor(() =>
+      expect(container.querySelectorAll("[data-provenance='redacted']")).toHaveLength(2),
+    );
+    for (const node of Array.from(container.querySelectorAll("[data-provenance]"))) {
+      expect(node.textContent).not.toMatch(/refresh_token|oauth_token|=1|=2/);
+      for (const attr of Array.from(node.attributes)) {
+        expect(attr.value).not.toMatch(/refresh_token|oauth_token|=1|=2/);
+      }
+    }
+  });
+
+  it("fetches preview media with Authorization instead of placing its token in src", async () => {
+    route({
+      media: { total: 1, items: [asset({ id: "preview-asset", mime_type: "image/png" })] },
+    });
+    const blob = new Blob(["image-data"], { type: "image/png" });
+    const create = vi.fn(() => "blob:asset-preview");
+    const revoke = vi.fn();
+    vi.stubGlobal("URL", class extends URL {
+      static createObjectURL = create;
+      static revokeObjectURL = revoke;
+    });
+    fetchMediaFile.mockResolvedValue(blob);
+    const { container } = renderAssets();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Grid" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Preview$/ }));
+    const preview = await screen.findByAltText("Video asset preview-");
+    expect(preview).toHaveAttribute("src", "blob:asset-preview");
+    expect(fetchMediaFile).toHaveBeenCalledWith("preview-asset");
+    for (const media of Array.from(container.querySelectorAll("img,video,audio"))) {
+      expect(media.getAttribute("src")).not.toContain("token=");
+    }
+
+    cleanup();
+    expect(revoke).toHaveBeenCalledWith("blob:asset-preview");
+  });
+
   it("redacts a stock provider preview URL, which is where signed URLs really live", async () => {
     route();
     wsPost.mockResolvedValue({
@@ -268,5 +504,272 @@ describe("Assets — provenance redaction", () => {
     const redacted = container.querySelector("[data-provenance='redacted']") as HTMLElement;
     expect(redacted.textContent).not.toContain(SIGNATURE);
     expect(redacted.textContent).toContain("https://cdn.example.com/renders/clip.mp4…redacted");
+  });
+});
+
+describe("Assets — exports", () => {
+  async function selectExport() {
+    const heading = await screen.findByRole("heading", { name: "Export queue" });
+    const panel = heading.closest("section") as HTMLElement;
+    const format = await within(panel).findByText("SRT");
+    fireEvent.click(format.closest("tr") as HTMLElement);
+    return (await screen.findByRole("heading", { name: "Export detail" })).closest("section") as HTMLElement;
+  }
+
+  it("downloads an artifact with bearer auth and revokes the temporary blob URL", async () => {
+    route({ exports: { items: [exportRow()] } });
+    const blob = new Blob(["subtitle bytes"], { type: "text/plain" });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, blob: async () => blob });
+    vi.stubGlobal("fetch", fetchMock);
+    const create = vi.fn(() => "blob:export-1");
+    const revoke = vi.fn();
+    vi.stubGlobal("URL", class extends URL { static createObjectURL = create; static revokeObjectURL = revoke; });
+    const downloads: { href: string; filename: string }[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      downloads.push({ href: this.href, filename: this.download });
+    });
+    renderAssets();
+    const detail = await selectExport();
+    fireEvent.click(within(detail).getByRole("button", { name: "Download artifact" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/workspaces/ws-1/exports/e-1/download", {
+      method: "GET", headers: { Authorization: "Bearer TEST_JWT_VALUE" },
+    }));
+    await waitFor(() => expect(downloads).toEqual([{ href: "blob:export-1", filename: "export-e-1.srt" }]));
+    expect(create).toHaveBeenCalledWith(blob);
+    // Revocation may be scheduled for the next task so the browser can start the download.
+    await act(async () => { await new Promise((done) => setTimeout(done, 0)); });
+    expect(revoke).toHaveBeenCalledWith("blob:export-1");
+    expect(document.querySelector("a[download]" )).toBeNull();
+  });
+
+  it("keeps artifact downloads available at the viewer API floor", async () => {
+    sessionState.capabilitiesKnown = true;
+    sessionState.capabilities = ["content.read"];
+    route({ exports: { items: [exportRow()] } });
+    renderAssets();
+    const detail = await selectExport();
+    expect(within(detail).getByRole("button", { name: "Download artifact" })).toBeEnabled();
+    expect(within(detail).queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("reports an artifact download refusal without clicking a download link", async () => {
+    route({ exports: { items: [exportRow()] } });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 401, statusText: "Unauthorized", json: async () => ({ detail: "invalid or expired token" }) }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    renderAssets();
+    const detail = await selectExport();
+    fireEvent.click(within(detail).getByRole("button", { name: "Download artifact" }));
+    expect(await within(detail).findByRole("alert")).toHaveTextContent("invalid or expired token");
+    expect(click).not.toHaveBeenCalled();
+  });
+
+  it("renders probed formats with the probe's own unavailability reason", async () => {
+    route();
+    renderAssets();
+    const heading = await screen.findByRole("heading", { name: "Exports" });
+    const panel = heading.closest("section") as HTMLElement;
+    expect(within(panel).getByText("SRT")).toBeInTheDocument();
+    expect(within(panel).getByText(/ffmpeg not installed/)).toBeInTheDocument();
+    expect(wsGet).toHaveBeenCalledWith("/exports/formats");
+    expect(wsGet).toHaveBeenCalledWith("/exports/profiles");
+  });
+
+  it("renders an explicit empty queue instead of an empty table", async () => {
+    route();
+    renderAssets();
+    expect(await screen.findByText("No export queued")).toBeInTheDocument();
+  });
+
+  it("queues an export with profile, probed format and target", async () => {
+    route();
+    wsPost.mockResolvedValue({ export_id: "e-9" });
+    renderAssets();
+    const heading = await screen.findByRole("heading", { name: "Queue an export" });
+    const panel = heading.closest("section") as HTMLElement;
+    fireEvent.change(await within(panel).findByLabelText("Profile"), { target: { value: "p-1" } });
+    fireEvent.change(within(panel).getByLabelText("Format"), { target: { value: "SRT" } });
+    fireEvent.change(within(panel).getByLabelText("Target id"), { target: { value: "tl-1" } });
+    const form = within(panel).getByLabelText("Target id").closest("form") as HTMLFormElement;
+    fireEvent.submit(form);
+    await waitFor(() =>
+      expect(wsPost).toHaveBeenCalledWith("/exports", {
+        profile_id: "p-1",
+        format: "SRT",
+        target_type: "timeline",
+        target_id: "tl-1",
+      }),
+    );
+  });
+
+  it("selecting a queued export shows verification and the artifact", async () => {
+    route({ exports: { items: [exportRow()] } });
+    renderAssets();
+    const heading = await screen.findByRole("heading", { name: "Export queue" });
+    const panel = heading.closest("section") as HTMLElement;
+    const row = within(panel).getByText("SRT").closest("tr") as HTMLElement;
+    fireEvent.click(row);
+
+    const detailHeading = await screen.findByRole("heading", { name: "Export detail" });
+    const detailPanel = detailHeading.closest("section") as HTMLElement;
+    expect(within(detailPanel).getByText("verification complete")).toBeInTheDocument();
+    expect(within(detailPanel).getByText(/1 checks recorded/)).toBeInTheDocument();
+    expect(within(detailPanel).getByRole("button", { name: "Download artifact" })).toBeInTheDocument();
+    // DONE is neither FAILED/CANCELLED nor QUEUED/RUNNING, so both stay disabled.
+    expect(within(detailPanel).getByRole("button", { name: "Retry" })).toBeDisabled();
+    expect(within(detailPanel).getByRole("button", { name: "Cancel" })).toBeDisabled();
+  });
+
+  it("a viewer sees the gating notice instead of the queue form", async () => {
+    sessionState.capabilities = [];
+    sessionState.capabilitiesKnown = true;
+    route();
+    renderAssets();
+    await waitFor(() =>
+      expect(screen.getByText("Members and above can queue exports")).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("button", { name: "Queue export" })).toBeNull();
+  });
+});
+
+describe("Assets — voice preview", () => {
+  it("loads and submits voices for the displayed default provider without a provider click", async () => {
+    route();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503, statusText: "Unavailable", json: async () => ({ detail: "provider unavailable" }) });
+    vi.stubGlobal("fetch", fetchMock);
+    renderAssets();
+    const voice = await screen.findByLabelText("Voice");
+    expect(screen.getByRole("button", { name: "Edge" })).toHaveAttribute("aria-pressed", "true");
+    expect(wsGet).toHaveBeenCalledWith("/voice-preview/providers/edge/voices");
+    fireEvent.change(voice, { target: { value: "voice-a" } });
+    fireEvent.change(screen.getByLabelText("Sample text"), { target: { value: "Hello" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview voice" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/workspaces/ws-1/voice-preview", expect.objectContaining({
+      body: JSON.stringify({ text: "Hello", voice: "voice-a", provider: "edge" }),
+    })));
+  });
+
+  it("revokes each owned preview sample on replacement and the last one on unmount", async () => {
+    route();
+    const create = vi.fn().mockReturnValueOnce("blob:sample-1").mockReturnValueOnce("blob:sample-2");
+    const revoke = vi.fn();
+    vi.stubGlobal("URL", class extends URL { static createObjectURL = create; static revokeObjectURL = revoke; });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, blob: async () => new Blob(["audio"]), headers: { get: () => null } }));
+    const { unmount } = renderAssets();
+    fireEvent.change(await screen.findByLabelText("Sample text"), { target: { value: "Hello" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview voice" }));
+    await waitFor(() => expect(screen.getByLabelText("Voice preview sample")).toHaveAttribute("src", "blob:sample-1"));
+    expect(revoke).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Preview voice" }));
+    await waitFor(() => expect(screen.getByLabelText("Voice preview sample")).toHaveAttribute("src", "blob:sample-2"));
+    expect(revoke.mock.calls).toEqual([["blob:sample-1"]]);
+    unmount();
+    expect(revoke.mock.calls).toEqual([["blob:sample-1"], ["blob:sample-2"]]);
+  });
+
+  it("revokes the first ready preview immediately when leaving the page", async () => {
+    route();
+    const revoke = vi.fn();
+    vi.stubGlobal("URL", class extends URL { static createObjectURL = () => "blob:first-sample"; static revokeObjectURL = revoke; });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, blob: async () => new Blob(["audio"]), headers: { get: () => null } }));
+    const { unmount } = renderAssets();
+    fireEvent.change(await screen.findByLabelText("Sample text"), { target: { value: "Hello" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview voice" }));
+    await screen.findByLabelText("Voice preview sample");
+    unmount();
+    expect(revoke).toHaveBeenCalledExactlyOnceWith("blob:first-sample");
+  });
+
+  it("does not create an object URL when a pending preview finishes after unmount", async () => {
+    route();
+    let resolveBlob!: (blob: Blob) => void;
+    const blobPromise = new Promise<Blob>((resolve) => { resolveBlob = resolve; });
+    const blob = vi.fn(() => blobPromise);
+    const create = vi.fn(() => "blob:late-sample");
+    const revoke = vi.fn();
+    vi.stubGlobal("URL", class extends URL { static createObjectURL = create; static revokeObjectURL = revoke; });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, blob, headers: { get: () => null } });
+    vi.stubGlobal("fetch", fetchMock);
+    const { unmount } = renderAssets();
+    fireEvent.change(await screen.findByLabelText("Sample text"), { target: { value: "Hello" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview voice" }));
+    await waitFor(() => expect(blob).toHaveBeenCalledOnce());
+
+    unmount();
+    await act(async () => { resolveBlob(new Blob(["late audio"])); await blobPromise; });
+
+    expect(create).not.toHaveBeenCalled();
+    expect(revoke).not.toHaveBeenCalled();
+  });
+
+  function stubPreview(status: number, detail: unknown) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status,
+        statusText: status === 429 ? "Too Many Requests" : "Payment Required",
+        json: async () => ({ detail }),
+        headers: { get: () => null },
+        blob: async () => new Blob([]),
+      }),
+    );
+  }
+
+  it("discloses the cost and the cache rule before any spend", async () => {
+    route();
+    renderAssets();
+    const heading = await screen.findByRole("heading", { name: "Voice preview" });
+    const panel = heading.closest("section") as HTMLElement;
+    expect(await within(panel).findByRole("button", { name: "Edge" })).toBeInTheDocument();
+    expect(within(panel).getByText(/set ELEVENLABS_API_KEY/)).toBeInTheDocument();
+    expect(within(panel).getByText(/estimated cost/)).toBeInTheDocument();
+    expect(within(panel).getByText(/served from cache is free/)).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it("renders a 429 as a rate limit, never a generic error", async () => {
+    route();
+    stubPreview(429, {
+      reason: "preview_budget_exceeded",
+      message: "at most 20 voice previews per 60s per workspace",
+    });
+    renderAssets();
+    const heading = await screen.findByRole("heading", { name: "Voice preview" });
+    const panel = heading.closest("section") as HTMLElement;
+    fireEvent.change(await within(panel).findByLabelText("Sample text"), {
+      target: { value: "Hello world" },
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Preview voice" }));
+    await waitFor(() => expect(within(panel).getByRole("alert")).toHaveTextContent(/Rate limited/));
+    expect(within(panel).getByRole("alert")).toHaveTextContent(/20 previews/);
+    vi.unstubAllGlobals();
+  });
+
+  it("renders a 402 as budget exhaustion with no retry promise", async () => {
+    route();
+    stubPreview(402, {
+      reason: "budget_exhausted",
+      message: "workspace daily cap reached",
+    });
+    renderAssets();
+    const heading = await screen.findByRole("heading", { name: "Voice preview" });
+    const panel = heading.closest("section") as HTMLElement;
+    fireEvent.change(await within(panel).findByLabelText("Sample text"), {
+      target: { value: "Hello world" },
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Preview voice" }));
+    await waitFor(() => expect(within(panel).getByRole("alert")).toHaveTextContent(/Budget exhausted/));
+    vi.unstubAllGlobals();
+  });
+
+  it("a viewer sees the gating notice instead of the preview form", async () => {
+    sessionState.capabilities = [];
+    sessionState.capabilitiesKnown = true;
+    route();
+    renderAssets();
+    await waitFor(() =>
+      expect(screen.getByText("Members and above can preview voices")).toBeInTheDocument(),
+    );
+    vi.unstubAllGlobals();
   });
 });

@@ -65,7 +65,7 @@ import threading
 import time
 from collections.abc import Iterable
 from pathlib import Path
-from urllib.parse import parse_qsl, urlsplit
+from urllib.parse import unquote, unquote_plus, urlsplit
 
 from app.services.media_intel_runs import canonical_params
 
@@ -96,6 +96,8 @@ _CACHE_FILE_PATTERN = re.compile(r"^[0-9a-f]{64}\.json$")
 #: A SIGKILL between mkstemp and os.replace leaves these behind permanently,
 #: so they must be recognised by NAME -- they never match the published pattern.
 _CACHE_TEMP_FILE_PATTERN = re.compile(r"^\.[0-9a-f]{64}-[a-z0-9_]+\.tmp$")
+_URL_IN_TEXT = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+_MAX_NESTED_URL_DECODE_PASSES = 8
 
 #: 256 shards. Bounded memory (no lock per keyword) while still collapsing the
 #: N-workers-same-keyword case onto one shard, with a double-checked read.
@@ -108,15 +110,32 @@ _last_sweep_monotonic: float | None = None
 #: read so a stale signed URL cannot be served.
 SIGNED_URL_PROVIDERS: frozenset[str] = frozenset({"coverr"})
 
-#: Query parameter names that mark a URL as signed / credential-bearing. Matched
-#: case-insensitively against every query key.
+#: Parameter names that mark a URL as signed / credential-bearing. Matched
+#: case-insensitively against query parameters and OAuth-style URL fragments.
 _SIGNED_QUERY_KEYS: frozenset[str] = frozenset({
     "amz-signature", "x-amz-signature", "x-amz-credential", "x-amz-algorithm",
     "x-goog-signature", "x-goog-credential", "gcp-signature", "signature",
-    "sig", "token", "access_token", "id_token", "jwt", "auth", "authorization",
+    "sig", "token", "access_token", "refresh_token", "oauth_token", "id_token", "jwt", "auth", "authorization",
     "key", "apikey", "api_key", "policy", "expires", "se", "st", "sk", "sp",
     "hdnts", "x-amz-date", "x-amz-expires", "download_token", "stoken",
 })
+
+_MALFORMED_PERCENT_ESCAPE = re.compile(r"%(?![0-9a-fA-F]{2})")
+
+
+def _normalize_parameter_name(name: str) -> str:
+    """Normalize parameter-name casing and separators before credential checks."""
+    value = str(name or "").strip()
+    # Split both ordinary camelCase and acronym-to-word boundaries, then apply
+    # the same underscore convention used by the credential hints.
+    value = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", value)
+    value = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", value)
+    return value.lower().replace("-", "_")
+
+
+_NORMALIZED_SIGNED_QUERY_KEYS = frozenset(
+    _normalize_parameter_name(key) for key in _SIGNED_QUERY_KEYS
+)
 
 
 class MediaCacheError(RuntimeError):
@@ -145,7 +164,7 @@ RESULT_AFFECTING_FIELDS: tuple[str, ...] = (
 
 def is_credential_param(name: str) -> bool:
     """True when a parameter name carries a secret rather than a result."""
-    key = str(name or "").strip().lower().replace("-", "_")
+    key = _normalize_parameter_name(name)
     if not key:
         return False
     if key in _CREDENTIAL_PARAM_HINTS:
@@ -206,7 +225,7 @@ def lock_for(params: dict | None) -> threading.Lock:
 
 
 def is_signed_url(url: str) -> bool:
-    """True when a URL carries a credential/expiry in its query or userinfo.
+    """True when a URL carries a credential/expiry in its query, fragment or userinfo.
 
     A signed URL is single-use by construction: the signature authorises one
     fetch and expires. Replaying it from a cache is either a 403 or a leak of
@@ -223,9 +242,42 @@ def is_signed_url(url: str) -> bool:
         return True
     if parsed.username is not None or parsed.password is not None:
         return True
-    for key, _value in parse_qsl(parsed.query, keep_blank_values=True):
-        if str(key or "").strip().lower() in _SIGNED_QUERY_KEYS:
-            return True
+
+    def has_credential_key(params: str) -> bool:
+        for pair in params.split("&"):
+            raw_key = pair.split("=", 1)[0].strip()
+            if not raw_key:
+                continue
+            # Treat malformed escapes and invalid UTF-8 as unsafe rather than
+            # allowing an undecodable credential name into the persistent cache.
+            if _MALFORMED_PERCENT_ESCAPE.search(raw_key):
+                return True
+            try:
+                key = unquote_plus(raw_key, errors="strict").strip()
+            except UnicodeDecodeError:
+                return True
+            normalized_key = _normalize_parameter_name(key)
+            if (key.lower() in _SIGNED_QUERY_KEYS
+                    or normalized_key in _NORMALIZED_SIGNED_QUERY_KEYS
+                    or is_credential_param(key)):
+                return True
+        return False
+
+    if has_credential_key(parsed.query):
+        return True
+
+    # Browsers and OAuth providers also place tokens in fragments. A fragment
+    # may be a hash route with a query after `?`, including an encoded `%3F`.
+    decoded_fragment = unquote(parsed.fragment)
+    candidates = {parsed.fragment, decoded_fragment}
+    for candidate in tuple(candidates):
+        candidates.update(
+            candidate[index + 1:]
+            for index, char in enumerate(candidate)
+            if char == "?"
+        )
+    if any(has_credential_key(candidate) for candidate in candidates):
+        return True
     return False
 
 
@@ -254,6 +306,50 @@ def public_page_url(value: str) -> str:
     host = parsed.hostname
     port = f":{parsed.port}" if parsed.port else ""
     return f"{parsed.scheme}://{host}{port}{parsed.path}"
+
+
+def _contains_signed_url(value: object) -> bool:
+    """Find credential-bearing URLs nested or repeatedly encoded in metadata.
+
+    Decoding is bounded to avoid unbounded work on hostile cache data. A value
+    that remains encoded beyond the limit is rejected conservatively rather
+    than persisted without knowing whether another layer hides a signed URL.
+    """
+    if isinstance(value, dict):
+        return any(_contains_signed_url(child) for child in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_contains_signed_url(child) for child in value)
+    if not isinstance(value, str):
+        return False
+
+    candidates = {value, unquote(value), unquote_plus(value)}
+    for candidate in candidates:
+        text = candidate
+        for depth in range(_MAX_NESTED_URL_DECODE_PASSES + 1):
+            for match in _URL_IN_TEXT.finditer(text):
+                url = match.group().rstrip(".,;:!?)\\]}")
+                if is_signed_url(url):
+                    return True
+
+            decoded = unquote(text)
+            if decoded == text:
+                break
+            if depth == _MAX_NESTED_URL_DECODE_PASSES:
+                return True
+            text = decoded
+    return False
+
+
+def _has_unsafe_source_info(value: object) -> bool:
+    """Reject legacy metadata with secret-shaped keys or URLs at any depth."""
+    if isinstance(value, dict):
+        return any(
+            is_credential_param(str(key)) or _has_unsafe_source_info(child)
+            for key, child in value.items()
+        )
+    if isinstance(value, (list, tuple)):
+        return any(_has_unsafe_source_info(child) for child in value)
+    return _contains_signed_url(value)
 
 
 # ---------------------------------------------------------------------------
@@ -305,6 +401,10 @@ def read_media_cache(cache_dir: Path, params: dict | None, *,
     """
     moment = time.time() if now is None else float(now)
     path = cache_path(cache_dir, params)
+    provider = str((params or {}).get("provider") or "")
+    if provider_disables_cache(provider):
+        remove_entry(path)
+        return None
     if not is_fresh(path, moment, ttl_seconds):
         remove_entry(path)
         return None
@@ -331,6 +431,12 @@ def read_media_cache(cache_dir: Path, params: dict | None, *,
         return None
     for item in items:
         if not isinstance(item, dict) or not str(item.get("url") or "").strip():
+            remove_entry(path)
+            return None
+        item_provider = str(item.get("provider") or "")
+        if (is_signed_url(item["url"]) or provider_disables_cache(item_provider)
+                or _contains_signed_url(item)
+                or _has_unsafe_source_info(item.get("source_info"))):
             remove_entry(path)
             return None
     return items
@@ -415,11 +521,18 @@ def write_media_cache(cache_dir: Path, params: dict | None,
         source_info = item.get("source_info")
         if isinstance(source_info, dict) and source_info:
             # Keep provenance, but only the public form of any page URL.
-            entry["source_info"] = {
+            safe_source_info = {
                 k: (public_page_url(v) if k in ("source_page", "profile_page") else v)
                 for k, v in source_info.items()
                 if not is_credential_param(k)
             }
+            if _has_unsafe_source_info(safe_source_info):
+                logger.info("media cache: refusing credential-bearing source metadata from %r", provider)
+                return False
+            entry["source_info"] = safe_source_info
+        if _contains_signed_url(entry):
+            logger.info("media cache: refusing credential-bearing metadata from %r", provider)
+            return False
         serialised.append(entry)
 
     if not serialised:

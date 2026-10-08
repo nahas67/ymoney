@@ -33,15 +33,16 @@
  *
  * A provenance value (a provider download URL, a storage key, a stock `preview`
  * or `page_url`) can carry a credential: the backend itself refuses to cache
- * signed URLs and lists the exact query keys that mark one
- * (backend/app/services/media_cache.py `_SIGNED_QUERY_KEYS`, and
- * `SIGNED_URL_PROVIDERS = {"coverr"}`). `redactProvenance` mirrors that key set
- * and strips the whole query string plus any userinfo whenever one of them is
- * present. The rendered cell therefore shows host + path (or `…redacted`) and
- * the secret never reaches the DOM.
+ * signed URLs and lists exact query keys plus credential-name hints
+ * (backend/app/services/media_cache.py `_SIGNED_QUERY_KEYS` and
+ * `is_credential_param`; `SIGNED_URL_PROVIDERS = {"coverr"}`).
+ * `redactProvenance` mirrors that policy and strips the whole query/fragment
+ * plus any userinfo whenever one of them is present. The rendered cell
+ * therefore shows host + path (or `…redacted`) and the secret never reaches the
+ * DOM.
  */
 
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   Badge,
   Button,
@@ -61,7 +62,7 @@ import {
   type Tone,
 } from "../../design-system/primitives";
 import { useMutation, useWsQuery } from "../../api/queries";
-import { mediaFileUrl, videoThumbUrl, wsApi } from "../../lib/api";
+import { fetchMediaFile, getToken, videoThumbUrl, wsApi } from "../../lib/api";
 import { useSession } from "../../state/session";
 
 /* ==========================================================================
@@ -154,9 +155,15 @@ export type StockHit = {
 export const SIGNED_QUERY_KEYS: readonly string[] = [
   "amz-signature", "x-amz-signature", "x-amz-credential", "x-amz-algorithm",
   "x-goog-signature", "x-goog-credential", "gcp-signature", "signature",
-  "sig", "token", "access_token", "id_token", "jwt", "auth", "authorization",
+  "sig", "token", "access_token", "refresh_token", "oauth_token", "id_token", "jwt", "auth", "authorization",
   "key", "apikey", "api_key", "policy", "expires", "se", "st", "sk", "sp",
   "hdnts", "x-amz-date", "x-amz-expires", "download_token", "stoken",
+];
+
+const CREDENTIAL_QUERY_HINTS: readonly string[] = [
+  "api_key", "apikey", "api-key", "key", "token", "access_token", "secret",
+  "secret_key", "client_secret", "password", "authorization", "auth",
+  "bearer", "credential", "credentials", "session", "jwt",
 ];
 
 export type Redaction = {
@@ -171,6 +178,52 @@ export type Redaction = {
 const SIGNED = new Set(SIGNED_QUERY_KEYS.map((k) => k.toLowerCase()));
 const REDACTED_MARK = "…redacted";
 
+function isCredentialQueryKey(rawKey: string): boolean {
+  const formDecoded = rawKey.replace(/\+/g, " ");
+  if (/%(?![0-9a-f]{2})/i.test(rawKey)) return true;
+  try {
+    const decoded = decodeURIComponent(formDecoded).trim();
+    if (SIGNED.has(decoded.toLowerCase())) return true;
+    const normalized = decoded
+      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+      .replace(/-/g, "_")
+      .toLowerCase();
+    return CREDENTIAL_QUERY_HINTS.some((hint) => {
+      const normalizedHint = hint.toLowerCase().replace(/-/g, "_");
+      return normalized === normalizedHint ||
+        normalized.endsWith(`_${normalizedHint}`) ||
+        normalized.startsWith(`${normalizedHint}_`);
+    });
+  } catch {
+    // Malformed escapes and invalid UTF-8 fail closed; never render the URL.
+    return true;
+  }
+}
+
+function signedQueryKeys(rawParams: string): string[] {
+  return rawParams
+    .split("&")
+    .map((pair) => (pair.split("=")[0] ?? "").trim())
+    .filter((key) => key.length > 0 && isCredentialQueryKey(key));
+}
+
+function fragmentParams(rawFragment: string): string[] {
+  const decodedFragment = rawFragment.replace(/(?:%[0-9a-f]{2})+/gi, (escaped) => {
+    try {
+      return decodeURIComponent(escaped);
+    } catch {
+      return escaped;
+    }
+  });
+  const candidates = new Set([rawFragment, decodedFragment]);
+  for (const candidate of candidates) {
+    for (let queryAt = candidate.indexOf("?"); queryAt >= 0; queryAt = candidate.indexOf("?", queryAt + 1)) {
+      candidates.add(candidate.slice(queryAt + 1));
+    }
+  }
+  return Array.from(candidates);
+}
+
 /** True when this value carries (or may carry) a credential. */
 export function isSignedProvenance(raw: string | null | undefined): boolean {
   const text = String(raw ?? "").trim();
@@ -183,11 +236,14 @@ export function isSignedProvenance(raw: string | null | undefined): boolean {
     const firstSep = rest.search(/[/?#]/);
     if (at >= 0 && (firstSep < 0 || at < firstSep)) return true;
   }
-  const query = text.includes("?") ? text.slice(text.indexOf("?") + 1).split("#")[0] : "";
-  return query
-    .split("&")
-    .map((pair) => pair.split("=")[0]?.trim().toLowerCase() ?? "")
-    .some((key) => key.length > 0 && SIGNED.has(key));
+  const queryAt = text.indexOf("?");
+  const fragmentAt = text.indexOf("#");
+  const hasQuery = queryAt >= 0 && (fragmentAt < 0 || queryAt < fragmentAt);
+  const query = hasQuery
+    ? text.slice(queryAt + 1, fragmentAt < 0 ? text.length : fragmentAt)
+    : "";
+  const fragments = fragmentAt >= 0 ? fragmentParams(text.slice(fragmentAt + 1)) : [];
+  return signedQueryKeys(query).length > 0 || fragments.some((params) => signedQueryKeys(params).length > 0);
 }
 
 /**
@@ -204,19 +260,27 @@ export function redactProvenance(raw: string | null | undefined): Redaction {
   const body = schemeAt >= 0 ? text.slice(schemeAt + 3) : text;
 
   const queryAt = body.indexOf("?");
-  const beforeQuery = queryAt >= 0 ? body.slice(0, queryAt) : body;
-  const rawQuery = queryAt >= 0 ? body.slice(queryAt + 1).split("#")[0] : "";
-
-  const removedKeys = rawQuery
-    .split("&")
-    .map((pair) => pair.split("=")[0] ?? "")
-    .map((k) => k.trim())
-    .filter((k) => k.length > 0 && SIGNED.has(k.toLowerCase()));
+  const fragmentAt = body.indexOf("#");
+  const hasQuery = queryAt >= 0 && (fragmentAt < 0 || queryAt < fragmentAt);
+  const rawQuery = hasQuery
+    ? body.slice(queryAt + 1, fragmentAt < 0 ? body.length : fragmentAt)
+    : "";
+  const rawFragments = fragmentAt >= 0 ? fragmentParams(body.slice(fragmentAt + 1)) : [];
+  const removedKeys = [
+    ...signedQueryKeys(rawQuery),
+    ...rawFragments.flatMap((params) => signedQueryKeys(params)),
+  ];
+  const credentialPartAt = Math.min(
+    hasQuery ? queryAt : body.length,
+    fragmentAt >= 0 ? fragmentAt : body.length,
+  );
+  const beforeQuery = body.slice(0, credentialPartAt);
 
   // userinfo is dropped unconditionally: `https://user:pw@host/x` is a leak.
-  const at = beforeQuery.indexOf("@");
   const firstSep = beforeQuery.search(/[/?#]/);
-  const hadUserinfo = at >= 0 && (firstSep < 0 || at < firstSep);
+  const authorityEnd = firstSep < 0 ? beforeQuery.length : firstSep;
+  const at = beforeQuery.slice(0, authorityEnd).lastIndexOf("@");
+  const hadUserinfo = at >= 0;
   const cleanHostPath = hadUserinfo
     ? beforeQuery.slice(at + 1)
     : beforeQuery;
@@ -815,6 +879,9 @@ export function Assets() {
         )}
       </Panel>
 
+      <ExportsSection />
+      <VoicePreviewSection />
+
       <Modal
         open={selected !== null}
         onClose={() => setSelected(null)}
@@ -879,31 +946,64 @@ function AssetCard({ asset, onOpen }: { asset: MediaAsset; onOpen: () => void })
 }
 
 function AssetDetail({ asset }: { asset: MediaAsset }) {
-  /* The file URL is a BROWSER AUTH url for the media element: an <img>/<video>
-   * cannot send an Authorization header, which is why lib/api.ts builds it this
-   * way for every preview in the app. It is deliberately NOT used for
-   * provenance: provenance renders through `redactProvenance` only. */
-  const file = mediaFileUrl(asset.id);
   const isPlayable = asset.mime_type.startsWith("video/") || asset.mime_type.startsWith("audio/");
   const isPicture = asset.mime_type.startsWith("image/");
+  const supportsPreview = isPlayable || isPicture;
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(supportsPreview);
+
+  useEffect(() => {
+    if (!supportsPreview) {
+      setPreviewLoading(false);
+      return;
+    }
+
+    let active = true;
+    let objectUrl: string | null = null;
+    setPreviewLoading(true);
+    setPreviewError(false);
+    setPreviewUrl(null);
+    void fetchMediaFile(asset.id)
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPreviewUrl(objectUrl);
+      })
+      .catch(() => {
+        if (active) setPreviewError(true);
+      })
+      .finally(() => {
+        if (active) setPreviewLoading(false);
+      });
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [asset.id, supportsPreview]);
 
   return (
     <Grid min={280} gap="md">
       <Panel title="Preview" dense>
-        {isPicture ? (
-          <img src={file} alt={`${humanize(asset.type)} asset ${asset.id.slice(0, 8)}`} style={{ maxWidth: "100%" }} />
-        ) : isPlayable ? (
+        {previewLoading ? (
+          <p className="ym-muted">Loading preview…</p>
+        ) : previewError ? (
+          <EmptyState title="Preview unavailable" description="The media file could not be loaded." />
+        ) : isPicture && previewUrl ? (
+          <img src={previewUrl} alt={`${humanize(asset.type)} asset ${asset.id.slice(0, 8)}`} style={{ maxWidth: "100%" }} />
+        ) : isPlayable && previewUrl ? (
           asset.mime_type.startsWith("video/") ? (
-            <video src={file} controls style={{ maxWidth: "100%" }} />
+            <video src={previewUrl} controls style={{ maxWidth: "100%" }} />
           ) : (
-            <audio src={file} controls style={{ width: "100%" }} />
+            <audio src={previewUrl} controls style={{ width: "100%" }} />
           )
-        ) : (
+        ) : !supportsPreview ? (
           <EmptyState
             title="No inline preview"
             description={`The backend reports mime_type "${asset.mime_type || "not reported"}", which this browser cannot render inline.`}
           />
-        )}
+        ) : null}
       </Panel>
       <Panel title="Technical" dense>
         <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "var(--space-1) var(--space-3)" }}>
@@ -935,11 +1035,785 @@ function AssetDetail({ asset }: { asset: MediaAsset }) {
           value={redactProvenance(asset.storage_key).display}
         />
         <p className="ym-hint">
-          <code>lib/api.ts#mediaFileUrl</code> is used for the inline preview above only. It is never shown as
-          text: the access token in its query string is a credential.
+          Inline previews use an authenticated fetch and a temporary browser object URL; access tokens are never
+          placed in media URL attributes.
         </p>
       </Panel>
     </Grid>
+  );
+}
+
+/* ==========================================================================
+ * Exports — the export center, over the real router.
+ *
+ * ENDPOINTS (all workspace-scoped; backend/app/api/v1/exports.py):
+ *
+ *   GET  /exports/formats                  viewer — probe-driven availability
+ *   GET  /exports/profiles                 viewer — builtin + workspace profiles
+ *   GET  /exports                          viewer — list (the §11 locked row)
+ *   POST /exports                          member + `export` cap — queue
+ *   GET  /exports/{id}                     viewer — detail (state + verification)
+ *   POST /exports/{id}/retry               member — retry a FAILED/CANCELLED export
+ *   POST /exports/{id}/cancel              member — cancel a QUEUED/RUNNING export
+ *   GET  /exports/{id}/download            viewer — stream the artifact
+ *
+ * Writes are member-gated in the UI via the session capabilities (affordance
+ * only; the server answers 403 regardless). The format list is the probe's own
+ * answer — a format the probe did not confirm available is shown as such.
+ * ======================================================================= */
+
+/** `FormatSpec.as_dict` — backend/app/engine/exporter/formats.py:667. */
+type ExportFormat = {
+  format: string;
+  available: boolean;
+  reason: string | null;
+  kind: string;
+  media_type: string;
+  suffix: string;
+};
+type ExportFormatList = { items: ExportFormat[] };
+
+/** Export profile row — backend/app/api/v1/exports.py `_profile_dto`. */
+type ExportProfile = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  preset: string;
+  config: Record<string, unknown>;
+  is_builtin: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+};
+type ExportProfileList = { items: ExportProfile[] };
+
+/** The contracts §11 locked row — backend/app/api/v1/exports.py `_export_dto`. */
+type ExportRow = {
+  id: string;
+  format: string;
+  profile: { name: string; preset: string };
+  target: { type: string; id: string };
+  state: string;
+  progress: number;
+  verification: { complete: boolean; checks: unknown[] } | null;
+  artifact: { url: string; size: number; checksum: string } | null;
+  error: string | null;
+  attempt: number;
+  created_at: string | null;
+  finished_at: string | null;
+};
+type ExportList = { items: ExportRow[] };
+
+function exportTone(state: string): Tone {
+  const s = state.toUpperCase();
+  if (s === "DONE" || s === "COMPLETED" || s === "SUCCEEDED") return "success";
+  if (s === "FAILED") return "danger";
+  if (s === "RUNNING") return "info";
+  if (s === "QUEUED" || s === "PENDING") return "warning";
+  return "neutral";
+}
+
+function ExportsSection() {
+  // Affordance only — the backend enforces the member floor with a 403.
+  const { workspaceId, capabilities, capabilitiesKnown } = useSession();
+  const mayWrite = !capabilitiesKnown || capabilities.includes("content.write");
+  const writeBlockedReason = mayWrite
+    ? null
+    : 'Your workspace role does not include "content.write". The server enforces this.';
+
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [profileId, setProfileId] = useState("");
+  const [format, setFormat] = useState("");
+  const [targetType, setTargetType] = useState("timeline");
+  const [targetId, setTargetId] = useState("");
+
+  const formats = useWsQuery<ExportFormatList>("/exports/formats");
+  const profiles = useWsQuery<ExportProfileList>("/exports/profiles");
+  const queue = useWsQuery<ExportList>("/exports");
+  const detail = useWsQuery<ExportRow>(
+    selectedId ? `/exports/${selectedId}` : "/exports/__none__",
+    { enabled: selectedId !== null },
+  );
+
+  const refreshQueue = () => {
+    queue.reload();
+    detail.reload();
+  };
+
+  const queueExport = useMutation<{ body: Record<string, unknown> }, { export_id: string }>(
+    async ({ body }) => (await wsApi.post("/exports", body)) as { export_id: string },
+    {
+      onSuccess: (result) => {
+        setTargetId("");
+        queue.reload();
+        if (result?.export_id) setSelectedId(result.export_id);
+      },
+    },
+  );
+
+  const rowAction = useMutation<{ id: string; action: "retry" | "cancel" }, unknown>(
+    async ({ id, action }) => wsApi.post(`/exports/${id}/${action}`, {}),
+    { onSuccess: refreshQueue },
+  );
+
+  const availableFormats = ((formats.data as ExportFormatList | null)?.items ?? []).filter((f) => f.available);
+
+  const downloadArtifact = useMutation<ExportRow, void>(async (row) => {
+    const token = getToken();
+    const res = await fetch(`/api/v1/workspaces/${workspaceId}/exports/${row.id}/download`, {
+      method: "GET",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      let message = res.statusText;
+      try {
+        const data = await res.json();
+        if (data.detail !== undefined) message = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+      } catch { /* Retain the HTTP refusal if there is no JSON body. */ }
+      throw new Error(`${res.status} ${message}`);
+    }
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement("a");
+    try {
+      a.href = url;
+      a.download = `export-${row.id.slice(0, 8)}${row.format ? `.${row.format.toLowerCase()}` : ""}`;
+      document.body.appendChild(a);
+      a.click();
+    } finally {
+      a.remove();
+      // Let the browser begin consuming the download before releasing its bytes.
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+  });
+
+  const onQueue = (e: FormEvent) => {
+    e.preventDefault();
+    if (!profileId || !format || !targetId.trim()) return;
+    void queueExport.run({
+      body: {
+        profile_id: profileId,
+        format,
+        target_type: targetType,
+        target_id: targetId.trim(),
+      },
+    });
+  };
+
+  return (
+    <>
+      <Panel
+        title="Exports"
+        subtitle="Queue, track and download renders in every probed format. Availability is the probe's answer, not a guess."
+        dense
+        actions={<Button onClick={() => { formats.reload(); profiles.reload(); queue.reload(); }}>Refresh</Button>}
+      >
+        <QueryBoundary query={formats} skeletonRows={2}>
+          {(d) => {
+            // A 200 that omitted `items` is "not reported", never a crash.
+            const items = Array.isArray(d.items) ? d.items : [];
+            return (
+              <div style={{ display: "flex", gap: "var(--space-1)", flexWrap: "wrap" }} role="list" aria-label="Export formats">
+                {items.map((f) => (
+                  <Badge
+                    key={f.format}
+                    tone={f.available ? "success" : "neutral"}
+                    dot={f.available}
+                    title={f.available ? `${f.kind} · ${f.media_type}` : (f.reason || "The probe did not confirm this format")}
+                  >
+                    {f.format}
+                  </Badge>
+                ))}
+                {items.length === 0 ? <span className="ym-muted">The probe reported no formats.</span> : null}
+              </div>
+            );
+          }}
+        </QueryBoundary>
+        <QueryBoundary query={formats} skeletonRows={1}>
+          {(d) => {
+            const items = Array.isArray(d.items) ? d.items : [];
+            return items.some((f) => !f.available) ? (
+              <p className="ym-hint">
+                Unavailable:{" "}
+                {items
+                  .filter((f) => !f.available)
+                  .map((f) => `${f.format}${f.reason ? ` (${f.reason})` : ""}`)
+                  .join(", ")}
+                . Queueing one is refused by the server.
+              </p>
+            ) : (
+              <p className="ym-hint">Every probed format is available.</p>
+            );
+          }}
+        </QueryBoundary>
+      </Panel>
+
+      <Panel title="Export queue" subtitle="Newest first. Verification and the artifact appear on the row once the job finishes." dense>
+        <QueryBoundary query={queue} skeletonRows={4}>
+          {(d) => {
+            const items = Array.isArray(d.items) ? d.items : [];
+            return items.length === 0 ? (
+              <EmptyState
+                title="No export queued"
+                description="Queue one below with a profile, a probed format and a target id. A 422 means the target or format was not recognised."
+              />
+            ) : (
+              <DataTable
+                rows={items}
+                columns={[
+                  { key: "format", header: "Format", cell: (r) => <Badge tone="neutral">{r.format || "not reported"}</Badge> },
+                  { key: "state", header: "State", cell: (r) => <Badge tone={exportTone(String(r.state ?? ""))} dot={String(r.state ?? "").toUpperCase() === "RUNNING"}>{humanize(r.state) || "not reported"}</Badge> },
+                  {
+                    key: "progress",
+                    header: "Progress",
+                    align: "right",
+                    cell: (r) => (r.progress > 0 || String(r.state ?? "").toUpperCase() === "RUNNING" ? `${r.progress}%` : <span className="ym-muted">—</span>),
+                  },
+                  {
+                    key: "target",
+                    header: "Target",
+                    cell: (r) => (
+                      r.target ? (
+                        <span style={{ fontFamily: "var(--font-mono)" }}>
+                          {r.target.type}:{String(r.target.id ?? "").slice(0, 8)}
+                        </span>
+                      ) : (
+                        <span className="ym-muted">not reported</span>
+                      )
+                    ),
+                    hideBelow: "md",
+                  },
+                  {
+                    key: "verification",
+                    header: "Verified",
+                    cell: (r) =>
+                      r.verification === null || r.verification === undefined ? (
+                        <span className="ym-muted" title="No verification report has been written yet">—</span>
+                      ) : (
+                        <Badge tone={r.verification.complete ? "success" : "warning"}>
+                          {r.verification.complete ? "complete" : `${(Array.isArray(r.verification.checks) ? r.verification.checks : []).length} checks`}
+                        </Badge>
+                      ),
+                    hideBelow: "lg",
+                  },
+                  {
+                    key: "artifact",
+                    header: "Artifact",
+                    cell: (r) =>
+                      r.artifact ? (
+                        <span title={`checksum ${r.artifact.checksum || "not reported"}`}>{bytes(r.artifact.size)}</span>
+                      ) : (
+                        <span className="ym-muted">none yet</span>
+                      ),
+                    hideBelow: "lg",
+                  },
+                ]}
+                rowKey={(r) => r.id}
+                caption="Export queue"
+                onRowClick={(r) => setSelectedId(r.id)}
+                maxHeight={420}
+                empty="No export queued"
+              />
+            );
+          }}
+        </QueryBoundary>
+      </Panel>
+
+      <Panel title="Queue an export" subtitle="Member or above, plus the export capability the server checks." dense>
+        {mayWrite ? (
+          <form onSubmit={onQueue} style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+            <div className="ym-grid ym-grid--md" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
+              <QueryBoundary query={profiles} skeletonRows={1}>
+                {(d) => {
+                  const items = Array.isArray(d.items) ? d.items : [];
+                  return (
+                    <Select label="Profile" value={profileId} onChange={(e) => setProfileId(e.target.value)} required>
+                      <option value="">Select a profile</option>
+                      {items.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name || p.preset}{p.is_builtin ? " (builtin)" : ""}
+                        </option>
+                      ))}
+                    </Select>
+                  );
+                }}
+              </QueryBoundary>
+              <QueryBoundary query={formats} skeletonRows={1}>
+                {(d) => (
+                  <Select label="Format" value={format} onChange={(e) => setFormat(e.target.value)} required>
+                    <option value="">Select a format</option>
+                    {availableFormats.map((f) => (
+                      <option key={f.format} value={f.format}>{f.format}</option>
+                    ))}
+                  </Select>
+                )}
+              </QueryBoundary>
+              <Select label="Target type" value={targetType} onChange={(e) => setTargetType(e.target.value)}>
+                <option value="timeline">Timeline</option>
+                <option value="video">Video</option>
+                <option value="asset">Asset</option>
+              </Select>
+              <Field
+                label="Target id"
+                placeholder="timeline / video / asset id"
+                value={targetId}
+                onChange={(e) => setTargetId(e.target.value)}
+                hint="Must belong to this workspace — a foreign id reads as 404."
+              />
+            </div>
+            <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", flexWrap: "wrap" }}>
+              <Button type="submit" variant="primary" loading={queueExport.pending} disabled={!profileId || !format || !targetId.trim()}>
+                Queue export
+              </Button>
+              {queueExport.error ? (
+                <span className="ym-error" role="alert">Queue refused: {queueExport.error}</span>
+              ) : null}
+            </div>
+          </form>
+        ) : (
+          <EmptyState
+            title="Members and above can queue exports"
+            description={writeBlockedReason ?? "Your role cannot queue exports."}
+          />
+        )}
+      </Panel>
+
+      {selectedId ? (
+        <Panel
+          title="Export detail"
+          subtitle={selectedId}
+          dense
+          actions={
+            <div style={{ display: "flex", gap: "var(--space-1)", flexWrap: "wrap" }}>
+              <Button size="sm" onClick={() => detail.reload()}>Refresh</Button>
+              <Button size="sm" variant="ghost" onClick={() => setSelectedId(null)}>Close</Button>
+            </div>
+          }
+        >
+          <QueryBoundary query={detail} skeletonRows={3}>
+            {(d) => {
+              const state = typeof d.state === "string" ? d.state : "";
+              const profile = d.profile ?? { name: "", preset: "" };
+              return (
+              <>
+                <Grid min={170} gap="sm">
+                  <StatTile label="State" value={<Badge tone={exportTone(state)}>{humanize(state) || "not reported"}</Badge>} source="GET detail" />
+                  <StatTile label="Format" value={d.format || undefined} unavailable={!d.format} source="GET detail" />
+                  <StatTile label="Profile" value={profile.name || profile.preset || undefined} unavailable={!profile.name && !profile.preset} source="GET detail" />
+                  <StatTile label="Attempts" value={typeof d.attempt === "number" ? d.attempt : undefined} unavailable={typeof d.attempt !== "number"} source="GET detail" />
+                  <StatTile
+                    label="Artifact"
+                    value={d.artifact ? bytes(d.artifact.size) : undefined}
+                    unavailable={!d.artifact}
+                    hint={d.artifact?.checksum ? `sha256 ${d.artifact.checksum.slice(0, 16)}…` : undefined}
+                    source="GET detail"
+                  />
+                </Grid>
+                {d.error ? (
+                  <p className="ym-error" role="alert">Export error: {d.error}</p>
+                ) : null}
+                {d.verification === null || d.verification === undefined ? (
+                  <p className="ym-hint">No verification report has been written yet — verification appears once the job finishes.</p>
+                ) : (
+                  <div style={{ display: "flex", gap: "var(--space-1)", flexWrap: "wrap", alignItems: "center" }}>
+                    <Badge tone={d.verification.complete ? "success" : "warning"}>
+                      {d.verification.complete ? "verification complete" : "verification incomplete"}
+                    </Badge>
+                    <span className="ym-hint">
+                      {(Array.isArray(d.verification.checks) ? d.verification.checks : []).length} checks recorded
+                    </span>
+                  </div>
+                )}
+                {mayWrite ? (
+                  <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+                    <Button
+                      size="sm"
+                      loading={rowAction.pending}
+                      disabled={!["FAILED", "CANCELLED"].includes(state.toUpperCase())}
+                      title="Only FAILED or CANCELLED exports can be retried — the server 409s anything else"
+                      onClick={() => void rowAction.run({ id: d.id, action: "retry" })}
+                    >
+                      Retry
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      loading={rowAction.pending}
+                      disabled={!["QUEUED", "RUNNING", "PENDING"].includes(state.toUpperCase())}
+                      title="Only QUEUED or RUNNING exports can be cancelled — the server 409s anything else"
+                      onClick={() => void rowAction.run({ id: d.id, action: "cancel" })}
+                    >
+                      Cancel
+                    </Button>
+                    {rowAction.error ? (
+                      <span className="ym-error" role="alert">Action refused: {rowAction.error}</span>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="ym-hint">{writeBlockedReason ?? "Retry and cancel need a member role."}</p>
+                )}
+                {d.artifact ? (
+                  <Button size="sm" variant="primary" loading={downloadArtifact.pending} onClick={() => void downloadArtifact.run(d)}>
+                    Download artifact
+                  </Button>
+                ) : null}
+                {downloadArtifact.error ? (
+                  <p className="ym-error" role="alert">Download refused: {downloadArtifact.error}</p>
+                ) : null}
+              </>
+              );
+            }}
+          </QueryBoundary>
+        </Panel>
+      ) : null}
+    </>
+  );
+}
+
+/* ==========================================================================
+ * Voice preview — audition a TTS voice before spending on full narration.
+ *
+ * ENDPOINTS (all workspace-scoped; backend/app/api/v1/preview.py):
+ *
+ *   GET  /voice-preview/providers                  viewer — offerable providers + reasons
+ *   GET  /voice-preview/providers/{id}/voices      viewer — the production voice list
+ *   POST /voice-preview                           member — synthesise a sample
+ *
+ * COST (backend/app/api/v1/preview.py:136-158 — the numbers below are read
+ * from the module, not chosen here):
+ *
+ *   - at most 600 characters per preview, at an estimated $0.0002 per char;
+ *   - at most 20 previews per 60s per workspace (a RATE refusal is 429);
+ *   - the workspace daily dollar cap still applies (a MONEY refusal is 402).
+ *
+ * 429 and 402 are typed states below, never a generic error. A cache hit is
+ * free — the reservation is only taken on a miss — so re-hearing a sample
+ * never spends budget. The POST is member-gated (affordance only).
+ * ======================================================================= */
+
+type VoiceProviderRow = {
+  provider: string;
+  label: string;
+  offerable: boolean;
+  available: boolean;
+  reason: string;
+  message: string;
+  qualification_labels: string[];
+  missing_credentials: string[];
+  simulation_only: boolean;
+  live_verified: boolean;
+  contract_tested: boolean;
+};
+type VoiceProviderList = {
+  items: VoiceProviderRow[];
+  offerable: string[];
+  unavailable: string[];
+  default_provider: string;
+  max_chars: number;
+  max_per_window: number;
+  window_seconds: number;
+};
+type VoiceList = {
+  provider: string;
+  language: string;
+  items: { id: string; gender: string; locale: string }[];
+  count: number;
+  empty_reason: string;
+  cache: string;
+};
+
+type PreviewOutcome =
+  | { kind: "idle" }
+  | { kind: "rate_limited"; message: string; windowSeconds: number; maxPerWindow: number }
+  | { kind: "budget_exhausted"; message: string }
+  | { kind: "provider_refused"; message: string }
+  | { kind: "failed"; message: string }
+  | {
+      kind: "ready";
+      url: string;
+      mediaType: string;
+      cached: boolean;
+      clamped: boolean;
+      chars: number;
+      isMock: boolean;
+      windowCount: string | null;
+    };
+
+/** The backend's per-character estimate — backend/app/api/v1/preview.py:153. */
+const PREVIEW_USD_PER_CHAR = 0.0002;
+
+function previewCostUsd(chars: number): number {
+  return Math.max(0, Math.round(chars) * PREVIEW_USD_PER_CHAR);
+}
+
+function VoicePreviewSection() {
+  // Affordance only — the preview POST requires member and 403s otherwise.
+  const { workspaceId, capabilities, capabilitiesKnown } = useSession();
+  const mayWrite = !capabilitiesKnown || capabilities.includes("content.write");
+  const writeBlockedReason = mayWrite
+    ? null
+    : 'Your workspace role does not include "content.write". The server enforces this.';
+
+  const [provider, setProvider] = useState("");
+  const [voice, setVoice] = useState("");
+  const [text, setText] = useState("");
+  const [pending, setPending] = useState(false);
+  const [outcome, setOutcome] = useState<PreviewOutcome>({ kind: "idle" });
+  const previewRequestId = useRef(0);
+
+  const providers = useWsQuery<VoiceProviderList>("/voice-preview/providers");
+  const effectiveProvider =
+    provider || providers.data?.default_provider || "";
+  const voices = useWsQuery<VoiceList>(
+    effectiveProvider ? `/voice-preview/providers/${effectiveProvider}/voices` : "/voice-preview/providers/__none__/voices",
+    { enabled: effectiveProvider !== "" },
+  );
+
+  useEffect(() => {
+    const owned = outcome.kind === "ready" ? outcome.url : "";
+    return () => {
+      if (owned.startsWith("blob:")) URL.revokeObjectURL(owned);
+    };
+  }, [outcome]);
+
+  useEffect(() => () => {
+    previewRequestId.current += 1;
+  }, []);
+
+  const maxChars = providers.data?.max_chars ?? 600;
+  const maxPerWindow = providers.data?.max_per_window ?? 20;
+  const windowSeconds = providers.data?.window_seconds ?? 60;
+  const chars = text.length;
+  const estimated = previewCostUsd(chars);
+
+  const pickProvider = (id: string) => {
+    previewRequestId.current += 1;
+    setPending(false);
+    setProvider(id);
+    setVoice("");
+    setOutcome({ kind: "idle" });
+  };
+
+  const runPreview = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!mayWrite || pending || !effectiveProvider || !text.trim()) return;
+    const requestId = ++previewRequestId.current;
+    setPending(true);
+    setOutcome({ kind: "idle" });
+    try {
+      const token = getToken();
+      const res = await fetch(`/api/v1/workspaces/${workspaceId}/voice-preview`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          text: text.trim(),
+          voice,
+          provider: effectiveProvider,
+        }),
+      });
+      if (requestId !== previewRequestId.current) return;
+      if (!res.ok) {
+        let reason = "";
+        let message = res.statusText;
+        try {
+          const data = await res.json();
+          const detail = (data as { detail?: unknown }).detail;
+          if (typeof detail === "object" && detail !== null) {
+            const d = detail as Record<string, unknown>;
+            reason = typeof d.reason === "string" ? d.reason : "";
+            message = typeof d.message === "string" ? d.message : JSON.stringify(detail);
+          } else if (detail !== undefined) {
+            message = String(detail);
+          }
+        } catch {
+          /* the status is what we branch on; prose is best-effort */
+        }
+        if (requestId !== previewRequestId.current) return;
+        if (res.status === 429 || reason === "preview_budget_exceeded") {
+          setOutcome({
+            kind: "rate_limited",
+            message,
+            windowSeconds,
+            maxPerWindow,
+          });
+        } else if (res.status === 402 || reason === "budget_exhausted") {
+          setOutcome({ kind: "budget_exhausted", message });
+        } else if (res.status === 409 || res.status === 503) {
+          setOutcome({ kind: "provider_refused", message });
+        } else {
+          setOutcome({ kind: "failed", message: `${res.status} ${message}` });
+        }
+        return;
+      }
+      const blob = await res.blob();
+      if (requestId !== previewRequestId.current) return;
+      const mediaType = res.headers.get("content-type") || "audio/wav";
+      const canObjectUrl = typeof URL.createObjectURL === "function";
+      setOutcome({
+        kind: "ready",
+        url: canObjectUrl ? URL.createObjectURL(blob) : "",
+        mediaType,
+        cached: res.headers.get("x-preview-cached") === "1",
+        clamped: res.headers.get("x-preview-clamped") === "1",
+        chars: Number(res.headers.get("x-preview-chars") ?? chars) || chars,
+        isMock: res.headers.get("x-tts-mock") === "1",
+        windowCount: res.headers.get("x-preview-window-count"),
+      });
+    } catch (err) {
+      if (requestId === previewRequestId.current) {
+        setOutcome({ kind: "failed", message: err instanceof Error ? err.message : String(err) });
+      }
+    } finally {
+      if (requestId === previewRequestId.current) setPending(false);
+    }
+  };
+
+  return (
+    <Panel
+      title="Voice preview"
+      subtitle="Audition a production voice on a short sample before spending on full narration."
+      dense
+      actions={<Button onClick={() => { providers.reload(); voices.reload(); }}>Refresh</Button>}
+    >
+      <QueryBoundary query={providers} skeletonRows={2}>
+        {(d) => {
+          // A 200 that omitted a key is "not reported", never a crash.
+          const items = Array.isArray(d.items) ? d.items : [];
+          const unavailable = items.filter((p) => !p.offerable || !p.available);
+          return (
+          <>
+            <div style={{ display: "flex", gap: "var(--space-1)", flexWrap: "wrap" }} role="group" aria-label="TTS provider">
+              {items.map((p) => (
+                <Button
+                  key={p.provider}
+                  size="sm"
+                  variant={p.provider === effectiveProvider ? "primary" : "secondary"}
+                  aria-pressed={p.provider === effectiveProvider}
+                  disabled={!p.offerable || !p.available}
+                  title={p.offerable && p.available ? p.label : `${p.label}: ${p.message}`}
+                  onClick={() => pickProvider(p.provider)}
+                >
+                  {p.label}
+                </Button>
+              ))}
+              {items.length === 0 ? <span className="ym-muted">No provider reported.</span> : null}
+            </div>
+            {unavailable.length > 0 ? (
+              <p className="ym-hint">
+                Not offerable:{" "}
+                {unavailable
+                  .map((p) => `${p.label} (${p.message})`)
+                  .join("; ")}
+                . A provider the adapter cannot build is listed with its reason, never hidden.
+              </p>
+            ) : null}
+          </>
+          );
+        }}
+      </QueryBoundary>
+
+      {effectiveProvider ? (
+        <QueryBoundary query={voices} skeletonRows={2}>
+          {(d) => {
+            const items = Array.isArray(d.items) ? d.items : [];
+            return items.length === 0 ? (
+              <EmptyState
+                title="No voices for this provider"
+                description={d.empty_reason || "The provider answered and genuinely had nothing."}
+              />
+            ) : (
+              <Select label="Voice" value={voice} onChange={(e) => setVoice(e.target.value)}>
+                <option value="">Default voice</option>
+                {items.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.id}{v.gender ? ` · ${v.gender}` : ""}{v.locale ? ` · ${v.locale}` : ""}
+                  </option>
+                ))}
+              </Select>
+            );
+          }}
+        </QueryBoundary>
+      ) : null}
+
+      {mayWrite ? (
+        <form onSubmit={runPreview} style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+          <Textarea
+            label="Sample text"
+            placeholder="A sentence or two to audition the voice"
+            rows={3}
+            maxLength={Math.max(maxChars, 1)}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+          <p className="ym-hint" aria-live="polite">
+            {chars} / {maxChars} characters · estimated cost $
+            {estimated.toFixed(4)} ({chars} × ${PREVIEW_USD_PER_CHAR}/char, an estimate — the provider&apos;s own
+            price settles the reservation). At most {maxPerWindow} previews per {windowSeconds}s per workspace;
+            the workspace daily cap also applies. An identical sample served from cache is free and takes no
+            reservation.
+          </p>
+          <div>
+            <Button type="submit" variant="primary" loading={pending} disabled={!effectiveProvider || !text.trim()}>
+              Preview voice
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <EmptyState
+          title="Members and above can preview voices"
+          description={writeBlockedReason ?? "A preview is a billable call, so it needs a member role."}
+        />
+      )}
+
+      {outcome.kind === "rate_limited" ? (
+        <p className="ym-error" role="alert">
+          Rate limited: this workspace already spent its {outcome.maxPerWindow} previews for this {outcome.windowSeconds}s
+          window. Re-hearing a cached sample is free — wait for the window, or replay a sample you already heard.
+          {outcome.message ? ` (${outcome.message})` : ""}
+        </p>
+      ) : null}
+      {outcome.kind === "budget_exhausted" ? (
+        <p className="ym-error" role="alert">
+          Budget exhausted: the workspace daily cap cannot cover this preview — no retry will succeed until the cap
+          resets or is raised.
+          {outcome.message ? ` (${outcome.message})` : ""}
+        </p>
+      ) : null}
+      {outcome.kind === "provider_refused" ? (
+        <p className="ym-error" role="alert">
+          Provider refused the preview: {outcome.message} Pick an offerable provider above — the list states each
+          one&apos;s reason.
+        </p>
+      ) : null}
+      {outcome.kind === "failed" ? (
+        <p className="ym-error" role="alert">
+          Preview failed: {outcome.message}
+        </p>
+      ) : null}
+      {outcome.kind === "ready" ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+          <div style={{ display: "flex", gap: "var(--space-1)", flexWrap: "wrap" }}>
+            <Badge tone={outcome.cached ? "success" : "neutral"}>
+              {outcome.cached ? "cache hit — free" : "fresh synthesis — billed"}
+            </Badge>
+            {outcome.clamped ? <Badge tone="warning">shortened to the character ceiling</Badge> : null}
+            {outcome.isMock ? <Badge tone="warning">simulated audio — not billed</Badge> : null}
+            <Badge tone="neutral">{outcome.chars} chars</Badge>
+            {outcome.windowCount ? (
+              <Badge tone="neutral" title="Previews spent inside the current window, including this one">
+                {outcome.windowCount} in window
+              </Badge>
+            ) : null}
+          </div>
+          {outcome.url ? (
+            <audio src={outcome.url} controls style={{ width: "100%" }} aria-label="Voice preview sample" />
+          ) : (
+            <p className="ym-hint">Audio bytes arrived ({outcome.mediaType}) but this environment cannot build a playback URL.</p>
+          )}
+        </div>
+      ) : null}
+    </Panel>
   );
 }
 

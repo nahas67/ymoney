@@ -12,6 +12,7 @@ const wsGet = vi.fn();
 const wsPost = vi.fn();
 const wsPut = vi.fn();
 const wsDel = vi.fn();
+const fetchWorkspaceLogo = vi.fn();
 
 vi.mock("../../lib/api", () => ({
   ApiError: class ApiError extends Error {
@@ -28,6 +29,7 @@ vi.mock("../../lib/api", () => ({
     del: (path: string) => wsDel(path),
   },
   getToken: () => "TEST_JWT_VALUE",
+  fetchWorkspaceLogo: (id: string) => fetchWorkspaceLogo(id),
   mediaFileUrl: (id: string) => `/media/${id}`,
 }));
 
@@ -52,10 +54,12 @@ import {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   wsGet.mockReset();
   wsPost.mockReset();
   wsPut.mockReset();
   wsDel.mockReset();
+  fetchWorkspaceLogo.mockReset();
 });
 
 const BRAND_ID = "brand-1";
@@ -194,6 +198,28 @@ describe("Brands — list states", () => {
     // retry — so the message appears once per panel rather than only once.
     await waitFor(() => expect(screen.getAllByText("brand store offline").length).toBeGreaterThan(0));
     expect(screen.getAllByRole("alert").length).toBeGreaterThan(0);
+  });
+});
+
+describe("Brands — workspace logo credentials", () => {
+  it("loads the logo with header auth and renders only a revocable blob URL", async () => {
+    route({ chrome: { brand: { app_name: "YM", accent: "#5b8cff", logo_path: "brand/logo.png" } } });
+    fetchWorkspaceLogo.mockResolvedValue(new Blob(["logo"]));
+    const OriginalURL = URL;
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", class extends OriginalURL {
+      static createObjectURL = vi.fn(() => "blob:workspace-logo");
+      static revokeObjectURL = revokeObjectURL;
+    });
+
+    const { unmount } = renderBrands();
+    const logo = await screen.findByAltText("Workspace logo");
+    await waitFor(() => expect(logo).toHaveAttribute("src", "blob:workspace-logo"));
+
+    expect(fetchWorkspaceLogo).toHaveBeenCalledExactlyOnceWith("ws-1");
+    expect(logo.getAttribute("src")).not.toContain("token=");
+    unmount();
+    expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith("blob:workspace-logo");
   });
 });
 

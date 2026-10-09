@@ -229,9 +229,55 @@ def lipsync_provider() -> Iterator[DeterministicLipSyncAdapter]:
         lipsync_service._queue = previous
 
 
+# ---------------------------------------------------------------------------
+# D. UGC narration: the deterministic TTS seam
+# ---------------------------------------------------------------------------
+
+
+@contextlib.contextmanager
+def deterministic_tts() -> Iterator[Any]:
+    """Speak UGC narration with the simulation-only mock provider.
+
+    The UGC pipeline's voice stage needs a TTS provider that returns audio;
+    the default (edge) needs the live network, which the contract observer
+    forbids -- reliably on Linux, where the socket patch holds, and only by
+    accident not on Windows, where asyncio's ProactorEventLoop bypasses
+    `socket.connect` patching. Without this seam the same tree observes
+    `POST /ugc/projects` as 200 on one platform and 422 on the other, and no
+    artifact gate can be green on both.
+
+    The seam is `get_tts_provider`, the module's own factory, and the stand-in
+    is the product's own MockTTSProvider: deterministic silence sized to the
+    text, labeled `is_mock` everywhere. Validation, pipeline orchestration,
+    persistence and serialization stay real; only the voice bytes are
+    synthetic. The response contract (project/qc/script/timeline fields)
+    carries no voice identity -- the provider name lands in lineage rows, not
+    in the response -- so the observed shape is the production shape.
+
+    The scope is deliberately NARROW (one endpoint's observation, applied by
+    the caller): voice-preview and TTS-status endpoints must keep observing
+    the real provider, or their contracts would describe the mock instead of
+    production.
+    """
+    from unittest.mock import patch
+
+    from app.providers.tts import MockTTSProvider
+
+    provider = MockTTSProvider()
+    # Patch the factory ONLY where it is defined. `app.engine.ugc.voice`
+    # deliberately holds no module-level binding: its `_provider` does
+    # `from app.providers.tts import get_tts_provider` AT CALL TIME, so it
+    # re-reads the patched module attribute and needs no own patch (patching a
+    # name the module does not hold raises AttributeError, and patching both
+    # would be redundant).
+    with patch("app.providers.tts.get_tts_provider", lambda *a, **k: provider):
+        yield provider
+
+
 __all__ = [
     "DeterministicLipSyncAdapter",
     "RecordingReplyProvider",
+    "deterministic_tts",
     "lipsync_provider",
     "set_meta_app_id",
     "social_provider",

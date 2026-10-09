@@ -325,6 +325,15 @@ def main() -> int:
         with session_scope() as db:
             run_migrations(db)
 
+        # KNOWN LIMITATION: this patch only intercepts the calls it patches.
+        # On Windows, asyncio runs the ProactorEventLoop, whose connections go
+        # through IOCP rather than `socket.connect`, so an async client such as
+        # edge-tts still reaches the live network here while the same code is
+        # properly blocked on Linux (SelectorEventLoop). That is why a run on
+        # this machine can observe endpoints a Linux run must report as
+        # provider-gated (notably POST /ugc/projects, whose voice stage needs
+        # live TTS): the shapes differ by platform, and the gate -- not a
+        # second patch layer -- is what keeps CI honest about it.
         original_connect = socket.socket.connect
         original_connect_ex = socket.socket.connect_ex
 

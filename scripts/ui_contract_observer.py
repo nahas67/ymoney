@@ -673,10 +673,26 @@ def _observe_all(
             rb.query_for(spec_path, method.lower(), seeded)
         )
 
+        # UGC narration speaks through TTS, and the default provider needs the
+        # live network the observer forbids. The deterministic mock speaks
+        # silence sized to the text instead, so this ONE endpoint is observed
+        # identically with and without network. Every other endpoint keeps the
+        # real provider: voice-preview and TTS-status contracts must describe
+        # production, not the mock. Same per-endpoint precondition shape as
+        # `_prepare_autopilot_state` above.
+        import ui_provider_fixtures as pxf
+
+        tts_scope = (
+            pxf.deterministic_tts()
+            if (spec_path, method.lower())
+            == ("/api/v1/workspaces/{workspace_id}/ugc/projects", "post")
+            else contextlib.nullcontext()
+        )
         try:
-            r = client.request(
-                method, url, headers=session["headers"], json=body, params=query
-            )
+            with tts_scope:
+                r = client.request(
+                    method, url, headers=session["headers"], json=body, params=query
+                )
         except Exception as exc:
             observations.append(
                 {

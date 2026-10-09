@@ -245,6 +245,7 @@ for spec_path in sorted(groups):
         indent=2,
     ),
     encoding="utf-8",
+    newline="\n",
 )
 print()
 print("wrote docs/UI_CONTRACT_AUDIT.json")

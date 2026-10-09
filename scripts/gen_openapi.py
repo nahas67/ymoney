@@ -59,7 +59,7 @@ schema["components"] = {
 out = ROOT / "frontend" / "src" / "api" / "openapi.json"
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text(json.dumps(schema, indent=2, sort_keys=False) + "\n",
-               encoding="utf-8")
+               encoding="utf-8", newline="\n")
 
 operations = sum(
     len([m for m in v if m in ("get", "post", "put", "patch", "delete")])

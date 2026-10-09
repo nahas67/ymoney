@@ -31,7 +31,7 @@ path. The planner's actions stop at SCHEDULED.
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -440,7 +440,10 @@ def calendar(ws: Workspace = Depends(require_workspace_role("viewer")),
     due, or overdue), and hiding it would make a scheduled item look unscheduled
     for the rest of the day.
     """
-    start = datetime.combine(date.today(), time.min)
+    # ScheduleEntry.run_at is stored as naive UTC and the Scheduler reads it as
+    # UTC. Filtering from the host's local date made the same UTC-today entry
+    # appear on Linux and disappear on a developer machine in a later timezone.
+    start = datetime.combine(datetime.now(timezone.utc).date(), time.min)
     entries = db.scalars(select(ScheduleEntry).where(
         ScheduleEntry.workspace_id == ws.id,
         ScheduleEntry.run_at >= start,

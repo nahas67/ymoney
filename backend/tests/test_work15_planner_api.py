@@ -325,6 +325,47 @@ def test_scheduling_writes_a_schedule_entry_and_does_not_publish(client, owner):
     assert "seed window" in body["why_scheduled"]
 
 
+def test_planner_calendar_uses_the_utc_day_boundary(client, owner, monkeypatch):
+    """A UTC-today entry is visible regardless of the host timezone."""
+    from datetime import date as real_date
+    from datetime import datetime as real_datetime
+    from datetime import timezone
+
+    from app.api.v1 import planner
+    from app.models.content import ScheduleEntry
+
+    headers, ws = owner
+
+    class FakeDate(real_date):
+        @classmethod
+        def today(cls):
+            # Simulate a host whose local calendar has already crossed midnight.
+            return cls(2026, 1, 3)
+
+    class FakeDateTime(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            assert tz is timezone.utc
+            return cls(2026, 1, 2, 23, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(planner, "date", FakeDate)
+    monkeypatch.setattr(planner, "datetime", FakeDateTime)
+    with _db() as db:
+        db.add(ScheduleEntry(
+            workspace_id=ws,
+            content_item_id=None,
+            platform="tiktok",
+            status="PENDING",
+            run_at=real_datetime(2026, 1, 2, 12),
+        ))
+        db.commit()
+
+    response = client.get(f"/api/v1/workspaces/{ws}/planner/calendar",
+                          headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["entries"], response.json()
+
+
 def test_scheduling_requires_the_allowlist_under_autonomous(client, owner):
     headers, ws = owner
     _seed(client, headers, ws)

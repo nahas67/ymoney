@@ -1,5 +1,5 @@
 {
-  "contentSha256": "402328c1dabf497f73f9fa4e0a3e1626fff33c8c951ae82c426dad7e9cc06bac",
+  "contentSha256": "b050356fb84cb88814e2b25c8db74f36c3d2056828e181d7027f173a33ae8283",
   "dimensions": [
     "render",
     "loading",
@@ -280,7 +280,7 @@
         "a real 403 on /api/v1/workspaces/{workspace_id}/distribution/capabilities rendered no refusal message in <main>",
         "a real 403 on /api/v1/workspaces/{workspace_id}/publishing/posts rendered no refusal message in <main>",
         "a virgin workspace already holds rows in /api/v1/workspaces/{workspace_id}/distribution/capabilities (canonical data)",
-        "exercised at /campaigns/cecad84f-b6b9-4b46-8ec8-03370fdb0faf (detail route)",
+        "exercised at /campaigns/71d8df5b-6c0b-4cb6-9b4f-ab0ae795bf78 (detail route)",
         "failing /api/v1/workspaces/{workspace_id}/campaigns/{campaign_id}, /api/v1/workspaces/{workspace_id}/distribution/capabilities, /api/v1/workspaces/{workspace_id}/publishing/posts rendered no error state inside <main>",
         "no empty state rendered on a virgin workspace (the screen shows figures, not an empty state)",
         "non-member request status: /api/v1/workspaces/{workspace_id}/campaigns/{campaign_id} -> HTTP 403; /api/v1/workspaces/{workspace_id}/distribution/capabilities -> HTTP 403; /api/v1/workspaces/{workspace_id}/publishing/posts -> HTTP 403",
@@ -753,7 +753,7 @@
       "notes": [
         "1 error state(s) on a virgin workspace: not an empty state",
         "an error state was rendered by failing /api/v1/workspaces/{workspace_id}/assets/media",
-        "exercised at /studio/2650ebcc-97e5-41df-9d07-396cd6a4925c (detail route)",
+        "exercised at /studio/69be914a-6890-4e9c-805f-a1ded4353c00 (detail route)",
         "horizontal-scroll assertion exempt: a timeline is deliberately wider than its container",
         "refusal rendered through the styled denial state (/api/v1/workspaces/{workspace_id}/assets/media)"
       ],

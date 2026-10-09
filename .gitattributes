@@ -1,0 +1,9 @@
+# Generated release artifacts are compared byte-for-byte by
+# scripts/verify_generated_artifacts.py on both Windows and Linux.
+/backend/app/schemas/generated.py text eol=lf
+/backend/app/schemas/contract_map.json text eol=lf
+/docs/UI_CONTRACT_GENERATION.json text eol=lf
+/frontend/src/api/openapi.json text eol=lf
+/docs/UI_CONTRACT_AUDIT.json text eol=lf
+/docs/UI_ROUTE_RELEASE_MATRIX.json text eol=lf
+/docs/ANALYTICS_HONESTY_AUDIT.json text eol=lf

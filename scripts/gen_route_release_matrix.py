@@ -395,7 +395,11 @@ def main(argv: list[str] | None = None) -> int:
     doc["contentSha256"] = digest
 
     if not args.check:
-        MATRIX.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        MATRIX.write_text(
+            json.dumps(doc, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
 
     print(f"[matrix] registry routes : {len(registry)}")
     print(f"[matrix] matrix routes  : {len(doc['routes'])}")

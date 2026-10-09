@@ -1062,7 +1062,7 @@ def main() -> int:
         print(f"AUDIT OK: {OUT.relative_to(REPO)} is current, 0 findings")
         return 0
 
-    OUT.write_text(payload, encoding="utf-8")
+    OUT.write_text(payload, encoding="utf-8", newline="\n")
     print(f"WROTE {OUT.relative_to(REPO)} ({OUT.stat().st_size:,} bytes)")
 
     if findings:

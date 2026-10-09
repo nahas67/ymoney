@@ -324,7 +324,16 @@ def seed(client: TestClient, session: dict[str, Any]) -> dict[str, str]:
     attempt("glossary", "/localization/glossary")
     attempt("avatar", "/avatars")
     attempt("dubbing_plan", "/dubbing/plans")
-    attempt("ugc_project", "/ugc/projects")
+    # The seed call itself runs the real UGC pipeline. Keep it on the same
+    # narrow deterministic TTS seam as the later endpoint observation: without
+    # this, Linux creates a FAILED project when edge-tts is blocked while
+    # Windows creates a populated project when its Proactor loop reaches the
+    # network, and the subsequent GET /ugc/projects describes different item
+    # shapes on the two platforms.
+    import ui_provider_fixtures as pxf
+
+    with pxf.deterministic_tts():
+        attempt("ugc_project", "/ugc/projects")
     attempt("agent_config", "/agents/config", method="GET")
 
     # Objects with NO HTTP create route. A content item is produced by the

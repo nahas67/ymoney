@@ -33,6 +33,31 @@ class TimelineRenderError(Exception):
     pass
 
 
+def _timeline_seconds(inputs: list[str]) -> float:
+    """Output duration of the render, from the ``-t`` flags ffmpeg will honour.
+
+    Longest declared input duration, which is what the concat graph produces.
+    Conservative when no duration is declared (a 0 that the caller's own floor
+    then covers), and never raises on an unexpected shape: this only sizes a
+    timeout budget, so a wrong guess must degrade to the floor, not fail the
+    render.
+    """
+    longest = 0.0
+    for index, token in enumerate(inputs):
+        if token not in ("-t", "-ss"):
+            continue
+        # `-t` is followed by a value; `-ss` is a seek offset, not a duration.
+        if index + 1 >= len(inputs):
+            continue
+        try:
+            value = float(inputs[index + 1])
+        except (TypeError, ValueError):
+            continue
+        if token == "-t" and value > longest:
+            longest = value
+    return longest
+
+
 def resolve_font() -> str | None:
     """Render font for drawtext overlays/captions (override via YMONEY_FONT_FILE)."""
     import os
@@ -682,7 +707,14 @@ def render_timeline(workspace_id: str, db, doc: dict, *, out_name: str = "edit.m
             "-map", vcur, "-map", "[amix]",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
             "-c:a", "aac", "-shortest", str(out_path)])
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    # A render of a multi-minute timeline with heavy caption graphs is real
+    # work whose duration scales with the output, so a fixed 300s budget fails
+    # the job on slower hardware while the same render is legitimate. Derive
+    # the budget from the timeline duration (measured 600s needed for a
+    # 5-minute documentary on the CI runner), with a floor and a ceiling.
+    render_timeout = min(3600.0, max(600.0, _timeline_seconds(inputs) * 120.0))
+    proc = subprocess.run(cmd, capture_output=True, text=True,
+                          timeout=render_timeout)
     if proc.returncode != 0 or not out_path.exists():
         # Include the generated graph in the failure: an ffmpeg "matches no
         # streams" / "no such filter" error is otherwise untraceable.
